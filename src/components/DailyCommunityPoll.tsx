@@ -5,8 +5,7 @@ import {
   subscribeToCommunityPolls,
   subscribeToUserPollVote,
   castPollVote,
-  createCommunityPoll,
-  seedDefaultKenyanPollsIfEmpty
+  createCommunityPoll
 } from '../services/pollService';
 import { ALL_47_COUNTIES } from '../data/kenyaCounties';
 import {
@@ -40,6 +39,7 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
   const { currentUser, userProfile, loginWithGoogle } = useAuth();
 
   const [polls, setPolls] = useState<CommunityPoll[]>([]);
+  const [isLoadingPolls, setIsLoadingPolls] = useState(true);
   const [selectedPollIndex, setSelectedPollIndex] = useState<number>(0);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [userVoteOptionId, setUserVoteOptionId] = useState<string | null>(null);
@@ -56,15 +56,11 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
   const [isSubmittingPoll, setIsSubmittingPoll] = useState<boolean>(false);
   const [pollFormError, setPollFormError] = useState<string | null>(null);
 
-  // Seed initial polls on mount
-  useEffect(() => {
-    seedDefaultKenyanPollsIfEmpty();
-  }, []);
-
   // Subscribe to all polls
   useEffect(() => {
     const unsubscribe = subscribeToCommunityPolls((loadedPolls) => {
       setPolls(loadedPolls);
+      setIsLoadingPolls(false);
     });
     return () => unsubscribe();
   }, []);
@@ -76,7 +72,7 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
   });
 
   // Current active poll
-  const activePoll = filteredPolls[selectedPollIndex] || filteredPolls[0] || polls[0];
+  const activePoll = filteredPolls[selectedPollIndex] || filteredPolls[0];
 
   // Subscribe to user vote for active poll
   useEffect(() => {
@@ -217,7 +213,7 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
     }
   };
 
-  if (!activePoll && polls.length === 0) {
+  if (isLoadingPolls) {
     return (
       <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-xs text-center">
         <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3 animate-pulse">
@@ -229,8 +225,8 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
     );
   }
 
-  const categoryBadge = getCategoryBadge(activePoll.category);
-  const totalVotesSafe = Math.max(1, activePoll.totalVotes);
+  const categoryBadge = activePoll ? getCategoryBadge(activePoll.category) : null;
+  const totalVotesSafe = Math.max(1, activePoll?.totalVotes ?? 0);
 
   return (
     <div className="relative bg-white rounded-3xl border border-slate-200/90 shadow-md overflow-hidden transition-all">
@@ -242,6 +238,8 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
         </div>
       )}
 
+      {activePoll ? (
+      <>
       {/* Decorative Kenyan Flag Top Ribbon */}
       <div className="h-1.5 w-full flex">
         <div className="flex-1 bg-black" />
@@ -260,9 +258,9 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
               <span>Daily Community Poll</span>
             </span>
 
-            <span className={`inline-flex items-center gap-1 px-2.5 py-0.8 rounded-lg text-[11px] font-semibold border ${categoryBadge.bg}`}>
+            <span className={`inline-flex items-center gap-1 px-2.5 py-0.8 rounded-lg text-[11px] font-semibold border ${categoryBadge?.bg}`}>
               <Sparkles className="w-3 h-3" />
-              <span>{categoryBadge.label}</span>
+              <span>{categoryBadge?.label}</span>
             </span>
 
             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
@@ -471,6 +469,28 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
           </div>
         </div>
       </div>
+      </>
+      ) : (
+        <div className="p-8 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+            <Vote className="w-6 h-6" />
+          </div>
+          <h3 className="font-bold text-slate-800">No public polls right now</h3>
+          <p className="text-sm text-slate-500 mt-1">
+            Earlier polls are hidden. Propose a new poll for the community.
+          </p>
+          <button
+            onClick={() => {
+              if (!currentUser) loginWithGoogle();
+              else setIsModalOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold transition-colors cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Propose Poll</span>
+          </button>
+        </div>
+      )}
 
       {/* Propose New Poll Modal */}
       {isModalOpen && (
