@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="108" fill="#059669"/>
+  <!-- Circular shield background -->
+  <circle cx="256" cy="256" r="180" fill="#047857"/>
+  <!-- Wi-Fi signal arcs -->
+  <path d="M128 200 C200 130, 312 130, 384 200" fill="none" stroke="#ffffff" stroke-width="32" stroke-linecap="round"/>
+  <path d="M168 250 C216 205, 296 205, 344 250" fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round"/>
+  <path d="M212 300 C236 278, 276 278, 300 300" fill="none" stroke="#ffffff" stroke-width="24" stroke-linecap="round"/>
+  <!-- Wi-Fi base dot -->
+  <circle cx="256" cy="356" r="22" fill="#34d399"/>
+</svg>

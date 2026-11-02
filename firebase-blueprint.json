@@ -1,0 +1,204 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public profile and status of a registered community user",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 128 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "county": { "type": "string", "maxLength": 50 },
+        "isOnline": { "type": "boolean" },
+        "lastSeen": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "email", "createdAt"]
+    },
+    "ChatConversation": {
+      "title": "ChatConversation",
+      "description": "Metadata for a direct one-on-one chat session between two users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 256 },
+        "participants": { "type": "array" },
+        "participantDetails": { "type": "object" },
+        "lastMessage": { "type": "string", "maxLength": 500 },
+        "lastMessageSenderId": { "type": "string", "maxLength": 128 },
+        "lastMessageTimestamp": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "participants", "createdAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "An individual message within a one-on-one chat conversation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "chatId": { "type": "string", "maxLength": 256 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "senderName": { "type": "string", "maxLength": 100 },
+        "senderPhoto": { "type": "string", "maxLength": 500 },
+        "recipientId": { "type": "string", "maxLength": 128 },
+        "text": { "type": "string", "maxLength": 1000 },
+        "mediaUrl": { "type": "string", "maxLength": 600000 },
+        "hotspotReference": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "chatId", "senderId", "recipientId", "createdAt"]
+    },
+    "CommunityPost": {
+      "title": "CommunityPost",
+      "description": "Public community post on TUJUANE community feed",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorPhotoUrl": { "type": "string", "maxLength": 500 },
+        "authorCounty": { "type": "string", "maxLength": 50 },
+        "title": { "type": "string", "maxLength": 150 },
+        "content": { "type": "string", "maxLength": 2000 },
+        "category": { "type": "string", "enum": ["general", "discussion", "hustle", "local_news", "meetup", "campus", "question", "speed_report", "hotspot_tip", "outage_alert"] },
+        "county": { "type": "string", "maxLength": 50 },
+        "mediaUrl": { "type": "string", "maxLength": 600000 },
+        "mediaCaption": { "type": "string", "maxLength": 200 },
+        "upvotes": { "type": "integer" },
+        "upvoters": { "type": "array" },
+        "commentsCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "authorId", "authorName", "title", "content", "category", "county", "createdAt"]
+    },
+    "CommunityComment": {
+      "title": "CommunityComment",
+      "description": "Comment on a public community post",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorPhotoUrl": { "type": "string", "maxLength": 500 },
+        "content": { "type": "string", "maxLength": 1000 },
+        "mediaUrl": { "type": "string", "maxLength": 600000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "postId", "authorId", "authorName", "content", "createdAt"]
+    },
+    "CommunityPoll": {
+      "title": "CommunityPoll",
+      "description": "Daily interactive community poll on Kenyan culture, devolution, and local community issues",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "category": { "type": "string", "enum": ["culture", "community", "lifestyle", "governance", "food", "sports"] },
+        "countyScope": { "type": "string", "maxLength": 60 },
+        "options": { "type": "array" },
+        "totalVotes": { "type": "integer" },
+        "isActive": { "type": "boolean" },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "category", "options", "totalVotes", "isActive", "createdAt"]
+    },
+    "PollVote": {
+      "title": "PollVote",
+      "description": "Record of a citizen's ballot vote for a community poll option",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "pollId": { "type": "string", "maxLength": 128 },
+        "optionId": { "type": "string", "maxLength": 64 },
+        "votedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "pollId", "optionId", "votedAt"]
+    },
+    "FollowRelationship": {
+      "title": "FollowRelationship",
+      "description": "Citizen follow connection",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 256 },
+        "followerId": { "type": "string", "maxLength": 128 },
+        "followingId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "followerId", "followingId", "createdAt"]
+    },
+    "FriendRequest": {
+      "title": "FriendRequest",
+      "description": "Citizen friend request and bilateral friendship record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 256 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "receiverId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "senderId", "receiverId", "status", "createdAt"]
+    },
+    "SafetyReport": {
+      "title": "SafetyReport",
+      "description": "Citizen safety flag and moderation review ticket",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "reporterId": { "type": "string", "maxLength": 128 },
+        "category": { "type": "string", "enum": ["nudity", "misleading", "incitement", "dangerous", "spam", "harassment"] },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "actioned", "dismissed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "postId", "reporterId", "category", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile collection holding public profile, county preference, and presence"
+    },
+    "/chats/{chatId}": {
+      "schema": "ChatConversation",
+      "description": "One-on-one direct conversation metadata between two authenticated users"
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Messages sent within a specific one-on-one chat conversation"
+    },
+    "/community_posts/{postId}": {
+      "schema": "CommunityPost",
+      "description": "Public community posts, speed reports, tips and outage alerts"
+    },
+    "/community_posts/{postId}/comments/{commentId}": {
+      "schema": "CommunityComment",
+      "description": "Comments attached to a community post"
+    },
+    "/community_polls/{pollId}": {
+      "schema": "CommunityPoll",
+      "description": "Daily polls on Kenyan culture, community issues, and lifestyle"
+    },
+    "/community_polls/{pollId}/votes/{userId}": {
+      "schema": "PollVote",
+      "description": "Individual ballot vote cast by an authenticated user for a poll"
+    },
+    "/follows/{followId}": {
+      "schema": "FollowRelationship",
+      "description": "Follow and follow back relationships between community members"
+    },
+    "/friend_requests/{requestId}": {
+      "schema": "FriendRequest",
+      "description": "Friend request invitations and connections"
+    },
+    "/safety_reports/{reportId}": {
+      "schema": "SafetyReport",
+      "description": "Content safety reports submitted by citizens or flagged by automated filters"
+    }
+  }
+}

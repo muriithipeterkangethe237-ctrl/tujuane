@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "TUJUANE - Kenya Community Hub",
+  "short_name": "TUJUANE",
+  "description": "Kenya citizen community platform: connect across 47 counties, share stories, and chat 1-on-1.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#059669",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "name": "TUJUANE - Kenya Community Social & Interaction Hub",
+  "description": "TUJUANE is Kenya's citizen community and social interaction platform: connect with peers across all 47 counties, vote on daily community polls, share stories and hustles, upload photos, and chat 1-on-1 in real-time.",
+  "requestFramePermissions": ["geolocation", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
