@@ -49,7 +49,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
   onStartChatWithUser,
   onViewUserProfile
 }) => {
-  const { currentUser, userProfile, loginWithGoogle } = useAuth();
+  const { currentUser, userProfile, openAuthModal } = useAuth();
   const [members, setMembers] = useState<UserProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCounty, setSelectedCounty] = useState('All');
@@ -73,6 +73,17 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
     actionLabel: string;
     onConfirm: () => void;
   } | null>(null);
+
+  // Close confirmation modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && confirmModal?.isOpen) {
+        setConfirmModal(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [confirmModal]);
 
   // Available constituencies for currently selected county
   const availableConstituencies = useMemo(() => {
@@ -181,7 +192,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
   // Follow / Unfollow Handler
   const handleToggleFollow = async (targetUser: UserProfile) => {
     if (!currentUser || !userProfile) {
-      loginWithGoogle();
+      openAuthModal();
       return;
     }
     const isFollowing = followingIds.has(targetUser.uid);
@@ -202,7 +213,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
   // Send Friend Request Handler
   const handleSendFriendRequest = async (targetUser: UserProfile) => {
     if (!currentUser || !userProfile) {
-      loginWithGoogle();
+      openAuthModal();
       return;
     }
     const key = `friend_${targetUser.uid}`;
@@ -616,11 +627,12 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                 Join the TUJUANE network to view profiles, follow voices across all 47 counties, send friend requests, and start 1-on-1 chats.
               </p>
               <button
-                onClick={loginWithGoogle}
+                type="button"
+                onClick={() => openAuthModal('register')}
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
               >
                 <UserCheck className="w-4 h-4" />
-                <span>Sign In with Google</span>
+                <span>Register / Sign In</span>
               </button>
             </div>
           ) : loading ? (
@@ -861,30 +873,52 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
 
       {/* In-App Confirmation Modal (Never window.confirm) */}
       {confirmModal && confirmModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-                <AlertCircle className="w-5 h-5" />
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
+          onClick={() => setConfirmModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">
+                    {confirmModal.title}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {confirmModal.description}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-bold text-slate-900 text-base">
-                  {confirmModal.title}
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {confirmModal.description}
-                </p>
-              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmModal(null);
+                }}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+                aria-label="Close"
+                title="Close (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
               <button
+                type="button"
                 onClick={() => setConfirmModal(null)}
                 className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
               >
                 Dismiss
               </button>
               <button
+                type="button"
                 onClick={confirmModal.onConfirm}
                 className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-colors cursor-pointer"
               >

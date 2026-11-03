@@ -31,16 +31,21 @@ export async function createCommunityPost(
   const postId = `post_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const postRef = doc(db, POSTS_COLLECTION, postId);
 
+  const trimmedContent = (params.content || '').trim().slice(0, 2000);
+  const derivedTitle = params.title?.trim()
+    ? params.title.trim().slice(0, 150)
+    : (trimmedContent.slice(0, 75) + (trimmedContent.length > 75 ? '...' : '')) || 'Citizen Post';
+
   const postData: any = {
     id: postId,
     authorId: author.uid,
     authorName: author.displayName,
     authorPhotoUrl: author.photoURL || '',
-    authorCounty: author.county || 'Nairobi',
-    title: params.title.trim().slice(0, 150),
-    content: params.content.trim().slice(0, 2000),
-    category: params.category,
-    county: params.county || author.county || 'Nairobi',
+    authorCounty: author.county || '',
+    title: derivedTitle,
+    content: trimmedContent,
+    category: params.category || 'general',
+    county: params.county !== undefined ? params.county : '',
     upvotes: 0,
     upvoters: [],
     commentsCount: 0,
@@ -100,7 +105,7 @@ export function subscribeToCommunityPosts(
           title: d.title || 'Community Update',
           content: d.content || '',
           category: d.category || 'general',
-          county: d.county || 'Nairobi',
+          county: d.county || '',
           constituency: d.constituency || undefined,
           hotspotId: d.hotspotId,
           hotspotName: d.hotspotName,

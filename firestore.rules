@@ -340,6 +340,21 @@ service cloud.firestore {
       allow read: if isSignedIn() && request.auth.token.email == 'muriithipeterkangethe237@gmail.com';
       allow create: if isSignedIn();
     }
+
+    // 14. User Notifications Channel (post interactions, account standing, social)
+    match /user_notifications/{notificationId} {
+      allow read: if isSignedIn()
+        && (resource.data.userId == request.auth.uid || request.auth.token.email == 'muriithipeterkangethe237@gmail.com');
+      allow create: if isSignedIn()
+        && isValidId(notificationId)
+        && incoming().userId is string
+        && incoming().id == notificationId;
+      allow update: if isSignedIn()
+        && (resource.data.userId == request.auth.uid || request.auth.token.email == 'muriithipeterkangethe237@gmail.com');
+      allow delete: if isSignedIn()
+        && (resource.data.userId == request.auth.uid || request.auth.token.email == 'muriithipeterkangethe237@gmail.com');
+    }
   }
 }
+
 

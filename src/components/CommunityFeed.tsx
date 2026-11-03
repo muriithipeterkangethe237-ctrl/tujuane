@@ -26,6 +26,7 @@ import {
   subscribeToFollowing,
   subscribeToFollowers
 } from '../services/socialService';
+import { sendUserNotification } from '../services/userNotificationService';
 import { UserProfile } from '../types/chat';
 import {
   MessageSquare,
@@ -72,7 +73,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   onOpenDirectChatWithUser,
   onViewUserProfile
 }) => {
-  const { currentUser, userProfile, loginWithGoogle } = useAuth();
+  const { currentUser, userProfile, openAuthModal } = useAuth();
 
   // Feed states
   const [posts, setPosts] = useState<CommunityPost[]>([]);
@@ -107,6 +108,20 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
   // Toast notice
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Direct Quick Post Composer State (Direct caption posting without tagging location)
+  const [quickCaption, setQuickCaption] = useState('');
+  const [quickImage, setQuickImage] = useState<string | null>(null);
+  const [quickImageMeta, setQuickImageMeta] = useState<{ origSize: number; compSize: number } | null>(null);
+  const [isQuickCompressing, setIsQuickCompressing] = useState(false);
+  const [isQuickSubmitting, setIsQuickSubmitting] = useState(false);
+  const [quickShowLocation, setQuickShowLocation] = useState(false);
+  const [quickCounty, setQuickCounty] = useState('Nairobi');
+  const [quickConstituency, setQuickConstituency] = useState('');
+  const quickFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Full Modal optional location toggle
+  const [modalIncludeLocation, setModalIncludeLocation] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const commentFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -164,6 +179,21 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       unsubFollowers();
     };
   }, [currentUser]);
+
+  // Handle ESC key to close any active dialogs
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isCreateModalOpen) setIsCreateModalOpen(false);
+        if (postToDelete) setPostToDelete(null);
+        if (blockedSafetyResult) setBlockedSafetyResult(null);
+        if (reportModalPost) setReportModalPost(null);
+        if (lightboxImage) setLightboxImage(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isCreateModalOpen, postToDelete, blockedSafetyResult, reportModalPost, lightboxImage]);
 
   // Set default post county and constituency to user profile if available
   useEffect(() => {
@@ -225,21 +255,112 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Submit new community post with Safety Filtering
-  const handleCreatePost = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentUser || !userProfile) {
-      loginWithGoogle();
+  // Handle quick post image attachment
+  const handleQuickImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      triggerToast('Please select a valid image file (JPG, PNG, WebP).');
       return;
     }
 
-    if (!postTitle.trim() || !postContent.trim()) {
-      setFormError('Please enter a title and discussion details.');
+    setIsQuickCompressing(true);
+    try {
+      const res = await compressImage(file, 1200, 0.78);
+      setQuickImage(res.dataUrl);
+      setQuickImageMeta({
+        origSize: res.originalSizeBytes,
+        compSize: res.compressedSizeBytes
+      });
+    } catch (err) {
+      console.error('Quick image error:', err);
+      triggerToast('Could not process image.');
+    } finally {
+      setIsQuickCompressing(false);
+    }
+  };
+
+  const handleRemoveQuickImage = () => {
+    setQuickImage(null);
+    setQuickImageMeta(null);
+    if (quickFileInputRef.current) quickFileInputRef.current.value = '';
+  };
+
+  // Submit direct quick post (Caption only, no location required!)
+  const handleDirectQuickPost = async () => {
+    if (!currentUser || !userProfile) {
+      openAuthModal();
+      return;
+    }
+
+    const trimmedCaption = quickCaption.trim();
+    if (!trimmedCaption && !quickImage) {
+      triggerToast('Please write a caption or select a photo.');
+      return;
+    }
+
+    // Safety pre-scan
+    const safetyScan = analyzeContentSafety(trimmedCaption, '');
+    if (safetyScan.severity === 'high') {
+      setBlockedSafetyResult(safetyScan);
+      return;
+    }
+
+    setIsQuickSubmitting(true);
+    try {
+      const autoTitle = trimmedCaption
+        ? trimmedCaption.slice(0, 75) + (trimmedCaption.length > 75 ? '...' : '')
+        : 'Citizen Photo Update';
+
+      const params: any = {
+        title: autoTitle,
+        content: trimmedCaption || (quickImage ? 'Shared a citizen photo.' : ''),
+        category: 'general',
+        county: quickShowLocation ? quickCounty : '',
+        constituency: quickShowLocation && quickConstituency ? quickConstituency : undefined,
+        mediaUrl: quickImage || undefined
+      };
+
+      if (safetyScan.severity === 'medium' || safetyScan.triggeredCategories.length > 0) {
+        params.isFlagged = true;
+        params.safetyCategory = safetyScan.triggeredCategories[0] || 'misleading';
+        params.safetyReason = safetyScan.flagReason;
+        params.moderationStatus = 'under_review';
+      }
+
+      await createCommunityPost(userProfile, params);
+      setQuickCaption('');
+      setQuickImage(null);
+      setQuickImageMeta(null);
+      setQuickShowLocation(false);
+      setQuickConstituency('');
+      if (quickFileInputRef.current) quickFileInputRef.current.value = '';
+      triggerToast('✓ Post published to TUJUANE Feed!');
+    } catch (err: any) {
+      console.error('Direct post error:', err);
+      triggerToast(err.message || 'Failed to post caption.');
+    } finally {
+      setIsQuickSubmitting(false);
+    }
+  };
+
+  // Submit new community post with Safety Filtering (Title and location now fully optional)
+  const handleCreatePost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !userProfile) {
+      openAuthModal();
+      return;
+    }
+
+    const trimmedContent = postContent.trim();
+    if (!trimmedContent && !compressedImage) {
+      setFormError('Please enter caption details or attach an image.');
       return;
     }
 
     // Real-time Content Safety Pre-screening
-    const safetyScan = analyzeContentSafety(postContent.trim(), postTitle.trim());
+    const safetyScan = analyzeContentSafety(trimmedContent, postTitle.trim());
     if (safetyScan.severity === 'high') {
       setBlockedSafetyResult(safetyScan);
       return;
@@ -248,12 +369,16 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     setIsSubmitting(true);
     setFormError(null);
 
+    const derivedTitle = postTitle.trim()
+      ? postTitle.trim()
+      : trimmedContent.slice(0, 75) + (trimmedContent.length > 75 ? '...' : '') || 'Citizen Update';
+
     const params: any = {
-      title: postTitle.trim(),
-      content: postContent.trim(),
+      title: derivedTitle,
+      content: trimmedContent,
       category: postCategory,
-      county: postCounty,
-      constituency: postConstituency || undefined,
+      county: modalIncludeLocation ? postCounty : '',
+      constituency: modalIncludeLocation && postConstituency ? postConstituency : undefined,
       mediaUrl: compressedImage || undefined,
       mediaCaption: mediaCaption.trim() || undefined
     };
@@ -275,7 +400,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       setCompressedImage(null);
       setImageMeta(null);
       setMediaCaption('');
-      triggerToast('✓ Discussion posted to TUJUANE community!');
+      setModalIncludeLocation(false);
+      triggerToast('✓ Post published to TUJUANE community!');
     } catch (err: any) {
       setFormError(err.message || 'Failed to create post. Please try again.');
     } finally {
@@ -286,12 +412,28 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   // Toggle upvote
   const handleUpvote = async (post: CommunityPost) => {
     if (!currentUser) {
-      loginWithGoogle();
+      openAuthModal();
       return;
     }
 
     try {
-      await toggleUpvotePost(post.id, currentUser.uid);
+      const didUpvote = await toggleUpvotePost(post.id, currentUser.uid);
+      if (didUpvote && post.authorId && post.authorId !== currentUser.uid) {
+        // Send real-time notification to post author
+        sendUserNotification({
+          userId: post.authorId,
+          category: 'post_interaction',
+          type: 'post_like',
+          title: 'New Like on your Discussion',
+          message: `${userProfile?.displayName || 'A citizen'} liked your post "${post.title.slice(0, 45)}"`,
+          postId: post.id,
+          postTitle: post.title,
+          actorId: currentUser.uid,
+          actorName: userProfile?.displayName,
+          actorPhoto: userProfile?.photoURL,
+          actorCounty: userProfile?.county
+        });
+      }
     } catch (err) {
       console.error('Error toggling upvote:', err);
       triggerToast('Could not record your like. Please check your connection.');
@@ -317,7 +459,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   // Submit comment with Safety Screening
   const handleSubmitComment = async (postId: string) => {
     if (!currentUser || !userProfile) {
-      loginWithGoogle();
+      openAuthModal();
       return;
     }
 
@@ -331,8 +473,28 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
 
     setIsSubmittingComment(true);
+    const commentText = commentInput.trim();
     try {
-      await addCommunityComment(postId, userProfile, commentInput.trim(), commentImage || undefined);
+      await addCommunityComment(postId, userProfile, commentText, commentImage || undefined);
+      
+      // Notify post author
+      const targetPost = posts.find((p) => p.id === postId);
+      if (targetPost && targetPost.authorId && targetPost.authorId !== currentUser.uid) {
+        sendUserNotification({
+          userId: targetPost.authorId,
+          category: 'post_interaction',
+          type: 'post_comment',
+          title: 'New Reply on your Discussion',
+          message: `${userProfile.displayName} replied: "${commentText.slice(0, 60)}${commentText.length > 60 ? '...' : ''}"`,
+          postId: targetPost.id,
+          postTitle: targetPost.title,
+          actorId: currentUser.uid,
+          actorName: userProfile.displayName,
+          actorPhoto: userProfile.photoURL,
+          actorCounty: userProfile.county
+        });
+      }
+
       setCommentInput('');
       setCommentImage(null);
       if (commentFileInputRef.current) commentFileInputRef.current.value = '';
@@ -372,7 +534,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     authorPhoto?: string
   ) => {
     if (!currentUser || !userProfile) {
-      loginWithGoogle();
+      openAuthModal();
       return;
     }
 
@@ -402,7 +564,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   // Report post to community moderators
   const handleOpenReportModal = (post: CommunityPost) => {
     if (!currentUser) {
-      loginWithGoogle();
+      openAuthModal();
       return;
     }
     setReportModalPost(post);
@@ -445,7 +607,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     const titleMatch = post.title.toLowerCase().includes(q);
     const contentMatch = post.content.toLowerCase().includes(q);
     const authorMatch = post.authorName.toLowerCase().includes(q);
-    const countyMatch = post.county.toLowerCase().includes(q);
+    const countyMatch = post.county ? post.county.toLowerCase().includes(q) : false;
     return titleMatch || contentMatch || authorMatch || countyMatch;
   });
 
@@ -546,11 +708,12 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               </button>
             ) : (
               <button
-                onClick={loginWithGoogle}
+                type="button"
+                onClick={() => openAuthModal('register')}
                 className="px-5 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm rounded-xl transition-all shadow-lg hover:shadow-emerald-500/25 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <UserCheck className="w-4 h-4" />
-                <span>Sign In to Post</span>
+                <span>Sign In / Register</span>
               </button>
             )}
           </div>
@@ -810,6 +973,180 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         </div>
       </div>
 
+      {/* DIRECT QUICK POST COMPOSER - Post directly without tagging location, caption only */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-4 sm:p-5 space-y-3.5">
+        {/* Hidden file input for quick image */}
+        <input
+          ref={quickFileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleQuickImageFileChange}
+          className="hidden"
+        />
+
+        <div className="flex items-start gap-3">
+          {/* User Avatar */}
+          <div className="shrink-0 mt-0.5">
+            {userProfile?.photoURL ? (
+              <img
+                src={userProfile.photoURL}
+                alt={userProfile.displayName}
+                className="w-10 h-10 rounded-2xl object-cover border border-slate-200"
+              />
+            ) : currentUser ? (
+              <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 font-extrabold flex items-center justify-center text-sm border border-slate-200">
+                {(userProfile?.displayName || currentUser.displayName || 'C').charAt(0).toUpperCase()}
+              </div>
+            ) : (
+              <div className="w-10 h-10 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
+                <Users className="w-5 h-5" />
+              </div>
+            )}
+          </div>
+
+          {/* Caption Input */}
+          <div className="flex-1">
+            <textarea
+              rows={2}
+              value={quickCaption}
+              onChange={(e) => setQuickCaption(e.target.value)}
+              placeholder={
+                currentUser
+                  ? "What's on your mind, Citizen? Share a caption, update, or thought (no location required)..."
+                  : "Sign in to post quick captions and updates..."
+              }
+              disabled={!currentUser}
+              maxLength={2000}
+              className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-900 resize-none leading-relaxed transition-all placeholder:text-slate-400 disabled:opacity-60"
+            />
+          </div>
+        </div>
+
+        {/* Attached Photo Preview (if any) */}
+        {quickImage && (
+          <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 max-h-64 flex items-center justify-center">
+            <img src={quickImage} alt="Attachment" className="max-h-64 object-contain w-full" />
+            <button
+              type="button"
+              onClick={handleRemoveQuickImage}
+              className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-full transition-colors cursor-pointer"
+              title="Remove attached photo"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            {quickImageMeta && (
+              <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 text-white text-[10px] font-mono rounded-md">
+                Compressed to {formatFileSize(quickImageMeta.compSize)}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Optional Location Selector (Collapsed by default, only shown if toggled) */}
+        {quickShowLocation && (
+          <div className="p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-2xl space-y-2 animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-emerald-900 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Tag Location (Optional)</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setQuickShowLocation(false)}
+                className="text-[10px] font-semibold text-slate-500 hover:text-slate-700 cursor-pointer"
+              >
+                Clear Location
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <select
+                value={quickCounty}
+                onChange={(e) => {
+                  setQuickCounty(e.target.value);
+                  setQuickConstituency('');
+                }}
+                className="px-2.5 py-1.5 text-xs bg-white border border-emerald-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 font-medium"
+              >
+                {ALL_47_COUNTIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c} County
+                  </option>
+                ))}
+              </select>
+              <select
+                value={quickConstituency}
+                onChange={(e) => setQuickConstituency(e.target.value)}
+                className="px-2.5 py-1.5 text-xs bg-white border border-emerald-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 font-medium"
+              >
+                <option value="">All Constituencies</option>
+                {getConstituenciesByCounty(quickCounty).map((con) => (
+                  <option key={con} value={con}>
+                    {con}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Composer Actions Bottom Row */}
+        <div className="flex items-center justify-between pt-1 border-t border-slate-100 gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            {/* Add Photo Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!currentUser) openAuthModal();
+                else quickFileInputRef.current?.click();
+              }}
+              disabled={isQuickCompressing}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-emerald-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              title="Attach a photo to this caption"
+            >
+              <ImageIcon className="w-4 h-4 text-emerald-600" />
+              <span>{isQuickCompressing ? 'Compressing...' : 'Photo'}</span>
+            </button>
+
+            {/* Optional Location Toggle */}
+            <button
+              type="button"
+              onClick={() => setQuickShowLocation(!quickShowLocation)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                quickShowLocation
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+              }`}
+              title="Optionally tag county location"
+            >
+              <MapPin className="w-3.5 h-3.5" />
+              <span>{quickShowLocation ? `${quickCounty}` : 'Add Location'}</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!currentUser ? (
+              <button
+                type="button"
+                onClick={() => openAuthModal('signin')}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+              >
+                Sign In to Post
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleDirectQuickPost}
+                disabled={isQuickSubmitting || (!quickCaption.trim() && !quickImage)}
+                className="inline-flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>{isQuickSubmitting ? 'Posting...' : 'Direct Post'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Posts Stream */}
       <div className="space-y-4">
         {filteredPosts.length === 0 ? (
@@ -955,17 +1292,21 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         </div>
 
                         <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-                          <span className="inline-flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-slate-400" />
-                            {post.county}
-                          </span>
-                          {post.constituency && (
+                          {post.county ? (
                             <>
+                              <span className="inline-flex items-center gap-1 font-medium text-slate-600">
+                                <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
+                                <span>{post.county}</span>
+                              </span>
+                              {post.constituency && (
+                                <>
+                                  <span>·</span>
+                                  <span className="text-slate-500">{post.constituency}</span>
+                                </>
+                              )}
                               <span>·</span>
-                              <span className="text-slate-500">{post.constituency}</span>
                             </>
-                          )}
-                          <span>·</span>
+                          ) : null}
                           <span className="text-[11px] text-slate-400">
                             {post.createdAt ? new Date(post.createdAt).toLocaleDateString([], {
                               month: 'short',
@@ -1033,11 +1374,17 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   )}
 
                   {/* Post Content */}
-                  <div className="space-y-2">
-                    <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-                      {post.title}
-                    </h2>
-                    <p className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line">
+                  <div className="space-y-1.5">
+                    {post.title &&
+                      post.title !== post.content &&
+                      !post.content.startsWith(post.title) &&
+                      post.title !== 'Citizen Post' &&
+                      post.title !== 'Citizen Photo Update' && (
+                        <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
+                          {post.title}
+                        </h2>
+                      )}
+                    <p className="text-xs sm:text-sm text-slate-800 leading-relaxed whitespace-pre-line font-normal">
                       {post.content}
                     </p>
                   </div>
@@ -1285,10 +1632,11 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     ) : (
                       <div className="text-center p-3 bg-white rounded-xl border border-slate-200 text-xs text-slate-600">
                         <button
-                          onClick={loginWithGoogle}
+                          type="button"
+                          onClick={() => openAuthModal('signin')}
                           className="text-emerald-700 font-bold hover:underline cursor-pointer"
                         >
-                          Sign in with Google
+                          Sign in or register
                         </button>{' '}
                         to reply to this discussion.
                       </div>
@@ -1303,8 +1651,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
       {/* Create Post Modal */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 shadow-2xl space-y-5 my-8">
+        <div
+          onClick={() => setIsCreateModalOpen(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 shadow-2xl space-y-5 my-8"
+          >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
@@ -1316,8 +1670,11 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsCreateModalOpen(false)}
                 className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Close dialog (Esc)"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1416,73 +1773,98 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 </div>
               </div>
 
-              {/* Title Input */}
+              {/* Title Input (Optional) */}
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">
-                  Title <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-800">
+                    Title <span className="text-slate-400 font-normal">(Optional)</span>
+                  </label>
+                  <span className="text-[11px] text-slate-400">Leave blank to post caption-only</span>
+                </div>
                 <input
                   type="text"
                   value={postTitle}
                   onChange={(e) => setPostTitle(e.target.value)}
-                  placeholder="e.g. Any recommended coworking spaces in Nairobi for freelance coders?"
+                  placeholder="Optional title or headline..."
                   maxLength={150}
                   className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
-                  required
                 />
               </div>
 
-              {/* County & Constituency Selection */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    County Location <span className="text-rose-500">*</span>
+              {/* Optional Location Tagging */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-emerald-600" />
+                    <div>
+                      <div className="text-xs font-bold text-slate-800">Tag Location (Optional)</div>
+                      <div className="text-[11px] text-slate-500">Untagged by default — post directly or specify your county</div>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={modalIncludeLocation}
+                      onChange={(e) => setModalIncludeLocation(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
                   </label>
-                  <select
-                    value={postCounty}
-                    onChange={(e) => {
-                      setPostCounty(e.target.value);
-                      setPostConstituency('');
-                    }}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 cursor-pointer font-medium"
-                  >
-                    {ALL_47_COUNTIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c} County
-                      </option>
-                    ))}
-                  </select>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    Constituency (Optional)
-                  </label>
-                  <select
-                    value={postConstituency}
-                    onChange={(e) => setPostConstituency(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 cursor-pointer font-medium"
-                  >
-                    <option value="">Select Constituency</option>
-                    {availablePostConstituencies.map((con) => (
-                      <option key={con} value={con}>
-                        {con}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {modalIncludeLocation && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200 animate-in fade-in">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        County Location
+                      </label>
+                      <select
+                        value={postCounty}
+                        onChange={(e) => {
+                          setPostCounty(e.target.value);
+                          setPostConstituency('');
+                        }}
+                        className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 cursor-pointer font-medium"
+                      >
+                        {ALL_47_COUNTIES.map((c) => (
+                          <option key={c} value={c}>
+                            {c} County
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Constituency (Optional)
+                      </label>
+                      <select
+                        value={postConstituency}
+                        onChange={(e) => setPostConstituency(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 cursor-pointer font-medium"
+                      >
+                        <option value="">Select Constituency</option>
+                        {availablePostConstituencies.map((con) => (
+                          <option key={con} value={con}>
+                            {con}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Content Body */}
               <div>
                 <label className="block text-xs font-bold text-slate-800 mb-1">
-                  Details & Content <span className="text-rose-500">*</span>
+                  Caption & Discussion Details <span className="text-rose-500">*</span>
                 </label>
                 <textarea
                   rows={4}
                   value={postContent}
                   onChange={(e) => setPostContent(e.target.value)}
-                  placeholder="Share details, context, questions, or opportunities..."
+                  placeholder="Share your thoughts, caption, questions, or opportunities..."
                   maxLength={2000}
                   className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 resize-none"
                   required
@@ -1633,16 +2015,28 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
       {/* MODAL 1: IN-APP POST DELETION CONFIRMATION */}
       {postToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95">
+        <div
+          onClick={() => setPostToDelete(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95"
+          >
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-bold text-sm text-slate-900 text-rose-600 flex items-center gap-1.5">
                 <Trash2 className="w-4 h-4" />
                 <span>Delete Discussion Post?</span>
               </h3>
               <button
-                onClick={() => setPostToDelete(null)}
-                className="text-slate-400 hover:text-slate-700"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPostToDelete(null);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Close"
+                aria-label="Close"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1657,8 +2051,11 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               <button
                 type="button"
                 disabled={isDeletingPost}
-                onClick={() => setPostToDelete(null)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPostToDelete(null);
+                }}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -1687,8 +2084,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
       {/* MODAL 2: COMMUNITY SAFETY POLICY VIOLATION MODAL */}
       {blockedSafetyResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-rose-200 animate-in zoom-in-95">
+        <div
+          onClick={() => setBlockedSafetyResult(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-rose-200 animate-in zoom-in-95"
+          >
             <div className="flex items-center justify-between pb-3 border-b border-rose-100">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
@@ -1704,8 +2107,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 </div>
               </div>
               <button
-                onClick={() => setBlockedSafetyResult(null)}
-                className="text-slate-400 hover:text-slate-700"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setBlockedSafetyResult(null);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Close"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1742,10 +2151,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setBlockedSafetyResult(null)}
-                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setBlockedSafetyResult(null);
+                }}
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
               >
-                I Understand, Edit Content
+                Close Notice
               </button>
             </div>
           </div>
@@ -1754,8 +2166,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
       {/* MODAL 3: SUBMIT COMMUNITY SAFETY REPORT */}
       {reportModalPost && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95">
+        <div
+          onClick={() => setReportModalPost(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95"
+          >
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
@@ -1769,8 +2187,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 </div>
               </div>
               <button
-                onClick={() => setReportModalPost(null)}
-                className="text-slate-400 hover:text-slate-700"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setReportModalPost(null);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Close"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1818,8 +2242,11 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               <button
                 type="button"
                 disabled={isSubmittingReport}
-                onClick={() => setReportModalPost(null)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setReportModalPost(null);
+                }}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 Cancel
               </button>

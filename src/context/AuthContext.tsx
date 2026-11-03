@@ -14,6 +14,10 @@ import {
   googleProvider,
   signInWithPopup,
   signOut,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
   handleFirestoreError,
   OperationType
 } from '../firebase';
@@ -24,16 +28,30 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   loading: boolean;
   loginWithGoogle: () => Promise<void>;
+  registerWithEmailPassword: (
+    email: string,
+    password: string,
+    displayName: string,
+    county?: string,
+    constituency?: string
+  ) => Promise<void>;
+  loginWithEmailPassword: (email: string, password: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUserCounty: (county: string) => Promise<void>;
   updateUserLocation: (county: string, constituency?: string) => Promise<void>;
   updateFullProfile: (updates: {
     displayName?: string;
+    photoURL?: string;
     county?: string;
     constituency?: string;
     bio?: string;
     occupation?: string;
   }) => Promise<void>;
+  isAuthModalOpen: boolean;
+  openAuthModal: (mode?: 'signin' | 'register') => void;
+  closeAuthModal: () => void;
+  authModalInitialMode: 'signin' | 'register';
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -42,6 +60,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalInitialMode, setAuthModalInitialMode] = useState<'signin' | 'register'>('signin');
+
+  const openAuthModal = (mode: 'signin' | 'register' = 'signin') => {
+    setAuthModalInitialMode(mode);
+    setIsAuthModalOpen(true);
+  };
+
+  const closeAuthModal = () => {
+    setIsAuthModalOpen(false);
+  };
 
   // Sync user profile in Firestore
   const syncUserProfile = async (user: User, retries = 2) => {
@@ -202,6 +231,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateFullProfile = async (updates: {
     displayName?: string;
+    photoURL?: string;
     county?: string;
     constituency?: string;
     bio?: string;
@@ -212,6 +242,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const payload: any = {};
       if (updates.displayName !== undefined) payload.displayName = updates.displayName.trim();
+      if (updates.photoURL !== undefined) payload.photoURL = updates.photoURL;
       if (updates.county !== undefined) payload.county = updates.county;
       if (updates.constituency !== undefined) payload.constituency = updates.constituency;
       if (updates.bio !== undefined) payload.bio = updates.bio.trim();
@@ -224,6 +255,65 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const registerWithEmailPassword = async (
+    email: string,
+    password: string,
+    displayName: string,
+    county?: string,
+    constituency?: string
+  ) => {
+    const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+    const user = cred.user;
+    if (displayName.trim()) {
+      try {
+        await updateProfile(user, { displayName: displayName.trim() });
+      } catch (err) {
+        console.warn('Profile display name update deferred:', err);
+      }
+    }
+    const userDocRef = doc(db, 'users', user.uid);
+    const newProfile: UserProfile = {
+      uid: user.uid,
+      displayName: displayName.trim() || 'TUJUANE Member',
+      email: email.trim(),
+      county: county || 'Nairobi',
+      constituency: constituency || undefined,
+      isOnline: true,
+      lastSeen: new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    };
+    try {
+      await setDoc(userDocRef, {
+        uid: user.uid,
+        displayName: newProfile.displayName,
+        email: newProfile.email,
+        photoURL: '',
+        county: newProfile.county,
+        constituency: newProfile.constituency || '',
+        isOnline: true,
+        lastSeen: serverTimestamp(),
+        createdAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.warn('Firestore user doc initialization deferred:', err);
+    }
+    setCurrentUser(user);
+    setUserProfile(newProfile);
+    closeAuthModal();
+  };
+
+  const loginWithEmailPassword = async (email: string, password: string) => {
+    const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+    if (cred.user) {
+      await syncUserProfile(cred.user);
+    }
+    closeAuthModal();
+  };
+
+  const resetPassword = async (email: string) => {
+    await sendPasswordResetEmail(auth, email.trim());
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -231,10 +321,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userProfile,
         loading,
         loginWithGoogle,
+        registerWithEmailPassword,
+        loginWithEmailPassword,
+        resetPassword,
         logout,
         updateUserCounty,
         updateUserLocation,
-        updateFullProfile
+        updateFullProfile,
+        isAuthModalOpen,
+        openAuthModal,
+        closeAuthModal,
+        authModalInitialMode
       }}
     >
       {children}

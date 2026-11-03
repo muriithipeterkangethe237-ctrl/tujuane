@@ -9,10 +9,12 @@ import {
   onSnapshot,
   serverTimestamp,
   getDocs,
+  getDoc,
   where
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { SafetyReport, ModeratorActionLog } from '../types/safety';
+import { sendUserNotification } from './userNotificationService';
 
 const REPORTS_COLLECTION = 'safety_reports';
 const POSTS_COLLECTION = 'community_posts';
@@ -148,6 +150,9 @@ export async function attachSafetyAdvisoryToPost(
 ): Promise<void> {
   const postRef = doc(db, POSTS_COLLECTION, postId);
   try {
+    const postSnap = await getDoc(postRef);
+    const postData = postSnap.data();
+
     await updateDoc(postRef, {
       isFlagged: true,
       safetyAdvisory: advisory,
@@ -164,6 +169,30 @@ export async function attachSafetyAdvisoryToPost(
       details: advisory,
       timestamp: serverTimestamp()
     });
+
+    // Notify author of post advisory and account status
+    if (postData?.authorId) {
+      await sendUserNotification({
+        userId: postData.authorId,
+        category: 'post_interaction',
+        type: 'post_advisory',
+        title: 'Community Safety Advisory Added',
+        message: `An advisory was attached to "${(postData.title || 'your post').slice(0, 40)}": ${advisory}`,
+        postId,
+        postTitle: postData.title,
+        details: advisory
+      });
+
+      await sendUserNotification({
+        userId: postData.authorId,
+        category: 'account_status',
+        type: 'account_warning',
+        title: 'Account Advisory Notice',
+        message: `Your post received a community moderation advisory. Please review TUJUANE community guidelines to keep your account in good standing.`,
+        postId,
+        accountStatus: 'warning'
+      });
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
   }
@@ -178,6 +207,9 @@ export async function approvePostSafety(
 ): Promise<void> {
   const postRef = doc(db, POSTS_COLLECTION, postId);
   try {
+    const postSnap = await getDoc(postRef);
+    const postData = postSnap.data();
+
     await updateDoc(postRef, {
       isFlagged: false,
       safetyReason: '',
@@ -195,6 +227,27 @@ export async function approvePostSafety(
       details: 'Approved content after safety review',
       timestamp: serverTimestamp()
     });
+
+    if (postData?.authorId) {
+      await sendUserNotification({
+        userId: postData.authorId,
+        category: 'post_interaction',
+        type: 'post_approved',
+        title: 'Post Confirmed Safe & Approved',
+        message: `Your discussion "${(postData.title || 'post').slice(0, 40)}" was reviewed and approved for public community viewing.`,
+        postId,
+        postTitle: postData.title
+      });
+
+      await sendUserNotification({
+        userId: postData.authorId,
+        category: 'account_status',
+        type: 'account_good_standing',
+        title: 'Account in Good Standing',
+        message: `Safety review completed. Your citizen account remains verified and in full good standing.`,
+        accountStatus: 'good'
+      });
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
   }
@@ -210,6 +263,9 @@ export async function removePostByModerator(
 ): Promise<void> {
   const postRef = doc(db, POSTS_COLLECTION, postId);
   try {
+    const postSnap = await getDoc(postRef);
+    const postData = postSnap.data();
+
     await deleteDoc(postRef);
 
     const logId = `log_${Date.now()}`;
@@ -222,6 +278,27 @@ export async function removePostByModerator(
       details: reason,
       timestamp: serverTimestamp()
     });
+
+    if (postData?.authorId) {
+      await sendUserNotification({
+        userId: postData.authorId,
+        category: 'post_interaction',
+        type: 'post_removed',
+        title: 'Post Removed by Moderation',
+        message: `Your discussion was removed due to safety policy: ${reason}`,
+        postTitle: postData.title,
+        details: reason
+      });
+
+      await sendUserNotification({
+        userId: postData.authorId,
+        category: 'account_status',
+        type: 'account_warning',
+        title: 'Account Policy Warning',
+        message: `A post was removed for policy violation: ${reason}. Repeated violations may result in account caution.`,
+        accountStatus: 'warning'
+      });
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `${POSTS_COLLECTION}/${postId}`);
   }

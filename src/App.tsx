@@ -14,14 +14,29 @@ import { DeveloperControlPanel } from './components/DeveloperControlPanel';
 import { UserProfileModal } from './components/UserProfileModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { Footer } from './components/Footer';
+import { NotificationCenterModal } from './components/NotificationCenterModal';
+import { AuthModal } from './components/AuthModal';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UserProfile } from './types/chat';
+import { UserNotification, AccountStandingSummary } from './types/notification';
+import { CommunityPost } from './types/community';
 import { subscribeToSafetyReports } from './services/safetyService';
 import { subscribeToIncomingFriendRequests } from './services/socialService';
-import { Check, ArrowLeft, Home, Sparkles, ShieldAlert } from 'lucide-react';
+import { subscribeToCommunityPosts } from './services/communityService';
+import {
+  subscribeToUserNotifications,
+  calculateAccountStanding
+} from './services/userNotificationService';
+import { Check, ArrowLeft, Home, Sparkles, ShieldAlert, Bell } from 'lucide-react';
 
 function AppContent() {
-  const { currentUser, userProfile } = useAuth();
+  const {
+    currentUser,
+    userProfile,
+    isAuthModalOpen,
+    closeAuthModal,
+    authModalInitialMode
+  } = useAuth();
   const [activeTab, setActiveTabState] = useState<string>('landing');
   const [historyStack, setHistoryStack] = useState<string[]>(['landing']);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -36,6 +51,11 @@ function AppContent() {
   // Direct chat target user when clicking "Chat" from Feed or Members Directory
   const [directChatTargetUser, setDirectChatTargetUser] = useState<UserProfile | null>(null);
 
+  // Notification Channel states
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [userNotifications, setUserNotifications] = useState<UserNotification[]>([]);
+  const [accountStanding, setAccountStanding] = useState<AccountStandingSummary | null>(null);
+
   // Subscribe to real-time pending safety reports only for developer
   useEffect(() => {
     if (currentUser?.email === 'muriithipeterkangethe237@gmail.com') {
@@ -48,6 +68,40 @@ function AppContent() {
       setPendingReportsCount(0);
     }
   }, [currentUser]);
+
+  // Subscribe to real-time user notification channel
+  useEffect(() => {
+    if (!currentUser) {
+      setUserNotifications([]);
+      setAccountStanding(null);
+      return;
+    }
+
+    const unsub = subscribeToUserNotifications(currentUser.uid, (notifs) => {
+      setUserNotifications(notifs);
+    });
+    return () => unsub();
+  }, [currentUser]);
+
+  // Calculate real-time account standing based on posts and notifications
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const unsub = subscribeToCommunityPosts({}, (posts) => {
+      const standing = calculateAccountStanding(currentUser.uid, posts, userNotifications);
+      setAccountStanding(standing);
+    });
+    return () => unsub();
+  }, [currentUser, userNotifications]);
+
+  const unreadNotificationsCount = userNotifications.filter((n) => !n.read).length;
+
+  // Keep viewingProfileUser in sync if own profile was updated
+  useEffect(() => {
+    if (viewingProfileUser && currentUser && viewingProfileUser.uid === currentUser.uid && userProfile) {
+      setViewingProfileUser(userProfile);
+    }
+  }, [userProfile]);
 
   // Subscribe to real-time incoming friend requests for current user
   useEffect(() => {
@@ -145,7 +199,7 @@ function AppContent() {
         </div>
       )}
 
-      {/* Top Header with Back Button and Dev Panel */}
+      {/* Top Header with Back Button, Dev Panel and Notification Center */}
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -153,6 +207,8 @@ function AppContent() {
         onGoBack={handleGoBack}
         pendingReportsCount={pendingReportsCount}
         pendingFriendRequestsCount={pendingFriendRequestsCount}
+        unreadNotificationsCount={unreadNotificationsCount}
+        onOpenNotifications={() => setIsNotificationsOpen(true)}
         onViewOwnProfile={() => {
           if (userProfile) {
             setViewingProfileUser(userProfile);
@@ -317,6 +373,24 @@ function AppContent() {
         />
       )}
 
+      {/* Real-Time Notification Center Modal */}
+      <NotificationCenterModal
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+        notifications={userNotifications}
+        accountStanding={accountStanding}
+        onSelectPost={(_postId: string) => {
+          setActiveTab('community');
+        }}
+      />
+
+      {/* Citizen Authentication & Password Security Registration Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={closeAuthModal}
+        initialMode={authModalInitialMode}
+      />
+
       {/* Desktop & Mobile Footer */}
       <Footer
         onSelectTab={(tab) => {
@@ -328,6 +402,8 @@ function AppContent() {
       <MobileBottomNav
         activeTab={activeTab}
         pendingFriendRequestsCount={pendingFriendRequestsCount}
+        unreadNotificationsCount={unreadNotificationsCount}
+        onOpenNotifications={() => setIsNotificationsOpen(true)}
         setActiveTab={(tab) => {
           setActiveTab(tab);
         }}

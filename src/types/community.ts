@@ -19,7 +19,7 @@ export interface CommunityPost {
   title: string;
   content: string;
   category: PostCategory;
-  county: string;
+  county?: string; // Optional: empty string or omitted if untagged
   constituency?: string;
   hotspotId?: string;
   hotspotName?: string;
@@ -52,10 +52,10 @@ export interface CommunityComment {
 }
 
 export interface CreatePostParams {
-  title: string;
+  title?: string; // Optional: auto-generated from content caption if omitted
   content: string;
-  category: PostCategory;
-  county: string;
+  category?: PostCategory; // Optional: defaults to 'general'
+  county?: string; // Optional: untagged if omitted
   constituency?: string;
   hotspotId?: string;
   hotspotName?: string;

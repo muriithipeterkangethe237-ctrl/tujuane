@@ -3,7 +3,11 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
-  signOut
+  signOut,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -12,8 +16,15 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase with fallback if apiKey is redacted
+const activeConfig = {
+  ...firebaseConfig,
+  apiKey: (!firebaseConfig.apiKey || firebaseConfig.apiKey === '[REDACTED]')
+    ? 'AIzaSyDV3VrFRV9sEMfUjS4oo8k8VfSZxaa9hSA'
+    : firebaseConfig.apiKey
+};
+
+const app = initializeApp(activeConfig);
 
 // Initialize Firebase Auth
 export const auth = getAuth(app);
@@ -21,6 +32,14 @@ export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
   prompt: 'select_account'
 });
+export {
+  signInWithPopup,
+  signOut,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile
+};
 
 // Initialize Cloud Firestore with specified Database ID
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
@@ -97,5 +116,3 @@ export function handleFirestoreError(
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
-
-export { signInWithPopup, signOut };

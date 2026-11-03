@@ -14,6 +14,7 @@ import {
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile } from '../types/chat';
 import { FollowRelationship, FriendRequest } from '../types/social';
+import { sendUserNotification } from './userNotificationService';
 
 const FOLLOWS_COLLECTION = 'follows';
 const FRIEND_REQUESTS_COLLECTION = 'friend_requests';
@@ -43,6 +44,19 @@ export async function followUser(
 
   try {
     await setDoc(followRef, payload);
+
+    // Send real-time notification to the followed member
+    await sendUserNotification({
+      userId: targetUser.uid,
+      category: 'social',
+      type: 'new_follower',
+      title: 'New Follower',
+      message: `${follower.displayName} started following your posts and updates.`,
+      actorId: follower.uid,
+      actorName: follower.displayName,
+      actorPhoto: follower.photoURL,
+      actorCounty: follower.county
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `${FOLLOWS_COLLECTION}/${followId}`);
   }
@@ -163,6 +177,20 @@ export async function sendFriendRequest(
 
   try {
     await setDoc(reqRef, payload);
+
+    // Notify receiver
+    await sendUserNotification({
+      userId: receiver.uid,
+      category: 'social',
+      type: 'friend_request',
+      title: 'New Friend Request',
+      message: `${sender.displayName} sent you a friend request from ${sender.county || 'Kenya'}.`,
+      actorId: sender.uid,
+      actorName: sender.displayName,
+      actorPhoto: sender.photoURL,
+      actorCounty: sender.county
+    });
+
     return requestId;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `${FRIEND_REQUESTS_COLLECTION}/${requestId}`);
@@ -175,10 +203,28 @@ export async function sendFriendRequest(
 export async function acceptFriendRequest(requestId: string): Promise<void> {
   const reqRef = doc(db, FRIEND_REQUESTS_COLLECTION, requestId);
   try {
+    const snap = await getDoc(reqRef);
+    const data = snap.data();
+
     await updateDoc(reqRef, {
       status: 'accepted',
       respondedAt: serverTimestamp()
     });
+
+    // Notify the original sender that their request was accepted
+    if (data?.senderId) {
+      await sendUserNotification({
+        userId: data.senderId,
+        category: 'social',
+        type: 'friend_request_accepted',
+        title: 'Friend Request Accepted',
+        message: `${data.receiverName || 'Your friend'} accepted your connection request! You can now chat anytime.`,
+        actorId: data.receiverId,
+        actorName: data.receiverName,
+        actorPhoto: data.receiverPhoto,
+        actorCounty: data.receiverCounty
+      });
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `${FRIEND_REQUESTS_COLLECTION}/${requestId}`);
   }

@@ -176,6 +176,20 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   // Highlighted message
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
 
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (lightboxImage) setLightboxImage(null);
+        if (isCreateGroupModalOpen) setIsCreateGroupModalOpen(false);
+        if (deleteConfirmation) setDeleteConfirmation(null);
+        if (isCountyPickerOpen) setIsCountyPickerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxImage, isCreateGroupModalOpen, deleteConfirmation, isCountyPickerOpen]);
+
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -2167,8 +2181,14 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
       {/* CREATE GROUP MODAL */}
       {isCreateGroupModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-md w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setIsCreateGroupModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-3xl border border-slate-200 max-w-md w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
@@ -2177,8 +2197,14 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 <h3 className="font-bold text-base text-slate-900">Create Community Group</h3>
               </div>
               <button
-                onClick={() => setIsCreateGroupModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsCreateGroupModalOpen(false);
+                }}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Close"
+                title="Close (Esc)"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -2272,8 +2298,14 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
       {/* DELETE CONFIRMATION MODAL */}
       {deleteConfirmation && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4 shadow-xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setDeleteConfirmation(null)}
+        >
+          <div
+            className="bg-white rounded-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-bold text-sm text-slate-900">
                 {deleteConfirmation.type === 'forEveryone'
@@ -2281,8 +2313,14 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   : 'Delete message for me?'}
               </h3>
               <button
-                onClick={() => setDeleteConfirmation(null)}
-                className="text-slate-400 hover:text-slate-700"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteConfirmation(null);
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Close"
+                title="Close (Esc)"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2296,14 +2334,16 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
             <div className="flex justify-end gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => setDeleteConfirmation(null)}
-                className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 font-medium"
+                className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 font-medium cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleConfirmDelete}
-                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold"
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold cursor-pointer"
               >
                 Delete
               </button>
@@ -2314,13 +2354,25 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
       {/* COUNTY & CONSTITUENCY SELECTION MODAL */}
       {isCountyPickerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4 shadow-xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setIsCountyPickerOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-bold text-sm text-slate-900">Select County & Constituency</h3>
               <button
-                onClick={() => setIsCountyPickerOpen(false)}
-                className="text-slate-400 hover:text-slate-700"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsCountyPickerOpen(false);
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Close"
+                title="Close (Esc)"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2372,12 +2424,14 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
             <div className="flex justify-end gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => setIsCountyPickerOpen(false)}
-                className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800"
+                className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleSaveCounty}
                 className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold cursor-pointer"
               >

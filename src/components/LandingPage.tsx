@@ -26,7 +26,7 @@ interface LandingPageProps {
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
-  const { currentUser, loginWithGoogle } = useAuth();
+  const { currentUser, openAuthModal } = useAuth();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   const countyHighlights = [
@@ -152,10 +152,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
 
               {!currentUser && (
                 <button
-                  onClick={loginWithGoogle}
-                  className="px-4 py-3.5 bg-white text-slate-900 font-bold text-xs sm:text-sm rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                  type="button"
+                  onClick={() => openAuthModal('register')}
+                  className="px-5 py-3.5 bg-white text-slate-900 font-bold text-xs sm:text-sm rounded-xl hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  title="Create an account or sign in"
                 >
-                  Sign In with Google
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>Register / Sign In</span>
                 </button>
               )}
             </div>

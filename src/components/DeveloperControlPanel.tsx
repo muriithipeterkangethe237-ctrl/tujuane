@@ -15,6 +15,7 @@ import {
   removePostByModerator
 } from '../services/safetyService';
 import { subscribeToCommunityUsers } from '../services/chatService';
+import { sendUserNotification } from '../services/userNotificationService';
 import { analyzeContentSafety, getSafetyExplanation } from '../utils/safetyFilter';
 import {
   ShieldAlert,
@@ -77,6 +78,54 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
   const [deleteReason, setDeleteReason] = useState('Violation of community safety standards');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // User Account Status Notification Modal
+  const [selectedUserForStatus, setSelectedUserForStatus] = useState<UserProfile | null>(null);
+  const [statusType, setStatusType] = useState<'account_verified' | 'account_good_standing' | 'account_warning'>('account_verified');
+  const [statusMessage, setStatusMessage] = useState('');
+  const [isSendingStatus, setIsSendingStatus] = useState(false);
+
+  const handleSendStatusNotification = async () => {
+    if (!selectedUserForStatus) return;
+    setIsSendingStatus(true);
+    try {
+      let title = 'Account Status Update';
+      let msg = statusMessage.trim();
+      let accStatus: 'good' | 'warning' | 'restricted' | 'verified' = 'good';
+
+      if (statusType === 'account_verified') {
+        title = '🎖️ Verified Citizen Badge Awarded';
+        accStatus = 'verified';
+        if (!msg) msg = 'Congratulations! You have been awarded the official TUJUANE Verified Citizen Badge for valuable civic contributions.';
+      } else if (statusType === 'account_warning') {
+        title = '⚠️ Account Safety Policy Warning';
+        accStatus = 'warning';
+        if (!msg) msg = 'Please ensure your posts adhere to national unity and community safety policies to maintain your account in good standing.';
+      } else {
+        title = '🟢 Account in Good Standing';
+        accStatus = 'good';
+        if (!msg) msg = 'Your citizen account is verified and adhering to community guidelines.';
+      }
+
+      await sendUserNotification({
+        userId: selectedUserForStatus.uid,
+        category: 'account_status',
+        type: statusType,
+        title,
+        message: msg,
+        accountStatus: accStatus
+      });
+
+      showToast(`✓ Account status notification sent to ${selectedUserForStatus.displayName}`);
+      setSelectedUserForStatus(null);
+      setStatusMessage('');
+    } catch (err) {
+      console.error('Failed to send status notification:', err);
+      showToast('Error sending account status notice.');
+    } finally {
+      setIsSendingStatus(false);
+    }
+  };
+
   // Safety Tester Playground
   const [testText, setTestText] = useState('');
   const [testTitle, setTestTitle] = useState('');
@@ -93,6 +142,19 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
   const [passcodeError, setPasscodeError] = useState(false);
 
   const isDeveloperUser = currentUser?.email?.toLowerCase() === DEVELOPER_EMAIL.toLowerCase() || devUnlocked;
+
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedPostForAdvisory) setSelectedPostForAdvisory(null);
+        if (selectedPostForDelete) setSelectedPostForDelete(null);
+        if (selectedUserForStatus) setSelectedUserForStatus(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedPostForAdvisory, selectedPostForDelete, selectedUserForStatus]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -163,7 +225,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
         p.title.toLowerCase().includes(postSearch.toLowerCase()) ||
         p.content.toLowerCase().includes(postSearch.toLowerCase()) ||
         p.authorName.toLowerCase().includes(postSearch.toLowerCase()) ||
-        p.county.toLowerCase().includes(postSearch.toLowerCase());
+        (p.county ? p.county.toLowerCase().includes(postSearch.toLowerCase()) : false);
 
       if (!matchesSearch) return false;
 
@@ -850,6 +912,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   <th className="py-2.5 px-3">County / Constituency</th>
                   <th className="py-2.5 px-3">Email</th>
                   <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -882,6 +945,15 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                         Active
                       </span>
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      <button
+                        onClick={() => setSelectedUserForStatus(u)}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer"
+                        title="Send Account Status Notification or Verified Badge"
+                      >
+                        Account Notice
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1076,16 +1148,28 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
       {/* MODAL: ATTACH SAFETY ADVISORY */}
       {selectedPostForAdvisory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setSelectedPostForAdvisory(null)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-600" />
                 <span>Attach Community Safety Advisory</span>
               </h3>
               <button
-                onClick={() => setSelectedPostForAdvisory(null)}
-                className="text-slate-400 hover:text-slate-700"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedPostForAdvisory(null);
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Close"
+                title="Close (Esc)"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1109,14 +1193,16 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
             <div className="flex justify-end gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => setSelectedPostForAdvisory(null)}
-                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800"
+                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleSaveAdvisory}
-                className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-sm"
+                className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer"
               >
                 Save Advisory
               </button>
@@ -1127,16 +1213,28 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
       {/* MODAL: CONFIRM PERMANENT DELETE POST */}
       {selectedPostForDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setSelectedPostForDelete(null)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-bold text-sm text-slate-900 text-rose-600 flex items-center gap-1.5">
                 <Trash2 className="w-4 h-4" />
                 <span>Delete Post Permanently</span>
               </h3>
               <button
-                onClick={() => setSelectedPostForDelete(null)}
-                className="text-slate-400 hover:text-slate-700"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedPostForDelete(null);
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Close"
+                title="Close (Esc)"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1159,16 +1257,146 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
             <div className="flex justify-end gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => setSelectedPostForDelete(null)}
-                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800"
+                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleConfirmDeletePost}
-                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm"
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer"
               >
                 Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: SEND ACCOUNT STATUS NOTIFICATION */}
+      {selectedUserForStatus && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setSelectedUserForStatus(null)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                <span>Send Account Status Notice</span>
+              </h3>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedUserForStatus(null);
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Close"
+                title="Close (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-3">
+              {selectedUserForStatus.photoURL ? (
+                <img
+                  src={selectedUserForStatus.photoURL}
+                  alt={selectedUserForStatus.displayName}
+                  className="w-9 h-9 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs">
+                  {selectedUserForStatus.displayName.charAt(0)}
+                </div>
+              )}
+              <div>
+                <div className="font-bold text-xs text-slate-900">
+                  {selectedUserForStatus.displayName}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  {selectedUserForStatus.county || 'Nairobi'} • {selectedUserForStatus.email || 'Citizen'}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Notice Type
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setStatusType('account_verified')}
+                    className={`p-2 rounded-xl border text-center font-semibold cursor-pointer transition-colors ${
+                      statusType === 'account_verified'
+                        ? 'border-purple-600 bg-purple-50 text-purple-900 ring-1 ring-purple-600'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    🎖️ Award Verified
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatusType('account_good_standing')}
+                    className={`p-2 rounded-xl border text-center font-semibold cursor-pointer transition-colors ${
+                      statusType === 'account_good_standing'
+                        ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-1 ring-emerald-600'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    🟢 Good Standing
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatusType('account_warning')}
+                    className={`p-2 rounded-xl border text-center font-semibold cursor-pointer transition-colors ${
+                      statusType === 'account_warning'
+                        ? 'border-rose-600 bg-rose-50 text-rose-900 ring-1 ring-rose-600'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    ⚠️ Caution/Warning
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Custom Message (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={statusMessage}
+                  onChange={(e) => setStatusMessage(e.target.value)}
+                  placeholder="Leave blank to use default standing text or provide specific details..."
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedUserForStatus(null)}
+                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSendingStatus}
+                onClick={handleSendStatusNotification}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {isSendingStatus ? 'Sending...' : 'Send Channel Notification'}
               </button>
             </div>
           </div>

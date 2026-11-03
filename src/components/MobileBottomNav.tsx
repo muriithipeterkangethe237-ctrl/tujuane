@@ -1,16 +1,20 @@
 import React from 'react';
-import { Home, Users, MessageSquare, Flame, Vote } from 'lucide-react';
+import { Home, Users, MessageSquare, Flame, Vote, Bell } from 'lucide-react';
 
 interface MobileBottomNavProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   pendingFriendRequestsCount?: number;
+  unreadNotificationsCount?: number;
+  onOpenNotifications?: () => void;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   activeTab,
   setActiveTab,
   pendingFriendRequestsCount = 0,
+  unreadNotificationsCount = 0,
+  onOpenNotifications
 }) => {
   const tabs = [
     { id: 'landing', label: 'Hub', icon: Home },
