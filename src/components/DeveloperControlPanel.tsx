@@ -131,17 +131,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
   const [testTitle, setTestTitle] = useState('');
   const [testResult, setTestResult] = useState<any | null>(null);
 
-  // Passcode / dev override for local development
-  const [devUnlocked, setDevUnlocked] = useState<boolean>(() => {
-    return (
-      currentUser?.email?.toLowerCase() === DEVELOPER_EMAIL.toLowerCase() ||
-      localStorage.getItem('tujuane_dev_unlocked') === 'true'
-    );
-  });
-  const [passcodeInput, setPasscodeInput] = useState('');
-  const [passcodeError, setPasscodeError] = useState(false);
-
-  const isDeveloperUser = currentUser?.email?.toLowerCase() === DEVELOPER_EMAIL.toLowerCase() || devUnlocked;
+  const isDeveloperUser = !!currentUser?.email && currentUser.email.toLowerCase().trim() === DEVELOPER_EMAIL.toLowerCase();
 
   // Close modals on Escape key
   useEffect(() => {
@@ -161,8 +151,10 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Subscribe to real-time streams
+  // Subscribe to real-time streams ONLY if verified developer
   useEffect(() => {
+    if (!isDeveloperUser) return;
+
     const unsubPosts = subscribeToCommunityPosts({}, (loaded) => {
       setPosts(loaded);
     });
@@ -183,7 +175,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
       unsubReports();
       unsubUsers();
     };
-  }, [currentUser]);
+  }, [isDeveloperUser, currentUser]);
 
   // Compute live safety metrics
   const pendingReports = useMemo(() => {
@@ -372,75 +364,40 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
     }, 50);
   };
 
-  const handleUnlockDevMode = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passcodeInput.trim() === 'tujuane2026' || passcodeInput.trim().toLowerCase() === 'developer') {
-      setDevUnlocked(true);
-      localStorage.setItem('tujuane_dev_unlocked', 'true');
-      setPasscodeError(false);
-    } else {
-      setPasscodeError(true);
-    }
-  };
-
-  // If user is not developer and not unlocked with passkey, prompt authentication
+  // If user is not the developer, restrict access completely
   if (!isDeveloperUser) {
     return (
-      <div className="max-w-md mx-auto my-12 bg-white rounded-3xl p-8 border border-slate-200 shadow-xl space-y-6 text-center">
-        <div className="w-16 h-16 rounded-3xl bg-slate-900 text-white flex items-center justify-center mx-auto shadow-md">
-          <ShieldAlert className="w-8 h-8 text-emerald-400" />
+      <div className="max-w-md mx-auto my-12 bg-white rounded-3xl p-8 border border-slate-200 shadow-xl space-y-6 text-center animate-in fade-in">
+        <div className="w-16 h-16 rounded-3xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto shadow-sm">
+          <ShieldAlert className="w-8 h-8" />
         </div>
 
         <div className="space-y-2">
-          <h2 className="text-xl font-extrabold text-slate-900">Developer Control Panel</h2>
+          <h2 className="text-xl font-extrabold text-slate-900">Developer Access Required</h2>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Restricted access for system monitoring, community safety governance, and content moderation.
+            The Safety & Moderation Control Panel is exclusively reserved for the verified developer account.
           </p>
         </div>
 
-        {currentUser ? (
-          <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-900 text-left space-y-1">
-            <div className="font-bold">Signed in as:</div>
-            <div className="font-mono text-[11px] truncate">{currentUser.email}</div>
-            <p className="text-[11px] text-amber-700 pt-1">
-              Developer owner account is: <strong>{DEVELOPER_EMAIL}</strong>.
+        <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-700 text-left space-y-1">
+          <div className="font-bold text-slate-900">Developer Owner:</div>
+          <div className="font-mono text-[11px] text-emerald-800 font-semibold">{DEVELOPER_EMAIL}</div>
+          {currentUser && (
+            <p className="text-[11px] text-slate-500 pt-1">
+              Currently signed in as: <span className="font-mono text-slate-700">{currentUser.email || 'Citizen'}</span>
             </p>
-          </div>
-        ) : (
+          )}
+        </div>
+
+        {onGoBack && (
           <button
-            onClick={loginWithGoogle}
-            className="w-full py-2.5 bg-slate-900 text-white font-bold rounded-xl text-xs hover:bg-slate-800 transition-all cursor-pointer shadow-sm"
+            type="button"
+            onClick={onGoBack}
+            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
           >
-            Sign in as Developer ({DEVELOPER_EMAIL})
+            Return to Previous Screen
           </button>
         )}
-
-        <div className="pt-2 border-t border-slate-100">
-          <form onSubmit={handleUnlockDevMode} className="space-y-3">
-            <label className="block text-xs font-semibold text-slate-600">
-              Or Enter Developer Passkey to Inspect
-            </label>
-            <input
-              type="password"
-              value={passcodeInput}
-              onChange={(e) => {
-                setPasscodeInput(e.target.value);
-                setPasscodeError(false);
-              }}
-              placeholder="Developer passkey..."
-              className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-            />
-            {passcodeError && (
-              <p className="text-rose-600 text-[11px]">Incorrect passkey. Please try again.</p>
-            )}
-            <button
-              type="submit"
-              className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
-            >
-              Unlock Control Panel
-            </button>
-          </form>
-        </div>
       </div>
     );
   }

@@ -29,6 +29,8 @@ import {
 } from './services/userNotificationService';
 import { Check, ArrowLeft, Home, Sparkles, ShieldAlert, Bell } from 'lucide-react';
 
+const DEVELOPER_EMAIL = 'muriithipeterkangethe237@gmail.com';
+
 function AppContent() {
   const {
     currentUser,
@@ -40,6 +42,8 @@ function AppContent() {
   const [activeTab, setActiveTabState] = useState<string>('landing');
   const [historyStack, setHistoryStack] = useState<string[]>(['landing']);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const isDeveloper = !!currentUser?.email && currentUser.email.toLowerCase().trim() === DEVELOPER_EMAIL.toLowerCase();
 
   // Profile Viewing state
   const [viewingProfileUser, setViewingProfileUser] = useState<UserProfile | null>(null);
@@ -56,9 +60,9 @@ function AppContent() {
   const [userNotifications, setUserNotifications] = useState<UserNotification[]>([]);
   const [accountStanding, setAccountStanding] = useState<AccountStandingSummary | null>(null);
 
-  // Subscribe to real-time pending safety reports only for developer
+  // Subscribe to real-time pending safety reports only for verified developer
   useEffect(() => {
-    if (currentUser?.email === 'muriithipeterkangethe237@gmail.com') {
+    if (isDeveloper) {
       const unsub = subscribeToSafetyReports((reports) => {
         const pending = reports.filter((r) => r.status === 'pending').length;
         setPendingReportsCount(pending);
@@ -67,7 +71,7 @@ function AppContent() {
     } else {
       setPendingReportsCount(0);
     }
-  }, [currentUser]);
+  }, [isDeveloper]);
 
   // Subscribe to real-time user notification channel
   useEffect(() => {
@@ -258,7 +262,7 @@ function AppContent() {
             </div>
 
             <div className="flex items-center gap-2">
-              {activeTab !== 'dev-panel' && (
+              {activeTab !== 'dev-panel' && isDeveloper && (
                 <button
                   onClick={() => setActiveTab('dev-panel')}
                   className="inline-flex items-center gap-1.5 text-[11px] font-bold text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-200 transition-colors cursor-pointer"
@@ -349,14 +353,34 @@ function AppContent() {
           />
         )}
 
-        {/* Developer Control Panel & Safety Monitor */}
+        {/* Developer Control Panel & Safety Monitor - Strictly visible only to verified developer */}
         {activeTab === 'dev-panel' && (
-          <DeveloperControlPanel
-            onGoBack={handleGoBack}
-            onNavigateToPost={(_postId) => {
-              setActiveTab('community');
-            }}
-          />
+          isDeveloper ? (
+            <DeveloperControlPanel
+              onGoBack={handleGoBack}
+              onNavigateToPost={(_postId) => {
+                setActiveTab('community');
+              }}
+            />
+          ) : (
+            <div className="max-w-md mx-auto my-12 bg-white rounded-3xl p-8 border border-slate-200 shadow-xl space-y-5 text-center">
+              <div className="w-16 h-16 rounded-3xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto shadow-xs">
+                <ShieldAlert className="w-8 h-8" />
+              </div>
+              <div className="space-y-1.5">
+                <h2 className="text-xl font-extrabold text-slate-900">Access Restricted</h2>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  The Developer Safety & Moderation Control Panel is accessible strictly to the system developer ({DEVELOPER_EMAIL}).
+                </p>
+              </div>
+              <button
+                onClick={() => setActiveTab('landing')}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
+              >
+                Return to Community Hub
+              </button>
+            </div>
+          )
         )}
       </main>
 
@@ -381,6 +405,18 @@ function AppContent() {
         accountStanding={accountStanding}
         onSelectPost={(_postId: string) => {
           setActiveTab('community');
+        }}
+        onStartDirectChat={(userId: string, userName: string) => {
+          handleOpenDirectChatWithPostAuthor(userId, userName);
+        }}
+        onViewUserProfile={(userId: string, userName: string) => {
+          setViewingProfileUser({
+            uid: userId,
+            displayName: userName,
+            email: '',
+            county: 'Kenya Citizen',
+            createdAt: ''
+          });
         }}
       />
 

@@ -23,7 +23,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { UserProfile } from '../types/chat';
 import { FollowRelationship, FriendRequest } from '../types/social';
-import { subscribeToCommunityUsers } from '../services/chatService';
+import { subscribeToCommunityUsers, isUserOnline, formatLastSeen } from '../services/chatService';
 import {
   followUser,
   unfollowUser,
@@ -711,15 +711,15 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                               {member.displayName.charAt(0).toUpperCase()}
                             </div>
                           )}
-                          {member.isOnline ? (
+                          {isUserOnline(member.isOnline, member.lastSeen) ? (
                             <span
-                              className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white"
+                              className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white ring-1 ring-emerald-400"
                               title="Online now"
                             />
                           ) : (
                             <span
-                              className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-slate-300 rounded-full border-2 border-white"
-                              title="Offline"
+                              className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-slate-400 rounded-full border-2 border-white"
+                              title={formatLastSeen(member.lastSeen, false)}
                             />
                           )}
                         </div>
@@ -764,14 +764,10 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                             </button>
                           )}
 
-                          <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5">
-                            <Clock className="w-3 h-3 text-slate-300 shrink-0" />
+                          <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+                            <Clock className="w-3 h-3 text-slate-400 shrink-0" />
                             <span>
-                              {member.isOnline
-                                ? 'Active now'
-                                : member.lastSeen
-                                ? `Seen ${new Date(member.lastSeen).toLocaleDateString([], { month: 'short', day: 'numeric' })}`
-                                : 'Citizen Member'}
+                              {formatLastSeen(member.lastSeen, isUserOnline(member.isOnline, member.lastSeen))}
                             </span>
                           </div>
                         </div>

@@ -25,6 +25,7 @@ import { useAuth } from '../context/AuthContext';
 import { UserProfile } from '../types/chat';
 import { CommunityPost } from '../types/community';
 import { FollowRelationship, FriendRequest } from '../types/social';
+import { isUserOnline, formatLastSeen, subscribeToUserPresence } from '../services/chatService';
 import {
   followUser,
   unfollowUser,
@@ -87,6 +88,30 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Real-time live presence tracking
+  const [livePresence, setLivePresence] = useState<{
+    isOnline: boolean;
+    lastSeen?: string;
+    lastSeenText: string;
+  }>({
+    isOnline: isUserOnline(user.isOnline, user.lastSeen),
+    lastSeen: user.lastSeen,
+    lastSeenText: formatLastSeen(user.lastSeen, isUserOnline(user.isOnline, user.lastSeen))
+  });
+
+  useEffect(() => {
+    if (!isOpen || !user?.uid) return;
+    setLivePresence({
+      isOnline: isUserOnline(user.isOnline, user.lastSeen),
+      lastSeen: user.lastSeen,
+      lastSeenText: formatLastSeen(user.lastSeen, isUserOnline(user.isOnline, user.lastSeen))
+    });
+    const unsub = subscribeToUserPresence(user.uid, (presence) => {
+      setLivePresence(presence);
+    });
+    return () => unsub();
+  }, [isOpen, user?.uid, user.isOnline, user.lastSeen]);
 
   // Social action progress
   const [isActionPending, setIsActionPending] = useState(false);
@@ -365,15 +390,15 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 )}
 
                 {!isOwnProfile && (
-                  user.isOnline ? (
+                  livePresence.isOnline ? (
                     <span
-                      className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white ring-2 ring-emerald-400"
+                      className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white ring-2 ring-emerald-400/50 animate-pulse"
                       title="Active online now"
                     />
                   ) : (
                     <span
                       className="absolute bottom-1 right-1 w-4 h-4 bg-slate-400 rounded-full border-2 border-white"
-                      title="Offline"
+                      title={livePresence.lastSeenText}
                     />
                   )
                 )}
@@ -512,8 +537,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   <Clock className="w-4 h-4 text-slate-400 shrink-0" />
                   <div>
                     <div className="text-[10px] text-slate-400 font-semibold uppercase">Presence</div>
-                    <div className="font-bold text-slate-800 truncate">
-                      {user.isOnline ? 'Online Now' : user.lastSeen ? `Seen ${new Date(user.lastSeen).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : 'Active'}
+                    <div className="font-bold text-slate-800 truncate text-xs sm:text-sm">
+                      {livePresence.isOnline ? (
+                        <span className="text-emerald-700 flex items-center gap-1 font-bold">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block shadow-[0_0_6px_#10b981]" />
+                          Online Now
+                        </span>
+                      ) : (
+                        <span className="text-slate-600 font-medium">
+                          {livePresence.lastSeenText}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

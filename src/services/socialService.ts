@@ -188,7 +188,8 @@ export async function sendFriendRequest(
       actorId: sender.uid,
       actorName: sender.displayName,
       actorPhoto: sender.photoURL,
-      actorCounty: sender.county
+      actorCounty: sender.county,
+      details: requestId
     });
 
     return requestId;

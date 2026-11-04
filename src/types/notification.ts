@@ -1,4 +1,4 @@
-export type NotificationCategory = 'post_interaction' | 'account_status' | 'social';
+export type NotificationCategory = 'post_interaction' | 'account_status' | 'social' | 'direct_chat';
 
 export type NotificationType =
   // Post Interactions
@@ -15,7 +15,35 @@ export type NotificationType =
   // Social & Community
   | 'friend_request'
   | 'friend_request_accepted'
-  | 'new_follower';
+  | 'new_follower'
+  // Direct Messages
+  | 'direct_message';
+
+export type NotificationFilterType =
+  | 'all'
+  | 'post_like'
+  | 'post_comment'
+  | 'direct_message'
+  | 'friend_request'
+  | 'new_follower'
+  | 'account_status'
+  | 'safety';
+
+export interface NotificationPreferences {
+  pushEnabled: boolean;
+  soundEnabled: boolean;
+  inAppBannerEnabled: boolean;
+  typePreferences: {
+    post_like: boolean;
+    post_comment: boolean;
+    direct_message: boolean;
+    friend_request: boolean;
+    friend_request_accepted: boolean;
+    new_follower: boolean;
+    account_status: boolean;
+    post_advisory: boolean;
+  };
+}
 
 export interface UserNotification {
   id: string;
@@ -48,3 +76,4 @@ export interface AccountStandingSummary {
   totalPosts: number;
   totalUpvotes: number;
 }
+

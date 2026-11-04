@@ -7,7 +7,9 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
-  updateProfile
+  updateProfile,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -26,8 +28,16 @@ const activeConfig = {
 
 const app = initializeApp(activeConfig);
 
-// Initialize Firebase Auth
+// Initialize Firebase Auth with browserLocalPersistence so users stay logged in across app closes and browser restarts
 export const auth = getAuth(app);
+
+// Enforce browser-level local persistence for seamless one-time login
+if (typeof window !== 'undefined') {
+  setPersistence(auth, browserLocalPersistence).catch((err) => {
+    console.warn('Firebase Auth persistence notice:', err?.message || err);
+  });
+}
+
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
   prompt: 'select_account'
@@ -38,7 +48,9 @@ export {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
-  updateProfile
+  updateProfile,
+  setPersistence,
+  browserLocalPersistence
 };
 
 // Initialize Cloud Firestore with specified Database ID

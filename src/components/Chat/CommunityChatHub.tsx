@@ -22,7 +22,10 @@ import {
   markMessagesAsDelivered,
   editChatMessage,
   deleteMessageForEveryone,
-  deleteMessageForMe
+  deleteMessageForMe,
+  isUserOnline,
+  formatLastSeen,
+  subscribeToUserPresence
 } from '../../services/chatService';
 import {
   DEFAULT_CHANNELS,
@@ -102,6 +105,11 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   const [activeChatMode, setActiveChatMode] = useState<'direct' | 'channel' | 'group'>('direct');
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activePartner, setActivePartner] = useState<UserProfile | null>(null);
+  const [partnerPresence, setPartnerPresence] = useState<{
+    isOnline: boolean;
+    lastSeen?: string;
+    lastSeenText: string;
+  }>({ isOnline: false, lastSeenText: 'Offline' });
   const [activeChannel, setActiveChannel] = useState<CommunityChannel | null>(null);
   const [activeGroup, setActiveGroup] = useState<GroupChat | null>(null);
 
@@ -244,6 +252,21 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
       if (onClearDirectChatTargetUser) onClearDirectChatTargetUser();
     }
   }, [directChatTargetUser, userProfile, currentUser]);
+
+  // Real-time subscription to active direct chat partner presence & last seen
+  useEffect(() => {
+    if (activeChatMode !== 'direct' || !activePartner?.uid) {
+      setPartnerPresence({ isOnline: false, lastSeenText: 'Offline' });
+      return;
+    }
+
+    // Subscribe to live partner presence in Firestore
+    const unsub = subscribeToUserPresence(activePartner.uid, (presence) => {
+      setPartnerPresence(presence);
+    });
+
+    return () => unsub();
+  }, [activePartner?.uid, activeChatMode]);
 
   // Subscribe to user conversations
   useEffect(() => {
@@ -1130,6 +1153,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               filteredConversations.map((conv) => {
                 const partnerId = conv.participants.find((p) => p !== currentUser.uid);
                 const partner = partnerId ? conv.participantDetails?.[partnerId] : null;
+                const partnerUser = partnerId ? communityUsers.find((u) => u.uid === partnerId) : null;
+                const isOnline = isUserOnline(partnerUser?.isOnline, partnerUser?.lastSeen);
+                const lastSeenText = formatLastSeen(partnerUser?.lastSeen, isOnline);
                 const isSelected = activeChatMode === 'direct' && activeChatId === conv.id;
                 const isTyping =
                   partnerId &&
@@ -1148,6 +1174,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           email: partner.email || '',
                           photoURL: partner.photoURL,
                           county: partner.county || 'Nairobi',
+                          isOnline,
+                          lastSeen: partnerUser?.lastSeen,
                           createdAt: ''
                         });
                       }
@@ -1170,22 +1198,39 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           {partner?.displayName?.charAt(0) || 'U'}
                         </div>
                       )}
-                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white" />
+                      {isOnline ? (
+                        <span
+                          className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white ring-1 ring-emerald-400"
+                          title="Online now"
+                        />
+                      ) : (
+                        <span
+                          className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-slate-400 rounded-full border-2 border-white"
+                          title={lastSeenText}
+                        />
+                      )}
                     </div>
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1">
-                        <div className="font-bold text-xs text-slate-900 truncate">
-                          {partner?.displayName || 'Community Member'}
+                        <div className="font-bold text-xs text-slate-900 truncate flex items-center gap-1.5">
+                          <span>{partner?.displayName || 'Community Member'}</span>
+                          {isOnline && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0" title="Online" />
+                          )}
                         </div>
-                        {conv.lastMessageTimestamp && (
+                        {conv.lastMessageTimestamp ? (
                           <div className="text-[10px] text-slate-400 shrink-0">
                             {new Date(conv.lastMessageTimestamp).toLocaleTimeString([], {
                               hour: '2-digit',
                               minute: '2-digit'
                             })}
                           </div>
-                        )}
+                        ) : !isOnline && partnerUser?.lastSeen ? (
+                          <div className="text-[9px] text-slate-400 shrink-0 font-medium">
+                            {lastSeenText.replace('Last seen ', '')}
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="flex items-center gap-1.5 mt-0.5">
@@ -1334,48 +1379,72 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 <div className="text-xs font-semibold text-slate-600">No citizens found</div>
               </div>
             ) : (
-              filteredMembers.map((member) => (
-                <div
-                  key={member.uid}
-                  className="p-2.5 rounded-xl hover:bg-slate-100 transition-colors flex items-center justify-between gap-3"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="relative shrink-0">
-                      {member.photoURL ? (
-                        <img
-                          src={member.photoURL}
-                          alt={member.displayName}
-                          className="w-9 h-9 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs">
-                          {member.displayName.charAt(0)}
-                        </div>
-                      )}
-                      <span className="absolute bottom-0 right-0 w-2 h-2 bg-emerald-500 rounded-full border border-white" />
-                    </div>
+              filteredMembers.map((member) => {
+                const isOnline = isUserOnline(member.isOnline, member.lastSeen);
+                const lastSeenText = formatLastSeen(member.lastSeen, isOnline);
 
-                    <div className="min-w-0">
-                      <div className="font-bold text-xs text-slate-900 truncate">
-                        {member.displayName}
-                      </div>
-                      <div className="text-[10px] text-slate-500 flex items-center gap-1">
-                        <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                        <span className="truncate">
-                          {member.constituency ? `${member.constituency}, ` : ''}{member.county || 'Nairobi'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleStartDirectChat(member)}
-                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0"
+                return (
+                  <div
+                    key={member.uid}
+                    className="p-2.5 rounded-xl hover:bg-slate-100 transition-colors flex items-center justify-between gap-3"
                   >
-                    Chat
-                  </button>
-                </div>
-              ))
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="relative shrink-0">
+                        {member.photoURL ? (
+                          <img
+                            src={member.photoURL}
+                            alt={member.displayName}
+                            className="w-9 h-9 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs">
+                            {member.displayName.charAt(0)}
+                          </div>
+                        )}
+                        {isOnline ? (
+                          <span
+                            className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-white ring-1 ring-emerald-400"
+                            title="Online now"
+                          />
+                        ) : (
+                          <span
+                            className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-slate-400 rounded-full border border-white"
+                            title={lastSeenText}
+                          />
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="font-bold text-xs text-slate-900 truncate flex items-center gap-1.5">
+                          <span>{member.displayName}</span>
+                          {isOnline && (
+                            <span className="text-[10px] text-emerald-600 font-bold">Online</span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5 truncate">
+                          {!isOnline && (
+                            <span className="text-slate-400 truncate flex items-center gap-0.5">
+                              <Clock className="w-2.5 h-2.5 shrink-0" />
+                              {lastSeenText}
+                            </span>
+                          )}
+                          {!isOnline && <span className="text-slate-300">•</span>}
+                          <span className="truncate">
+                            {member.constituency ? `${member.constituency}, ` : ''}{member.county || 'Nairobi'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleStartDirectChat(member)}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0"
+                    >
+                      Chat
+                    </button>
+                  </div>
+                );
+              })
             )
           )}
         </div>
@@ -1427,7 +1496,17 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           {activePartner.displayName.charAt(0)}
                         </div>
                       )}
-                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white" />
+                      {partnerPresence.isOnline ? (
+                        <span
+                          className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white ring-2 ring-emerald-400/40 animate-pulse"
+                          title="Online now"
+                        />
+                      ) : (
+                        <span
+                          className="absolute bottom-0 right-0 w-3 h-3 bg-slate-400 rounded-full border-2 border-white"
+                          title={partnerPresence.lastSeenText}
+                        />
+                      )}
                     </div>
 
                     <div className="min-w-0">
@@ -1450,16 +1529,21 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           </button>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 text-xs">
+                      <div className="flex items-center gap-2 text-xs flex-wrap">
                         {isPartnerTyping ? (
                           <span className="text-emerald-600 font-semibold flex items-center gap-1.5 animate-pulse">
                             <span className="w-2 h-2 rounded-full bg-emerald-500" />
                             typing...
                           </span>
+                        ) : partnerPresence.isOnline ? (
+                          <span className="text-emerald-700 font-bold flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
+                            Online now
+                          </span>
                         ) : (
-                          <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            Online
+                          <span className="text-slate-500 font-medium flex items-center gap-1" title={partnerPresence.lastSeenText}>
+                            <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span>{partnerPresence.lastSeenText}</span>
                           </span>
                         )}
                         <span className="text-slate-300">·</span>
@@ -1540,6 +1624,19 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
                       Send a message to start a direct 1-on-1 chat with {activePartner?.displayName}.
                     </p>
+                    <div className="pt-2 flex items-center justify-center gap-1.5 text-xs">
+                      {partnerPresence.isOnline ? (
+                        <span className="inline-flex items-center gap-1.5 text-emerald-700 font-bold bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981] animate-pulse" />
+                          Online now — ready to chat
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 text-slate-600 font-medium bg-white px-3 py-1 rounded-full border border-slate-200 shadow-2xs">
+                          <Clock className="w-3.5 h-3.5 text-slate-400" />
+                          {partnerPresence.lastSeenText}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   visibleDirectMessages.map((msg) => {

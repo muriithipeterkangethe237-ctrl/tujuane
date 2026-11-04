@@ -21,6 +21,7 @@ import {
   MessageAttachment,
   MessageReplyReference
 } from '../types/chat';
+import { sendUserNotification } from './userNotificationService';
 
 // Generate a deterministic chat ID for two users so only one 1-on-1 thread exists
 export function getDirectChatId(uidA: string, uidB: string): string {
@@ -225,6 +226,24 @@ export async function sendChatMessage(
         updatedAt: Date.now()
       }
     });
+
+    // Send real-time notification to the recipient
+    if (recipientId && recipientId !== sender.uid) {
+      sendUserNotification({
+        userId: recipientId,
+        category: 'direct_chat',
+        type: 'direct_message',
+        title: `Message from ${sender.displayName || 'Citizen'}`,
+        message: preview,
+        actorId: sender.uid,
+        actorName: sender.displayName,
+        actorPhoto: sender.photoURL,
+        actorCounty: sender.county,
+        details: chatId
+      }).catch((err) => {
+        console.warn('Could not dispatch message notification:', err);
+      });
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `chats/${chatId}/messages/${messageId}`);
   }
@@ -444,6 +463,127 @@ export function subscribeToChatMessages(
 }
 
 /**
+ * Determine if a user is currently considered online with a grace period for heartbeats
+ */
+export function isUserOnline(isOnline?: boolean, lastSeenIso?: string): boolean {
+  if (!isOnline) return false;
+  if (!lastSeenIso) return !!isOnline;
+  try {
+    const diffMs = Date.now() - new Date(lastSeenIso).getTime();
+    // Consider active if heartbeat was within the last 2.5 minutes (150 seconds)
+    return diffMs >= 0 && diffMs < 150000;
+  } catch {
+    return !!isOnline;
+  }
+}
+
+/**
+ * Format user's last online presence timestamp cleanly for chats
+ */
+export function formatLastSeen(lastSeenIso?: string, isOnline?: boolean): string {
+  if (isOnline) {
+    return 'Online now';
+  }
+  if (!lastSeenIso) {
+    return 'Offline';
+  }
+  try {
+    const lastSeenDate = new Date(lastSeenIso);
+    const now = new Date();
+    const diffMs = now.getTime() - lastSeenDate.getTime();
+    if (isNaN(diffMs) || diffMs < 0) {
+      return 'Offline';
+    }
+    const diffMinutes = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMinutes < 1) {
+      return 'Last seen just now';
+    }
+    if (diffMinutes < 60) {
+      return `Last seen ${diffMinutes}m ago`;
+    }
+    if (diffHours < 24) {
+      const isToday = lastSeenDate.toDateString() === now.toDateString();
+      const timeStr = lastSeenDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (isToday) {
+        return `Last seen today at ${timeStr}`;
+      }
+      return `Last seen ${diffHours}h ago`;
+    }
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = lastSeenDate.toDateString() === yesterday.toDateString();
+    const timeStr = lastSeenDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (isYesterday) {
+      return `Last seen yesterday at ${timeStr}`;
+    }
+    if (diffDays < 7) {
+      return `Last seen ${diffDays}d ago at ${timeStr}`;
+    }
+    const dateStr = lastSeenDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return `Last seen on ${dateStr}`;
+  } catch {
+    return 'Offline';
+  }
+}
+
+/**
+ * Real-time subscription to a specific user's online and last seen status
+ */
+export function subscribeToUserPresence(
+  userId: string,
+  callback: (presence: { isOnline: boolean; lastSeen?: string; lastSeenText: string }) => void
+): () => void {
+  const userRef = doc(db, 'users', userId);
+  return onSnapshot(
+    userRef,
+    (snap) => {
+      if (!snap.exists()) {
+        callback({ isOnline: false, lastSeenText: 'Offline' });
+        return;
+      }
+      const data = snap.data();
+      const lastSeenIso = data.lastSeen?.toDate
+        ? data.lastSeen.toDate().toISOString()
+        : typeof data.lastSeen === 'string'
+        ? data.lastSeen
+        : undefined;
+      const online = isUserOnline(!!data.isOnline, lastSeenIso);
+      const text = formatLastSeen(lastSeenIso, online);
+      callback({
+        isOnline: online,
+        lastSeen: lastSeenIso,
+        lastSeenText: text
+      });
+    },
+    (err) => {
+      console.warn('Presence subscription note:', err);
+    }
+  );
+}
+
+/**
+ * Update user's presence state in Firestore
+ */
+export async function updateUserPresence(
+  userId: string,
+  isOnline: boolean
+): Promise<void> {
+  if (!userId) return;
+  const userRef = doc(db, 'users', userId);
+  try {
+    await updateDoc(userRef, {
+      isOnline,
+      lastSeen: serverTimestamp()
+    });
+  } catch (err) {
+    // Non-fatal presence update
+  }
+}
+
+/**
  * Subscribe to all community members registered in TUJUANE
  */
 export function subscribeToCommunityUsers(
@@ -459,6 +599,13 @@ export function subscribeToCommunityUsers(
       const users: UserProfile[] = snapshot.docs
         .map((docSnap) => {
           const d = docSnap.data();
+          const lastSeenIso = d.lastSeen?.toDate
+            ? d.lastSeen.toDate().toISOString()
+            : typeof d.lastSeen === 'string'
+            ? d.lastSeen
+            : undefined;
+          const online = isUserOnline(!!d.isOnline, lastSeenIso);
+
           return {
             uid: docSnap.id,
             displayName: d.displayName || 'TUJUANE Member',
@@ -466,8 +613,8 @@ export function subscribeToCommunityUsers(
             photoURL: d.photoURL || undefined,
             county: d.county || 'Nairobi',
             constituency: d.constituency || undefined,
-            isOnline: !!d.isOnline,
-            lastSeen: d.lastSeen?.toDate ? d.lastSeen.toDate().toISOString() : undefined,
+            isOnline: online,
+            lastSeen: lastSeenIso,
             createdAt: d.createdAt?.toDate ? d.createdAt.toDate().toISOString() : new Date().toISOString()
           };
         })
@@ -480,3 +627,4 @@ export function subscribeToCommunityUsers(
     }
   );
 }
+

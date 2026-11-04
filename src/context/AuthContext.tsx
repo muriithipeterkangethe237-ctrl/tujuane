@@ -56,10 +56,41 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const PERSISTENT_SESSION_KEY = 'tujuane_persistent_session';
+
+function getCachedSession(): UserProfile | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(PERSISTENT_SESSION_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.uid) {
+        return parsed as UserProfile;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function setCachedSession(profile: UserProfile | null) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (profile) {
+      localStorage.setItem(PERSISTENT_SESSION_KEY, JSON.stringify(profile));
+    } else {
+      localStorage.removeItem(PERSISTENT_SESSION_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => auth.currentUser || null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => getCachedSession());
+  const [loading, setLoading] = useState<boolean>(() => !auth.currentUser && !getCachedSession());
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState<'signin' | 'register'>('signin');
 
@@ -72,7 +103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsAuthModalOpen(false);
   };
 
-  // Sync user profile in Firestore
+  // Sync user profile in Firestore and update persistent local cache
   const syncUserProfile = async (user: User, retries = 2) => {
     const userDocRef = doc(db, 'users', user.uid);
     try {
@@ -93,6 +124,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString()
         };
         setUserProfile(profile);
+        setCachedSession(profile);
 
         // Update presence non-blockingly
         updateDoc(userDocRef, {
@@ -125,6 +157,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: serverTimestamp()
         });
         setUserProfile(newProfile);
+        setCachedSession(newProfile);
       }
     } catch (err: any) {
       if (retries > 0) {
@@ -133,7 +166,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       console.warn('Operating in offline mode for user profile:', err?.message || err);
       // Fallback local profile if offline or permission pending
-      setUserProfile({
+      const fallbackProfile: UserProfile = {
         uid: user.uid,
         displayName: user.displayName || 'TUJUANE Member',
         email: user.email || '',
@@ -141,38 +174,89 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         county: 'Nairobi',
         isOnline: true,
         createdAt: new Date().toISOString()
-      });
+      };
+      setUserProfile(fallbackProfile);
+      setCachedSession(fallbackProfile);
     }
   };
 
   useEffect(() => {
+    // Listen to Firebase persistent auth state across browser sessions
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        setCurrentUser(user);
         try {
-          // Verify if token can be retrieved from token service
-          await user.getIdToken();
-          setCurrentUser(user);
           await syncUserProfile(user);
-        } catch (tokenErr: any) {
-          const msg = tokenErr?.message || String(tokenErr);
-          console.warn('Cached auth session cannot be verified, resetting session:', msg);
-          try {
-            await signOut(auth);
-          } catch {
-            // ignore
-          }
-          setCurrentUser(null);
-          setUserProfile(null);
+        } catch (syncErr) {
+          console.warn('Profile background sync notice:', syncErr);
         }
       } else {
+        // Only clear state if Firebase confirms no active session
         setCurrentUser(null);
         setUserProfile(null);
+        setCachedSession(null);
       }
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
+
+  // Real-time presence heartbeat & visibility tracker for active member status
+  useEffect(() => {
+    if (!currentUser) return;
+    const uid = currentUser.uid;
+    const userDocRef = doc(db, 'users', uid);
+
+    const markActive = () => {
+      updateDoc(userDocRef, {
+        isOnline: true,
+        lastSeen: serverTimestamp()
+      }).catch(() => {});
+    };
+
+    const markOffline = () => {
+      updateDoc(userDocRef, {
+        isOnline: false,
+        lastSeen: serverTimestamp()
+      }).catch(() => {});
+    };
+
+    // Mark active on mount
+    markActive();
+
+    // Heartbeat every 35 seconds while document is visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        markActive();
+      }
+    }, 35000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        markActive();
+      } else {
+        updateDoc(userDocRef, {
+          lastSeen: serverTimestamp()
+        }).catch(() => {});
+      }
+    };
+
+    const handlePageHide = () => {
+      markOffline();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handlePageHide);
+    window.addEventListener('pagehide', handlePageHide);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handlePageHide);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [currentUser]);
 
   const loginWithGoogle = async () => {
     try {
@@ -191,6 +275,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
+      setCachedSession(null);
       if (currentUser) {
         const userDocRef = doc(db, 'users', currentUser.uid);
         try {
@@ -223,7 +308,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         payload.constituency = constituency;
       }
       await updateDoc(userDocRef, payload);
-      setUserProfile((prev) => (prev ? { ...prev, county, constituency } : null));
+      const updated = { ...userProfile, county, constituency };
+      setUserProfile(updated);
+      setCachedSession(updated);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.uid}`);
     }
@@ -249,7 +336,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (updates.occupation !== undefined) payload.occupation = updates.occupation.trim();
 
       await updateDoc(userDocRef, payload);
-      setUserProfile((prev) => (prev ? { ...prev, ...payload } : null));
+      const updated = { ...userProfile, ...payload };
+      setUserProfile(updated);
+      setCachedSession(updated);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.uid}`);
     }
@@ -299,6 +388,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setCurrentUser(user);
     setUserProfile(newProfile);
+    setCachedSession(newProfile);
     closeAuthModal();
   };
 

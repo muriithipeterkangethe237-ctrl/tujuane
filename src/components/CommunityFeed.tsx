@@ -145,8 +145,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [blockedSafetyResult, setBlockedSafetyResult] = useState<SafetyScanResult | null>(null);
 
-  const isDeveloper = currentUser?.email?.toLowerCase() === 'muriithipeterkangethe237@gmail.com' ||
-    (typeof window !== 'undefined' && localStorage.getItem('tujuane_dev_unlocked') === 'true');
+  const isDeveloper = !!currentUser?.email && currentUser.email.toLowerCase().trim() === 'muriithipeterkangethe237@gmail.com';
 
   const availableFilterConstituencies = useMemo(() => {
     return getConstituenciesByCounty(selectedCounty);

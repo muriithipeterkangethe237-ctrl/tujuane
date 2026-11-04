@@ -43,7 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
   onViewOwnProfile
 }) => {
   const { currentUser, userProfile, openAuthModal } = useAuth();
-  const isDev = currentUser?.email === DEVELOPER_EMAIL;
+  const isDev = !!currentUser?.email && currentUser.email.toLowerCase().trim() === DEVELOPER_EMAIL.toLowerCase();
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
@@ -153,26 +153,26 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
-          {/* Dev Control Panel Button */}
-          <button
-            onClick={() => setActiveTab('dev-panel')}
-            className={`transition-colors whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
-              activeTab === 'dev-panel'
-                ? 'bg-rose-900 text-rose-100 border-rose-700'
-                : isDev
-                ? 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
-                : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
-            }`}
-            title="Developer Control Panel: Safety & Content Monitoring"
-          >
-            <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
-            <span>Dev Panel</span>
-            {pendingReportsCount > 0 && (
-              <span className="bg-rose-600 text-white font-black text-[10px] px-1.5 py-0.2 rounded-full animate-bounce">
-                {pendingReportsCount}
-              </span>
-            )}
-          </button>
+          {/* Dev Control Panel Button - ONLY visible to verified developer */}
+          {isDev && (
+            <button
+              onClick={() => setActiveTab('dev-panel')}
+              className={`transition-colors whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                activeTab === 'dev-panel'
+                  ? 'bg-rose-900 text-rose-100 border-rose-700'
+                  : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
+              }`}
+              title="Developer Control Panel: Safety & Content Monitoring"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+              <span>Dev Panel</span>
+              {pendingReportsCount > 0 && (
+                <span className="bg-rose-600 text-white font-black text-[10px] px-1.5 py-0.2 rounded-full animate-bounce">
+                  {pendingReportsCount}
+                </span>
+              )}
+            </button>
+          )}
         </nav>
 
         {/* Zone 3: Actions & Google Sign-In */}
@@ -249,18 +249,20 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* Mobile dev panel shortcut */}
-          <button
-            onClick={() => setActiveTab('dev-panel')}
-            className="md:hidden p-2 text-rose-700 hover:text-rose-900 relative"
-            aria-label="Developer Control Panel"
-            title="Dev Control Panel"
-          >
-            <ShieldAlert className="w-5 h-5" />
-            {pendingReportsCount > 0 && (
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-rose-600 animate-pulse" />
-            )}
-          </button>
+          {/* Mobile dev panel shortcut - ONLY visible to verified developer */}
+          {isDev && (
+            <button
+              onClick={() => setActiveTab('dev-panel')}
+              className="md:hidden p-2 text-rose-700 hover:text-rose-900 relative cursor-pointer"
+              aria-label="Developer Control Panel"
+              title="Dev Control Panel"
+            >
+              <ShieldAlert className="w-5 h-5" />
+              {pendingReportsCount > 0 && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-rose-600 animate-pulse" />
+              )}
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTab('chat')}

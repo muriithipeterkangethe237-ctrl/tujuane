@@ -112,15 +112,20 @@ export function subscribeToUserNotifications(
         const currentUnreads = list.filter((n) => !n.read);
         const newlyArrived = currentUnreads.filter((n) => !previousUnreadIds.has(n.id));
         if (newlyArrived.length > 0) {
-          notificationService.playChime();
           const first = newlyArrived[0];
-          notificationService.notify({
-            title: first.title,
-            body: first.message,
-            type: first.category === 'social' ? 'mention' : 'channel',
-            sourceId: first.id,
-            sourceName: first.actorName || 'TUJUANE Alert'
-          });
+          const prefs = notificationService.getNotificationPreferences();
+          const isTypeAllowed = (prefs.typePreferences as any)[first.type] !== false;
+
+          if (isTypeAllowed) {
+            notificationService.notify({
+              title: first.title,
+              body: first.message,
+              type: first.category === 'direct_chat' ? 'direct_chat' : first.category === 'social' ? 'mention' : 'channel',
+              sourceId: first.id,
+              sourceName: first.actorName || 'TUJUANE Alert',
+              notificationType: first.type
+            });
+          }
         }
       }
 
