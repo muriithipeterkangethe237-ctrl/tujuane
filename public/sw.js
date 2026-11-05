@@ -84,3 +84,57 @@ self.addEventListener('fetch', (event) => {
       })
   );
 });
+
+// Notification click handler: Focuses or opens the TUJUANE app when the user taps a notification in the notification bar
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // If an existing app window or tab is already open, focus it
+      for (const client of clientList) {
+        if ('focus' in client) {
+          return client.focus();
+        }
+      }
+      // Otherwise open a new window to the TUJUANE app
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
+  );
+});
+
+// Push notification event listener for real-time background messages
+self.addEventListener('push', (event) => {
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch {
+      data = {
+        title: 'TUJUANE Kenya Community',
+        body: event.data.text()
+      };
+    }
+  } else {
+    data = {
+      title: 'TUJUANE Kenya Community',
+      body: 'You have a new message or community update.'
+    };
+  }
+
+  const title = data.title || 'TUJUANE Kenya Community';
+  const options = {
+    body: data.body || 'You have new activity waiting for you on TUJUANE.',
+    icon: data.icon || '/icon.svg',
+    badge: data.badge || '/icon.svg',
+    tag: data.tag || `tujuane_${Date.now()}`,
+    renotify: true,
+    vibrate: [200, 100, 200],
+    data: data.data || { url: '/' }
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});

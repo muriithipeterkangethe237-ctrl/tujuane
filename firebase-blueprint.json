@@ -8,7 +8,7 @@
         "uid": { "type": "string", "maxLength": 128 },
         "displayName": { "type": "string", "maxLength": 100 },
         "email": { "type": "string", "maxLength": 128 },
-        "photoURL": { "type": "string", "maxLength": 500 },
+        "photoURL": { "type": "string", "maxLength": 600000 },
         "county": { "type": "string", "maxLength": 50 },
         "isOnline": { "type": "boolean" },
         "lastSeen": { "type": "string", "format": "date-time" },

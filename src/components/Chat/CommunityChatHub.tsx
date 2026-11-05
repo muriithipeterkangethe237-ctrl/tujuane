@@ -874,7 +874,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row h-[780px] max-h-[85vh] relative">
+    <div className="bg-white border-0 sm:border border-slate-200 shadow-none sm:shadow-xs overflow-hidden flex flex-col md:flex-row h-full w-full flex-1 relative">
       {/* Top Floating Push Notification Prompt Banner */}
       {showPermissionPromptBanner && desktopPermission === 'default' && (
         <div className="absolute top-0 inset-x-0 z-40 bg-gradient-to-r from-emerald-600 to-teal-700 text-white px-4 py-2 flex items-center justify-between text-xs shadow-md animate-in slide-in-from-top duration-300">

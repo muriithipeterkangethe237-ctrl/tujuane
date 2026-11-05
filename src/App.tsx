@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { LandingPage } from './components/LandingPage';
 import { CommunityFeed } from './components/CommunityFeed';
@@ -127,38 +127,160 @@ function AppContent() {
     }, 4000);
   };
 
-  const setActiveTab = (tab: string) => {
+  // Refs to always have current values in window popstate event without stale closure
+  const viewingProfileUserRef = useRef(viewingProfileUser);
+  const isNotificationsOpenRef = useRef(isNotificationsOpen);
+  const isAuthModalOpenRef = useRef(isAuthModalOpen);
+  const directChatTargetUserRef = useRef(directChatTargetUser);
+  const activeTabRef = useRef(activeTab);
+  const historyStackRef = useRef(historyStack);
+
+  useEffect(() => { viewingProfileUserRef.current = viewingProfileUser; }, [viewingProfileUser]);
+  useEffect(() => { isNotificationsOpenRef.current = isNotificationsOpen; }, [isNotificationsOpen]);
+  useEffect(() => { isAuthModalOpenRef.current = isAuthModalOpen; }, [isAuthModalOpen]);
+  useEffect(() => { directChatTargetUserRef.current = directChatTargetUser; }, [directChatTargetUser]);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  useEffect(() => { historyStackRef.current = historyStack; }, [historyStack]);
+
+  // Handle phone hardware/gesture back button navigation via window popstate
+  useEffect(() => {
+    // Ensure base entry in history exists
+    if (typeof window !== 'undefined') {
+      try {
+        if (!window.history.state) {
+          window.history.replaceState({ type: 'tab', tab: 'landing' }, '');
+        }
+      } catch {}
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      // 1. If viewing user profile modal is open, close modal first
+      if (viewingProfileUserRef.current) {
+        setViewingProfileUser(null);
+        return;
+      }
+
+      // 2. If notification center modal is open, close it
+      if (isNotificationsOpenRef.current) {
+        setIsNotificationsOpen(false);
+        return;
+      }
+
+      // 3. If authentication modal is open, close it
+      if (isAuthModalOpenRef.current) {
+        closeAuthModal();
+        return;
+      }
+
+      // 4. If in direct 1-on-1 chat inside Chat Hub, return to the chat conversations list
+      if (activeTabRef.current === 'chat' && directChatTargetUserRef.current) {
+        setDirectChatTargetUser(null);
+        return;
+      }
+
+      // 5. If browser history state specifies a tab, switch to it
+      if (event.state && typeof event.state.tab === 'string') {
+        const targetTab = event.state.tab;
+        setActiveTabState(targetTab);
+        setHistoryStack((prev) => {
+          const next = [...prev];
+          if (next.length > 1) next.pop();
+          return next.length > 0 ? next : [targetTab];
+        });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      // 6. Otherwise pop internal stack or return to landing
+      const currentStack = historyStackRef.current;
+      if (currentStack.length > 1) {
+        const nextStack = [...currentStack];
+        nextStack.pop();
+        const prevTab = nextStack[nextStack.length - 1] || 'landing';
+        setHistoryStack(nextStack);
+        setActiveTabState(prevTab);
+      } else {
+        setActiveTabState('landing');
+        setHistoryStack(['landing']);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [closeAuthModal]);
+
+  const setActiveTab = (tab: string, pushToHistory = true) => {
     if (tab === activeTab) return;
+    if (pushToHistory && typeof window !== 'undefined') {
+      try {
+        window.history.pushState({ type: 'tab', tab }, '');
+      } catch {}
+    }
     setHistoryStack((prev) => [...prev, tab]);
     setActiveTabState(tab);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const openUserProfileModal = (user: UserProfile) => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.history.pushState({ type: 'modal', modal: 'profile', uid: user.uid }, '');
+      } catch {}
+    }
+    setViewingProfileUser(user);
+  };
+
+  const openNotificationsModal = () => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.history.pushState({ type: 'modal', modal: 'notifications' }, '');
+      } catch {}
+    }
+    setIsNotificationsOpen(true);
+  };
+
   const handleGoBack = () => {
-    // If in 1-on-1 direct chat view, reset target user first if needed
-    if (activeTab === 'chat' && directChatTargetUser) {
-      setDirectChatTargetUser(null);
+    // If a modal or direct chat is active, prefer history.back()
+    if (viewingProfileUser) {
+      setViewingProfileUser(null);
+      if (window.history.length > 1) window.history.back();
       return;
     }
 
-    if (historyStack.length > 1) {
-      const nextStack = [...historyStack];
-      nextStack.pop(); // Pop current view
-      const prevTab = nextStack[nextStack.length - 1] || 'landing';
-      setHistoryStack(nextStack);
-      setActiveTabState(prevTab);
+    if (isNotificationsOpen) {
+      setIsNotificationsOpen(false);
+      if (window.history.length > 1) window.history.back();
+      return;
+    }
+
+    if (activeTab === 'chat' && directChatTargetUser) {
+      setDirectChatTargetUser(null);
+      if (window.history.length > 1) window.history.back();
+      return;
+    }
+
+    if (window.history.length > 1 && activeTab !== 'landing') {
+      window.history.back();
     } else {
-      setActiveTabState('landing');
+      setActiveTab('landing', false);
       setHistoryStack(['landing']);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const canGoBack = activeTab !== 'landing' || historyStack.length > 1 || !!directChatTargetUser;
+  const canGoBack = activeTab !== 'landing' || historyStack.length > 1 || !!directChatTargetUser || !!viewingProfileUser || isNotificationsOpen;
 
   const handleStartChatWithUser = (user: UserProfile) => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.history.pushState({ type: 'chat_target', targetId: user.uid }, '');
+      } catch {}
+    }
     setDirectChatTargetUser(user);
-    setActiveTab('chat');
+    if (activeTab !== 'chat') {
+      setActiveTab('chat', false);
+    }
   };
 
   const handleOpenDirectChatWithPostAuthor = (authorId: string, authorName: string) => {
@@ -171,6 +293,7 @@ function AppContent() {
     };
     handleStartChatWithUser(targetUser);
   };
+
 
   const handleLandingNavigate = (tab: string, _countyFilter?: string) => {
     setActiveTab(tab);
@@ -212,12 +335,12 @@ function AppContent() {
         pendingReportsCount={pendingReportsCount}
         pendingFriendRequestsCount={pendingFriendRequestsCount}
         unreadNotificationsCount={unreadNotificationsCount}
-        onOpenNotifications={() => setIsNotificationsOpen(true)}
+        onOpenNotifications={openNotificationsModal}
         onViewOwnProfile={() => {
           if (userProfile) {
-            setViewingProfileUser(userProfile);
+            openUserProfileModal(userProfile);
           } else if (currentUser) {
-            setViewingProfileUser({
+            openUserProfileModal({
               uid: currentUser.uid,
               displayName: currentUser.displayName || 'Citizen Member',
               email: currentUser.email || '',
@@ -232,8 +355,8 @@ function AppContent() {
         }}
       />
 
-      {/* Contextual Top Back Bar for non-landing pages */}
-      {activeTab !== 'landing' && (
+      {/* Contextual Top Back Bar for non-landing pages (omitted on chat for full-screen experience) */}
+      {activeTab !== 'landing' && activeTab !== 'chat' && (
         <div className="bg-slate-100/90 border-b border-slate-200/80 px-4 sm:px-6 lg:px-8 py-2 sticky top-16 z-30 backdrop-blur-xs">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -292,8 +415,14 @@ function AppContent() {
         </div>
       )}
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
+      {/* Main Content Area - Full screen edge-to-edge for messaging panel */}
+      <main
+        className={
+          activeTab === 'chat'
+            ? 'flex-1 w-full p-0 flex flex-col h-[calc(100dvh-4rem)] md:h-[calc(100dvh-4rem)] max-w-full overflow-hidden'
+            : 'flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full'
+        }
+      >
         {/* Landing / Community Hub View */}
         {activeTab === 'landing' && (
           <LandingPage onNavigate={handleLandingNavigate} />
@@ -332,7 +461,7 @@ function AppContent() {
         {activeTab === 'community' && (
           <CommunityFeed
             onOpenDirectChatWithUser={handleOpenDirectChatWithPostAuthor}
-            onViewUserProfile={(user) => setViewingProfileUser(user)}
+            onViewUserProfile={(user) => openUserProfileModal(user)}
           />
         )}
 
@@ -341,7 +470,7 @@ function AppContent() {
           <CommunityChatHub
             directChatTargetUser={directChatTargetUser}
             onClearDirectChatTargetUser={() => setDirectChatTargetUser(null)}
-            onViewUserProfile={(user) => setViewingProfileUser(user)}
+            onViewUserProfile={(user) => openUserProfileModal(user)}
           />
         )}
 
@@ -349,7 +478,7 @@ function AppContent() {
         {activeTab === 'members' && (
           <CommunityMembersDirectory
             onStartChatWithUser={handleStartChatWithUser}
-            onViewUserProfile={(user) => setViewingProfileUser(user)}
+            onViewUserProfile={(user) => openUserProfileModal(user)}
           />
         )}
 
@@ -410,7 +539,7 @@ function AppContent() {
           handleOpenDirectChatWithPostAuthor(userId, userName);
         }}
         onViewUserProfile={(userId: string, userName: string) => {
-          setViewingProfileUser({
+          openUserProfileModal({
             uid: userId,
             displayName: userName,
             email: '',
@@ -427,23 +556,28 @@ function AppContent() {
         initialMode={authModalInitialMode}
       />
 
-      {/* Desktop & Mobile Footer */}
-      <Footer
-        onSelectTab={(tab) => {
-          setActiveTab(tab);
-        }}
-      />
+      {/* Desktop & Mobile Footer - Completely hidden in chat for true full screen messaging panel */}
+      {activeTab !== 'chat' && (
+        <Footer
+          onSelectTab={(tab) => {
+            setActiveTab(tab);
+          }}
+        />
+      )}
 
-      {/* Mobile-First Bottom Navigation Bar */}
-      <MobileBottomNav
-        activeTab={activeTab}
-        pendingFriendRequestsCount={pendingFriendRequestsCount}
-        unreadNotificationsCount={unreadNotificationsCount}
-        onOpenNotifications={() => setIsNotificationsOpen(true)}
-        setActiveTab={(tab) => {
-          setActiveTab(tab);
-        }}
-      />
+      {/* Mobile-First Bottom Navigation Bar (Hidden when actively in direct chat thread on mobile) */}
+      {!(activeTab === 'chat' && directChatTargetUser) && (
+        <MobileBottomNav
+          activeTab={activeTab}
+          pendingFriendRequestsCount={pendingFriendRequestsCount}
+          unreadNotificationsCount={unreadNotificationsCount}
+          onOpenNotifications={openNotificationsModal}
+          setActiveTab={(tab) => {
+            setActiveTab(tab);
+          }}
+        />
+      )}
+
     </div>
   );
 }

@@ -193,13 +193,16 @@ class NotificationService {
   }
 
   /**
-   * Trigger native browser push notification directly
+   * Trigger native browser push notification directly into the device notification bar.
+   * Leverages ServiceWorker showNotification so alerts are received even when the user
+   * has minimized the browser or navigated away from the app.
    */
   public sendNativePush(options: {
     title: string;
     body: string;
     tag?: string;
     icon?: string;
+    badge?: string;
     onClick?: () => void;
   }): boolean {
     if (
@@ -210,14 +213,43 @@ class NotificationService {
       return false;
     }
 
-    try {
-      const notif = new Notification(options.title, {
-        body: options.body,
-        icon: options.icon || '/favicon.ico',
-        badge: '/favicon.ico',
-        tag: options.tag || `tujuane_${Date.now()}`
-      });
+    const notifOptions: NotificationOptions & { renotify?: boolean; vibrate?: number[] } = {
+      body: options.body,
+      icon: options.icon || '/icon.svg',
+      badge: options.badge || '/icon.svg',
+      tag: options.tag || `tujuane_${Date.now()}`,
+      renotify: true,
+      vibrate: [200, 100, 200],
+      data: { url: window.location.origin }
+    };
 
+
+    // 1. Try Service Worker showNotification first (Works on mobile & when app is backgrounded/closed)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready
+        .then((reg) => {
+          if (reg && reg.showNotification) {
+            reg.showNotification(options.title, notifOptions);
+          } else {
+            this.fallbackWindowNotification(options, notifOptions);
+          }
+        })
+        .catch(() => {
+          this.fallbackWindowNotification(options, notifOptions);
+        });
+      return true;
+    }
+
+    // 2. Direct Notification constructor fallback
+    return this.fallbackWindowNotification(options, notifOptions);
+  }
+
+  private fallbackWindowNotification(
+    options: { title: string; onClick?: () => void },
+    notifOptions: NotificationOptions
+  ): boolean {
+    try {
+      const notif = new Notification(options.title, notifOptions);
       notif.onclick = () => {
         try {
           window.focus();
@@ -225,13 +257,13 @@ class NotificationService {
         options.onClick?.();
         notif.close();
       };
-
       return true;
     } catch (err) {
-      console.warn('Failed to send native push notification:', err);
+      console.warn('Fallback window notification failed:', err);
       return false;
     }
   }
+
 
   /**
    * Test push notifications and audio chime

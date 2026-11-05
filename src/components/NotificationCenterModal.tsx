@@ -59,7 +59,7 @@ interface NotificationCenterModalProps {
 export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = ({
   isOpen,
   onClose,
-  notifications,
+  notifications = [],
   accountStanding,
   onSelectPost,
   onViewUserProfile,
@@ -99,8 +99,6 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
 
   const effectiveStanding: AccountStandingSummary = accountStanding || {
     status: 'good',
@@ -466,6 +464,8 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
         );
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div

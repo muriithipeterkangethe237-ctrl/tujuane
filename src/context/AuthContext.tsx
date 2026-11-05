@@ -336,6 +336,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (updates.occupation !== undefined) payload.occupation = updates.occupation.trim();
 
       await updateDoc(userDocRef, payload);
+
+      if (currentUser) {
+        try {
+          await updateProfile(currentUser, {
+            displayName: payload.displayName || currentUser.displayName,
+            photoURL: payload.photoURL || currentUser.photoURL
+          });
+        } catch {
+          // ignore non-fatal Auth credential sync error
+        }
+      }
+
       const updated = { ...userProfile, ...payload };
       setUserProfile(updated);
       setCachedSession(updated);
