@@ -80,7 +80,9 @@ interface CommunityChatHubProps {
   directChatTargetUser?: UserProfile | null;
   onClearDirectChatTargetUser?: () => void;
   onViewUserProfile?: (user: UserProfile) => void;
+  onThreadStateChange?: (isOpen: boolean) => void;
 }
+
 
 function formatBytes(bytes: number, decimals = 1): string {
   if (!+bytes) return '0 B';
@@ -94,8 +96,10 @@ function formatBytes(bytes: number, decimals = 1): string {
 export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   directChatTargetUser = null,
   onClearDirectChatTargetUser,
-  onViewUserProfile
+  onViewUserProfile,
+  onThreadStateChange
 }) => {
+
   const { currentUser, userProfile, loginWithGoogle, logout, updateUserLocation, updateUserCounty } = useAuth();
 
   // Primary navigation tabs: Direct 1-on-1, Channels, Groups, Members
@@ -435,7 +439,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   };
 
   // Open direct chat
-  const handleStartDirectChat = async (targetUser: UserProfile) => {
+  const handleStartDirectChat = async (targetUser: UserProfile, existingChatId?: string) => {
     const sender = userProfile || (currentUser ? {
       uid: currentUser.uid,
       displayName: currentUser.displayName || 'Citizen Member',
@@ -456,7 +460,10 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
       setActiveChannel(null);
       setActiveGroup(null);
       setActiveChatMode('direct');
-      const chatId = await getOrCreateDirectChat(sender, targetUser);
+      if (existingChatId) {
+        setActiveChatId(existingChatId);
+      }
+      const chatId = existingChatId || await getOrCreateDirectChat(sender, targetUser);
       if (chatId) {
         setActiveChatId(chatId);
       }
@@ -465,6 +472,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
       console.error('Failed to open chat:', err);
     }
   };
+
 
   // Select channel
   const handleSelectChannel = (channel: CommunityChannel) => {
@@ -800,9 +808,15 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
   // Whether a thread is currently open
   const isThreadOpen =
-    (activeChatMode === 'direct' && !!activeChatId) ||
+    (activeChatMode === 'direct' && (!!activeChatId || !!activePartner)) ||
     (activeChatMode === 'channel' && !!activeChannel) ||
     (activeChatMode === 'group' && !!activeGroup);
+
+  // Notify parent container (App.tsx) of thread open state to prevent mobile bottom nav collision
+  useEffect(() => {
+    onThreadStateChange?.(isThreadOpen);
+  }, [isThreadOpen, onThreadStateChange]);
+
 
   // Unauthenticated Welcome View
   if (!currentUser) {
@@ -874,7 +888,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   }
 
   return (
-    <div className="bg-white border-0 sm:border border-slate-200 shadow-none sm:shadow-xs overflow-hidden flex flex-col md:flex-row h-full w-full flex-1 relative">
+    <div className="bg-white border-0 sm:border border-slate-200 shadow-none sm:shadow-xs overflow-hidden flex flex-col md:flex-row h-full w-full flex-1 min-h-0 relative">
       {/* Top Floating Push Notification Prompt Banner */}
       {showPermissionPromptBanner && desktopPermission === 'default' && (
         <div className="absolute top-0 inset-x-0 z-40 bg-gradient-to-r from-emerald-600 to-teal-700 text-white px-4 py-2 flex items-center justify-between text-xs shadow-md animate-in slide-in-from-top duration-300">
@@ -903,10 +917,11 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
       {/* LEFT COLUMN: Navigation Tabs & List Feed */}
       <div
-        className={`w-full md:w-80 lg:w-96 border-r border-slate-200 flex flex-col bg-slate-50/50 ${
+        className={`w-full md:w-80 lg:w-96 border-r border-slate-200 flex flex-col bg-slate-50/50 h-full min-h-0 overflow-hidden ${
           isThreadOpen ? 'hidden md:flex' : 'flex'
         }`}
       >
+
         {/* User Profile Mini Header & Notification Bell */}
         <div className="p-4 bg-white border-b border-slate-200 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -1177,9 +1192,10 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           isOnline,
                           lastSeen: partnerUser?.lastSeen,
                           createdAt: ''
-                        });
+                        }, conv.id);
                       }
                     }}
+
                     className={`w-full p-2.5 rounded-2xl text-left transition-all flex items-center gap-3 cursor-pointer ${
                       isSelected
                         ? 'bg-emerald-50/80 border border-emerald-200 shadow-2xs'
@@ -1452,22 +1468,24 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
       {/* RIGHT COLUMN: Active Conversation Window (Direct, Channel, or Group) */}
       <div
-        className={`flex-1 flex flex-col bg-white ${
+        className={`flex-1 flex flex-col bg-white h-full min-h-0 overflow-hidden ${
           isThreadOpen ? 'flex' : 'hidden md:flex'
         }`}
       >
         {isThreadOpen ? (
           <>
             {/* Header: Displays info based on active chat mode */}
-            <div className="p-3.5 bg-white border-b border-slate-200 flex items-center justify-between gap-3 shadow-2xs">
+            <div className="p-3.5 bg-white border-b border-slate-200 flex items-center justify-between gap-3 shadow-2xs shrink-0">
               <div className="flex items-center gap-3 min-w-0">
                 <button
                   onClick={() => {
                     setActiveChatId(null);
+                    setActivePartner(null);
                     setActiveChannel(null);
                     setActiveGroup(null);
                     if (onClearDirectChatTargetUser) onClearDirectChatTargetUser();
                   }}
+
                   className="p-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer flex items-center gap-1 font-bold text-xs md:hidden"
                   title="Back to list"
                 >
@@ -1614,7 +1632,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
             </div>
 
             {/* Message Feed Area */}
-            <div className="flex-1 p-4 overflow-y-auto space-y-3.5 bg-slate-50/50">
+            <div className="flex-1 min-h-0 p-3 sm:p-4 overflow-y-auto space-y-3.5 bg-slate-50/50">
               {/* DIRECT MESSAGES STREAM */}
               {activeChatMode === 'direct' &&
                 (visibleDirectMessages.length === 0 ? (
@@ -2186,7 +2204,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
             )}
 
             {/* Message Input Form */}
-            <form onSubmit={handleSendMessage} className="p-3.5 border-t border-slate-200 bg-white">
+            <form onSubmit={handleSendMessage} className="shrink-0 p-2.5 sm:p-3.5 border-t border-slate-200 bg-white sticky bottom-0 z-20 shadow-xs pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+
               <input
                 type="file"
                 ref={imageInputRef}

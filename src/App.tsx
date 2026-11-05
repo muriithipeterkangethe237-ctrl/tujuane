@@ -54,6 +54,8 @@ function AppContent() {
 
   // Direct chat target user when clicking "Chat" from Feed or Members Directory
   const [directChatTargetUser, setDirectChatTargetUser] = useState<UserProfile | null>(null);
+  const [isChatThreadOpen, setIsChatThreadOpen] = useState(false);
+
 
   // Notification Channel states
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -132,6 +134,7 @@ function AppContent() {
   const isNotificationsOpenRef = useRef(isNotificationsOpen);
   const isAuthModalOpenRef = useRef(isAuthModalOpen);
   const directChatTargetUserRef = useRef(directChatTargetUser);
+  const isChatThreadOpenRef = useRef(isChatThreadOpen);
   const activeTabRef = useRef(activeTab);
   const historyStackRef = useRef(historyStack);
 
@@ -139,6 +142,7 @@ function AppContent() {
   useEffect(() => { isNotificationsOpenRef.current = isNotificationsOpen; }, [isNotificationsOpen]);
   useEffect(() => { isAuthModalOpenRef.current = isAuthModalOpen; }, [isAuthModalOpen]);
   useEffect(() => { directChatTargetUserRef.current = directChatTargetUser; }, [directChatTargetUser]);
+  useEffect(() => { isChatThreadOpenRef.current = isChatThreadOpen; }, [isChatThreadOpen]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { historyStackRef.current = historyStack; }, [historyStack]);
 
@@ -172,9 +176,10 @@ function AppContent() {
         return;
       }
 
-      // 4. If in direct 1-on-1 chat inside Chat Hub, return to the chat conversations list
-      if (activeTabRef.current === 'chat' && directChatTargetUserRef.current) {
+      // 4. If in direct 1-on-1 chat or thread inside Chat Hub, return to the chat conversations list
+      if (activeTabRef.current === 'chat' && (directChatTargetUserRef.current || isChatThreadOpenRef.current)) {
         setDirectChatTargetUser(null);
+        setIsChatThreadOpen(false);
         return;
       }
 
@@ -254,8 +259,9 @@ function AppContent() {
       return;
     }
 
-    if (activeTab === 'chat' && directChatTargetUser) {
+    if (activeTab === 'chat' && (directChatTargetUser || isChatThreadOpen)) {
       setDirectChatTargetUser(null);
+      setIsChatThreadOpen(false);
       if (window.history.length > 1) window.history.back();
       return;
     }
@@ -269,7 +275,8 @@ function AppContent() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const canGoBack = activeTab !== 'landing' || historyStack.length > 1 || !!directChatTargetUser || !!viewingProfileUser || isNotificationsOpen;
+  const canGoBack = activeTab !== 'landing' || historyStack.length > 1 || !!directChatTargetUser || isChatThreadOpen || !!viewingProfileUser || isNotificationsOpen;
+
 
   const handleStartChatWithUser = (user: UserProfile) => {
     if (typeof window !== 'undefined') {
@@ -419,7 +426,9 @@ function AppContent() {
       <main
         className={
           activeTab === 'chat'
-            ? 'flex-1 w-full p-0 flex flex-col h-[calc(100dvh-4rem)] md:h-[calc(100dvh-4rem)] max-w-full overflow-hidden'
+            ? (isChatThreadOpen || !!directChatTargetUser
+                ? 'flex-1 w-full p-0 flex flex-col h-[calc(100dvh-4rem)] md:h-[calc(100dvh-4rem)] max-w-full overflow-hidden'
+                : 'flex-1 w-full p-0 pb-16 md:pb-0 flex flex-col h-[calc(100dvh-4rem)] md:h-[calc(100dvh-4rem)] max-w-full overflow-hidden')
             : 'flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full'
         }
       >
@@ -471,8 +480,10 @@ function AppContent() {
             directChatTargetUser={directChatTargetUser}
             onClearDirectChatTargetUser={() => setDirectChatTargetUser(null)}
             onViewUserProfile={(user) => openUserProfileModal(user)}
+            onThreadStateChange={(isOpen) => setIsChatThreadOpen(isOpen)}
           />
         )}
+
 
         {/* Community Members Directory with Follow & Friend Requests */}
         {activeTab === 'members' && (
@@ -565,9 +576,10 @@ function AppContent() {
         />
       )}
 
-      {/* Mobile-First Bottom Navigation Bar (Hidden when actively in direct chat thread on mobile) */}
-      {!(activeTab === 'chat' && directChatTargetUser) && (
+      {/* Mobile-First Bottom Navigation Bar (Hidden when actively in direct chat or thread on mobile so typing panel is never obscured) */}
+      {!(activeTab === 'chat' && (isChatThreadOpen || !!directChatTargetUser)) && (
         <MobileBottomNav
+
           activeTab={activeTab}
           pendingFriendRequestsCount={pendingFriendRequestsCount}
           unreadNotificationsCount={unreadNotificationsCount}
