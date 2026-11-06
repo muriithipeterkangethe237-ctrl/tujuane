@@ -28,16 +28,19 @@ service cloud.firestore {
     function isValidUserProfile(data) {
       return data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128
         && data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 100
-        && data.email is string && data.email.size() <= 128
+        && (!('email' in data) || (data.email is string && data.email.size() <= 128))
         && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 600000))
         && (!('county' in data) || (data.county is string && data.county.size() <= 50))
         && (!('constituency' in data) || (data.constituency is string && data.constituency.size() <= 60))
         && (!('bio' in data) || (data.bio is string && data.bio.size() <= 500))
         && (!('occupation' in data) || (data.occupation is string && data.occupation.size() <= 100))
         && (!('isOnline' in data) || data.isOnline is bool)
-        && (!('lastSeen' in data) || data.lastSeen is timestamp)
-        && data.createdAt is timestamp;
+        && (!('lastSeen' in data) || data.lastSeen is timestamp || data.lastSeen is string)
+        && (!('blockedUserIds' in data) || (data.blockedUserIds is list && data.blockedUserIds.size() <= 500))
+        && (!('mutedUserIds' in data) || (data.mutedUserIds is list && data.mutedUserIds.size() <= 500))
+        && (!('createdAt' in data) || data.createdAt is timestamp || data.createdAt is string);
     }
+
 
     // Validation for ChatConversation
     function isValidChatConversation(data) {
@@ -107,6 +110,8 @@ service cloud.firestore {
         && (!('authorPhotoUrl' in data) || (data.authorPhotoUrl is string && data.authorPhotoUrl.size() <= 500))
         && data.content is string && data.content.size() > 0 && data.content.size() <= 1000
         && (!('mediaUrl' in data) || (data.mediaUrl is string && data.mediaUrl.size() <= 600000))
+        && (!('replyToCommentId' in data) || (data.replyToCommentId is string && data.replyToCommentId.size() <= 128))
+        && (!('replyToAuthorName' in data) || (data.replyToAuthorName is string && data.replyToAuthorName.size() <= 100))
         && data.createdAt is timestamp;
     }
 
@@ -144,8 +149,8 @@ service cloud.firestore {
         && isValidId(userId) 
         && request.auth.uid == userId 
         && incoming().uid == existing().uid
-        && incoming().createdAt == existing().createdAt
         && isValidUserProfile(incoming());
+
       allow delete: if false;
     }
 

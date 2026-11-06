@@ -313,21 +313,23 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
   const handleActionReportAndTakeDown = async (report: SafetyReport) => {
     try {
-      await removePostByModerator(
-        report.postId,
-        `Takedown via Report #${report.id}: ${report.category}`,
-        currentUser?.email || DEVELOPER_EMAIL
-      );
+      if (report.postId) {
+        await removePostByModerator(
+          report.postId,
+          `Takedown via Report #${report.id}: ${report.category}`,
+          currentUser?.email || DEVELOPER_EMAIL
+        );
+      }
       await resolveSafetyReport(
         report.id,
         'actioned',
         currentUser?.email || DEVELOPER_EMAIL,
-        `Post taken down for ${report.category}`
+        report.postId ? `Post taken down for ${report.category}` : `Target actioned for ${report.category}`
       );
-      showToast(`Post removed and report #${report.id.slice(0, 8)} resolved.`);
+      showToast(`Report #${report.id.slice(0, 8)} actioned and resolved.`);
     } catch (err) {
       console.error(err);
-      showToast('Failed to take down post from report.');
+      showToast('Failed to resolve safety report.');
     }
   };
 
@@ -655,9 +657,13 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                     {/* Reported Target Summary */}
                     <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
                       <div className="text-xs font-bold text-slate-900 flex items-center justify-between">
-                        <span>Target Post: "{report.postTitle}"</span>
+                        <span>
+                          {report.postTitle
+                            ? `Target Post: "${report.postTitle}"`
+                            : `Target ${report.targetType === 'user' ? 'Account' : 'Citizen'}: "${report.targetUserName || report.targetUserId || 'Profile'}"`}
+                        </span>
                         <span className="text-[11px] font-normal text-slate-500">
-                          Author: {report.authorName}
+                          {report.authorName ? `Author: ${report.authorName}` : `Reported User: ${report.targetUserName || 'Citizen'}`}
                         </span>
                       </div>
                       {report.details && (

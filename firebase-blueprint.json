@@ -10,11 +10,17 @@
         "email": { "type": "string", "maxLength": 128 },
         "photoURL": { "type": "string", "maxLength": 600000 },
         "county": { "type": "string", "maxLength": 50 },
+        "constituency": { "type": "string", "maxLength": 60 },
+        "bio": { "type": "string", "maxLength": 500 },
+        "occupation": { "type": "string", "maxLength": 100 },
         "isOnline": { "type": "boolean" },
         "lastSeen": { "type": "string", "format": "date-time" },
+        "blockedUserIds": { "type": "array" },
+        "mutedUserIds": { "type": "array" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "displayName", "email", "createdAt"]
+      "required": ["uid", "displayName", "createdAt"]
+
     },
     "ChatConversation": {
       "title": "ChatConversation",
@@ -84,6 +90,8 @@
         "authorPhotoUrl": { "type": "string", "maxLength": 500 },
         "content": { "type": "string", "maxLength": 1000 },
         "mediaUrl": { "type": "string", "maxLength": 600000 },
+        "replyToCommentId": { "type": "string", "maxLength": 128 },
+        "replyToAuthorName": { "type": "string", "maxLength": 100 },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "postId", "authorId", "authorName", "content", "createdAt"]

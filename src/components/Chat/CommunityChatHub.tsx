@@ -71,10 +71,12 @@ import {
   VolumeX,
   Globe,
   Sparkles,
-  UserPlus
+  UserPlus,
+  Flag
 } from 'lucide-react';
 import { compressImage } from '../../utils/imageCompressor';
 import { ALL_47_COUNTIES, getConstituenciesByCounty } from '../../data/kenyaCounties';
+import { ReportModal } from '../ReportModal';
 
 interface CommunityChatHubProps {
   directChatTargetUser?: UserProfile | null;
@@ -100,7 +102,20 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   onThreadStateChange
 }) => {
 
-  const { currentUser, userProfile, loginWithGoogle, logout, updateUserLocation, updateUserCounty } = useAuth();
+  const {
+    currentUser,
+    userProfile,
+    loginWithGoogle,
+    logout,
+    updateUserLocation,
+    updateUserCounty,
+    blockedUserIds,
+    mutedUserIds,
+    blockUser,
+    unblockUser,
+    muteUser,
+    unmuteUser
+  } = useAuth();
 
   // Primary navigation tabs: Direct 1-on-1, Channels, Groups, Members
   const [activeTab, setActiveTab] = useState<'direct' | 'channels' | 'groups' | 'members'>('direct');
@@ -109,6 +124,12 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   const [activeChatMode, setActiveChatMode] = useState<'direct' | 'channel' | 'group'>('direct');
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activePartner, setActivePartner] = useState<UserProfile | null>(null);
+
+  // Safety & moderation actions for Direct Chat
+  const [isDirectActionMenuOpen, setIsDirectActionMenuOpen] = useState(false);
+  const [isDirectReportModalOpen, setIsDirectReportModalOpen] = useState(false);
+  const [directUserToBlock, setDirectUserToBlock] = useState<{ id: string; name: string } | null>(null);
+  const [isBlockInProgress, setIsBlockInProgress] = useState(false);
   const [partnerPresence, setPartnerPresence] = useState<{
     isOnline: boolean;
     lastSeen?: string;
@@ -323,13 +344,16 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
           lastMsg.senderId !== currentUser.uid &&
           Date.now() - new Date(lastMsg.createdAt).getTime() < 3000
         ) {
-          notificationService.notify({
-            title: `Message from ${lastMsg.senderName || 'TUJUANE Member'}`,
-            body: lastMsg.text || 'Shared a media attachment',
-            type: 'direct_chat',
-            sourceId: activeChatId,
-            sourceName: lastMsg.senderName || 'Direct Chat'
-          });
+          // Suppress notification if user is muted or blocked
+          if (!mutedUserIds.includes(lastMsg.senderId) && !blockedUserIds.includes(lastMsg.senderId)) {
+            notificationService.notify({
+              title: `Message from ${lastMsg.senderName || 'TUJUANE Member'}`,
+              body: lastMsg.text || 'Shared a media attachment',
+              type: 'direct_chat',
+              sourceId: activeChatId,
+              sourceName: lastMsg.senderName || 'Direct Chat'
+            });
+          }
         }
       }
 
@@ -1538,6 +1562,18 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                         >
                           {activePartner.displayName}
                         </button>
+                        {mutedUserIds.includes(activePartner.uid) && (
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded-md border border-amber-200" title="Notifications muted">
+                            <VolumeX className="w-3 h-3 text-amber-600" />
+                            <span className="hidden sm:inline">Muted</span>
+                          </span>
+                        )}
+                        {blockedUserIds.includes(activePartner.uid) && (
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-rose-50 text-rose-700 px-1.5 py-0.5 rounded-md border border-rose-200" title="Account blocked">
+                            <Ban className="w-3 h-3 text-rose-600" />
+                            <span className="hidden sm:inline">Blocked</span>
+                          </span>
+                        )}
                         {onViewUserProfile && (
                           <button
                             onClick={() => onViewUserProfile(activePartner)}
@@ -1628,11 +1664,110 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                       <span>Join Group</span>
                     </button>
                   )}
+
+                {/* Direct Chat Partner Actions (Mute, Block, Report) */}
+                {activeChatMode === 'direct' && activePartner && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsDirectActionMenuOpen(!isDirectActionMenuOpen)}
+                      className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                      title="Chat options & safety"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+
+                    {isDirectActionMenuOpen && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute right-0 top-full mt-1 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95 text-xs text-slate-700 space-y-0.5"
+                      >
+                        {/* Mute/Unmute */}
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setIsDirectActionMenuOpen(false);
+                            if (mutedUserIds.includes(activePartner.uid)) {
+                              await unmuteUser(activePartner.uid);
+                            } else {
+                              await muteUser(activePartner.uid);
+                            }
+                          }}
+                          className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 font-medium cursor-pointer"
+                        >
+                          {mutedUserIds.includes(activePartner.uid) ? (
+                            <>
+                              <Volume2 className="w-3.5 h-3.5 text-amber-600" />
+                              <span>Unmute Notifications</span>
+                            </>
+                          ) : (
+                            <>
+                              <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Mute Notifications</span>
+                            </>
+                          )}
+                        </button>
+
+                        {/* Block/Unblock */}
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setIsDirectActionMenuOpen(false);
+                            if (blockedUserIds.includes(activePartner.uid)) {
+                              await unblockUser(activePartner.uid);
+                            } else {
+                              setDirectUserToBlock({ id: activePartner.uid, name: activePartner.displayName });
+                            }
+                          }}
+                          className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2 font-medium cursor-pointer"
+                        >
+                          <Ban className="w-3.5 h-3.5 text-rose-600" />
+                          <span>{blockedUserIds.includes(activePartner.uid) ? 'Unblock Account' : 'Block Account'}</span>
+                        </button>
+
+                        {/* Report */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsDirectActionMenuOpen(false);
+                            setIsDirectReportModalOpen(true);
+                          }}
+                          className="w-full px-3 py-2 text-left hover:bg-amber-50 text-amber-800 flex items-center gap-2 font-medium cursor-pointer border-t border-slate-100"
+                        >
+                          <Flag className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Report Account</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Message Feed Area */}
             <div className="flex-1 min-h-0 p-3 sm:p-4 overflow-y-auto space-y-3.5 bg-slate-50/50">
+              {/* Blocked Partner Warning Banner */}
+              {activeChatMode === 'direct' && activePartner && blockedUserIds.includes(activePartner.uid) && (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-center justify-between shadow-2xs">
+                  <div className="flex items-center gap-2.5">
+                    <Ban className="w-4 h-4 text-rose-600 shrink-0" />
+                    <div>
+                      <span className="font-bold">You have blocked {activePartner.displayName}.</span>
+                      <span className="text-[11px] text-rose-700 block">
+                        You will not receive new messages or notifications from this user.
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => unblockUser(activePartner.uid)}
+                    className="px-3 py-1 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold rounded-xl text-xs transition-colors cursor-pointer shrink-0"
+                  >
+                    Unblock
+                  </button>
+                </div>
+              )}
+
               {/* DIRECT MESSAGES STREAM */}
               {activeChatMode === 'direct' &&
                 (visibleDirectMessages.length === 0 ? (
@@ -2203,81 +2338,95 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               </div>
             )}
 
-            {/* Message Input Form */}
-            <form onSubmit={handleSendMessage} className="shrink-0 p-2.5 sm:p-3.5 border-t border-slate-200 bg-white sticky bottom-0 z-20 shadow-xs pb-[max(0.625rem,env(safe-area-inset-bottom))]">
-
-              <input
-                type="file"
-                ref={imageInputRef}
-                accept="image/*"
-                onChange={handleChatImageSelect}
-                className="hidden"
-              />
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".pdf,.doc,.docx,.txt,.csv,.json,.xls,.xlsx"
-                onChange={handleChatFileSelect}
-                className="hidden"
-              />
-
-              <div className="flex items-center gap-2">
+            {/* Blocked Account Composer Notice OR Message Input Form */}
+            {activeChatMode === 'direct' && activePartner && blockedUserIds.includes(activePartner.uid) ? (
+              <div className="shrink-0 p-4 bg-slate-100 border-t border-slate-200 text-center text-xs text-slate-600 flex items-center justify-center gap-2 font-medium pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <Ban className="w-4 h-4 text-rose-500 shrink-0" />
+                <span>You have blocked this account. Unblock to send messages.</span>
                 <button
                   type="button"
-                  disabled={isCompressingImage || !!editingMessage}
-                  onClick={() => imageInputRef.current?.click()}
-                  className="p-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 rounded-xl transition-colors cursor-pointer shrink-0"
-                  title="Attach photo / image"
+                  onClick={() => unblockUser(activePartner.uid)}
+                  className="font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer ml-1"
                 >
-                  <ImageIcon className="w-4 h-4 text-emerald-600" />
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isCompressingImage || !!editingMessage}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="p-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 rounded-xl transition-colors cursor-pointer shrink-0"
-                  title="Attach document / file (up to 400KB)"
-                >
-                  <Paperclip className="w-4 h-4 text-slate-600" />
-                </button>
-
-                <input
-                  ref={messageInputRef}
-                  type="text"
-                  value={messageInput}
-                  onChange={(e) => handleInputChange(e.target.value)}
-                  placeholder={
-                    isCompressingImage
-                      ? 'Optimizing photo...'
-                      : activeChatMode === 'channel'
-                      ? `Message #${activeChannel?.name}...`
-                      : activeChatMode === 'group'
-                      ? `Message group ${activeGroup?.name}...`
-                      : `Message ${activePartner?.displayName || 'member'}...`
-                  }
-                  maxLength={1000}
-                  className="flex-1 px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
-                />
-
-                <button
-                  type="submit"
-                  disabled={
-                    isSending ||
-                    isCompressingImage ||
-                    (!messageInput.trim() && !attachedImage && !attachedFile)
-                  }
-                  className="p-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-xl transition-colors cursor-pointer shrink-0 flex items-center justify-center min-w-10 shadow-sm"
-                  title={editingMessage ? 'Save changes' : 'Send message'}
-                >
-                  {editingMessage ? (
-                    <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
+                  Unblock Citizen
                 </button>
               </div>
-            </form>
+            ) : (
+              <form onSubmit={handleSendMessage} className="shrink-0 p-2.5 sm:p-3.5 border-t border-slate-200 bg-white sticky bottom-0 z-20 shadow-xs pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+
+                <input
+                  type="file"
+                  ref={imageInputRef}
+                  accept="image/*"
+                  onChange={handleChatImageSelect}
+                  className="hidden"
+                />
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".pdf,.doc,.docx,.txt,.csv,.json,.xls,.xlsx"
+                  onChange={handleChatFileSelect}
+                  className="hidden"
+                />
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isCompressingImage || !!editingMessage}
+                    onClick={() => imageInputRef.current?.click()}
+                    className="p-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 rounded-xl transition-colors cursor-pointer shrink-0"
+                    title="Attach photo / image"
+                  >
+                    <ImageIcon className="w-4 h-4 text-emerald-600" />
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isCompressingImage || !!editingMessage}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 rounded-xl transition-colors cursor-pointer shrink-0"
+                    title="Attach document / file (up to 400KB)"
+                  >
+                    <Paperclip className="w-4 h-4 text-slate-600" />
+                  </button>
+
+                  <input
+                    ref={messageInputRef}
+                    type="text"
+                    value={messageInput}
+                    onChange={(e) => handleInputChange(e.target.value)}
+                    placeholder={
+                      isCompressingImage
+                        ? 'Optimizing photo...'
+                        : activeChatMode === 'channel'
+                        ? `Message #${activeChannel?.name}...`
+                        : activeChatMode === 'group'
+                        ? `Message group ${activeGroup?.name}...`
+                        : `Message ${activePartner?.displayName || 'member'}...`
+                    }
+                    maxLength={1000}
+                    className="flex-1 px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={
+                      isSending ||
+                      isCompressingImage ||
+                      (!messageInput.trim() && !attachedImage && !attachedFile)
+                    }
+                    className="p-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-xl transition-colors cursor-pointer shrink-0 flex items-center justify-center min-w-10 shadow-sm"
+                    title={editingMessage ? 'Save changes' : 'Send message'}
+                  >
+                    {editingMessage ? (
+                      <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 space-y-4">
@@ -2593,6 +2742,90 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
           </div>
         </div>
       )}
+
+      {/* CONFIRM BLOCK DIRECT CHAT USER MODAL */}
+      {directUserToBlock && (
+        <div
+          onClick={() => setDirectUserToBlock(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-rose-200 animate-in zoom-in-95"
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-rose-100">
+              <h3 className="font-bold text-sm text-rose-600 flex items-center gap-1.5">
+                <Ban className="w-4 h-4" />
+                <span>Block {directUserToBlock.name}?</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDirectUserToBlock(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to block <strong>{directUserToBlock.name}</strong>? They will not be able to send you direct messages, and their posts will be hidden from your feed.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isBlockInProgress}
+                onClick={() => setDirectUserToBlock(null)}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isBlockInProgress}
+                onClick={async () => {
+                  setIsBlockInProgress(true);
+                  try {
+                    await blockUser(directUserToBlock.id);
+                    setDirectUserToBlock(null);
+                  } finally {
+                    setIsBlockInProgress(false);
+                  }
+                }}
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer flex items-center gap-1.5"
+              >
+                {isBlockInProgress ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Blocking...</span>
+                  </>
+                ) : (
+                  <>
+                    <Ban className="w-3.5 h-3.5" />
+                    <span>Yes, Block Citizen</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REPORT ACCOUNT MODAL */}
+      <ReportModal
+        isOpen={isDirectReportModalOpen}
+        onClose={() => setIsDirectReportModalOpen(false)}
+        target={
+          activePartner
+            ? {
+                type: 'user',
+                authorId: activePartner.uid,
+                authorName: activePartner.displayName,
+                snippet: `Citizen from ${activePartner.county || 'Kenya'}`
+              }
+            : null
+        }
+      />
     </div>
   );
 };

@@ -194,7 +194,9 @@ export async function addCommunityComment(
   postId: string,
   author: UserProfile,
   content: string,
-  mediaUrl?: string
+  mediaUrl?: string,
+  replyToCommentId?: string,
+  replyToAuthorName?: string
 ): Promise<string> {
   const commentId = `comment_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const commentRef = doc(db, POSTS_COLLECTION, postId, 'comments', commentId);
@@ -212,6 +214,14 @@ export async function addCommunityComment(
 
   if (mediaUrl) {
     commentPayload.mediaUrl = mediaUrl;
+  }
+
+  if (replyToCommentId) {
+    commentPayload.replyToCommentId = replyToCommentId;
+  }
+
+  if (replyToAuthorName) {
+    commentPayload.replyToAuthorName = replyToAuthorName;
   }
 
   try {
@@ -250,6 +260,8 @@ export function subscribeToPostComments(
           authorPhotoUrl: d.authorPhotoUrl || undefined,
           content: d.content || '',
           mediaUrl: d.mediaUrl || undefined,
+          replyToCommentId: d.replyToCommentId || undefined,
+          replyToAuthorName: d.replyToAuthorName || undefined,
           createdAt: d.createdAt?.toDate ? d.createdAt.toDate().toISOString() : new Date().toISOString(),
         };
       });

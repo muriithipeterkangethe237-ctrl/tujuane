@@ -1,5 +1,6 @@
 import React from 'react';
 import { Users, ShieldCheck, Heart, MessageSquare, Flame, Compass } from 'lucide-react';
+import { AppLogoIcon } from './AppLogoIcon';
 
 interface FooterProps {
   onSelectTab: (tab: string) => void;
@@ -14,10 +15,10 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTab }) => {
           <div className="md:col-span-2 space-y-3">
             <button
               onClick={() => onSelectTab('landing')}
-              className="flex items-center gap-2 group text-left cursor-pointer"
+              className="flex items-center gap-2.5 group text-left cursor-pointer"
             >
-              <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold transition-transform group-hover:scale-105">
-                <Users className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-lg bg-slate-950 p-0.5 border border-emerald-500/40 flex items-center justify-center transition-transform group-hover:scale-105 shadow-sm overflow-hidden shrink-0">
+                <AppLogoIcon className="w-full h-full" />
               </div>
               <span className="text-base font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
                 TUJUANE

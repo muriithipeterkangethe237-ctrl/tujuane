@@ -20,9 +20,12 @@ export interface SafetyScanResult {
 
 export interface SafetyReport {
   id: string;
-  postId: string;
-  postTitle: string;
+  targetType?: 'post' | 'user' | 'message';
+  postId?: string;
+  postTitle?: string;
   postSnippet?: string;
+  targetUserId?: string;
+  targetUserName?: string;
   authorId: string;
   authorName: string;
   reporterId: string;
@@ -34,6 +37,7 @@ export interface SafetyReport {
   resolvedAt?: string;
   actionTaken?: string;
 }
+
 
 export interface ModeratorActionLog {
   id: string;

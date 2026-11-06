@@ -22,11 +22,26 @@ import {
   OperationType
 } from '../firebase';
 import { UserProfile } from '../types/chat';
+import {
+  blockUser as blockUserApi,
+  unblockUser as unblockUserApi,
+  muteUser as muteUserApi,
+  unmuteUser as unmuteUserApi,
+  getCachedBlockedUsers,
+  getCachedMutedUsers,
+  subscribeBlockedAndMuted
+} from '../services/blockMuteService';
 
 interface AuthContextType {
   currentUser: User | null;
   userProfile: UserProfile | null;
   loading: boolean;
+  blockedUserIds: string[];
+  mutedUserIds: string[];
+  blockUser: (targetUserId: string) => Promise<void>;
+  unblockUser: (targetUserId: string) => Promise<void>;
+  muteUser: (targetUserId: string) => Promise<void>;
+  unmuteUser: (targetUserId: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   registerWithEmailPassword: (
     email: string,
@@ -94,6 +109,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState<'signin' | 'register'>('signin');
 
+  // Blocked and Muted lists
+  const [blockedUserIds, setBlockedUserIds] = useState<string[]>(() => {
+    return currentUser ? getCachedBlockedUsers(currentUser.uid) : [];
+  });
+  const [mutedUserIds, setMutedUserIds] = useState<string[]>(() => {
+    return currentUser ? getCachedMutedUsers(currentUser.uid) : [];
+  });
+
+  // Listen to blocked and muted list updates in real time
+  useEffect(() => {
+    if (!currentUser) {
+      setBlockedUserIds([]);
+      setMutedUserIds([]);
+      return;
+    }
+    const unsub = subscribeBlockedAndMuted(currentUser.uid, ({ blockedUserIds: b, mutedUserIds: m }) => {
+      setBlockedUserIds(b);
+      setMutedUserIds(m);
+    });
+    return () => unsub();
+  }, [currentUser]);
+
   const openAuthModal = (mode: 'signin' | 'register' = 'signin') => {
     setAuthModalInitialMode(mode);
     setIsAuthModalOpen(true);
@@ -119,12 +156,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           constituency: data.constituency || undefined,
           bio: data.bio || undefined,
           occupation: data.occupation || undefined,
+          blockedUserIds: Array.isArray(data.blockedUserIds) ? data.blockedUserIds : [],
+          mutedUserIds: Array.isArray(data.mutedUserIds) ? data.mutedUserIds : [],
           isOnline: true,
           lastSeen: new Date().toISOString(),
           createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString()
         };
         setUserProfile(profile);
         setCachedSession(profile);
+        if (profile.blockedUserIds) setBlockedUserIds(profile.blockedUserIds);
+        if (profile.mutedUserIds) setMutedUserIds(profile.mutedUserIds);
 
         // Update presence non-blockingly
         updateDoc(userDocRef, {
@@ -141,6 +182,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: user.email || '',
           photoURL: user.photoURL || undefined,
           county: 'Nairobi',
+          blockedUserIds: [],
+          mutedUserIds: [],
           isOnline: true,
           lastSeen: new Date().toISOString(),
           createdAt: new Date().toISOString()
@@ -152,6 +195,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: newProfile.email,
           photoURL: newProfile.photoURL || '',
           county: newProfile.county,
+          blockedUserIds: [],
+          mutedUserIds: [],
           isOnline: true,
           lastSeen: serverTimestamp(),
           createdAt: serverTimestamp()
@@ -172,6 +217,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: user.email || '',
         photoURL: user.photoURL || undefined,
         county: 'Nairobi',
+        blockedUserIds: [],
+        mutedUserIds: [],
         isOnline: true,
         createdAt: new Date().toISOString()
       };
@@ -327,7 +374,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!currentUser || !userProfile) return;
     const userDocRef = doc(db, 'users', currentUser.uid);
     try {
-      const payload: any = {};
+      const payload: any = {
+        lastSeen: serverTimestamp()
+      };
       if (updates.displayName !== undefined) payload.displayName = updates.displayName.trim();
       if (updates.photoURL !== undefined) payload.photoURL = updates.photoURL;
       if (updates.county !== undefined) payload.county = updates.county;
@@ -335,25 +384,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (updates.bio !== undefined) payload.bio = updates.bio.trim();
       if (updates.occupation !== undefined) payload.occupation = updates.occupation.trim();
 
-      await updateDoc(userDocRef, payload);
+      // Use setDoc with merge: true so it never throws if the document doesn't exist
+      await setDoc(userDocRef, payload, { merge: true });
 
+      // Guard Firebase Auth updateProfile: Only pass photoURL if it's an HTTP/HTTPS URL under 2000 chars.
+      // Base64 photos are stored safely in Firestore, preventing the fatal auth/invalid-photo-url error.
       if (currentUser) {
         try {
-          await updateProfile(currentUser, {
-            displayName: payload.displayName || currentUser.displayName,
-            photoURL: payload.photoURL || currentUser.photoURL
-          });
-        } catch {
-          // ignore non-fatal Auth credential sync error
+          const authUpdates: { displayName?: string; photoURL?: string } = {};
+          if (payload.displayName) authUpdates.displayName = payload.displayName;
+          if (
+            payload.photoURL &&
+            (payload.photoURL.startsWith('http://') || payload.photoURL.startsWith('https://')) &&
+            payload.photoURL.length <= 2000
+          ) {
+            authUpdates.photoURL = payload.photoURL;
+          }
+          if (Object.keys(authUpdates).length > 0) {
+            await updateProfile(currentUser, authUpdates);
+          }
+        } catch (authErr) {
+          console.warn('Firebase Auth user profile sync notice (non-fatal):', authErr);
         }
       }
 
-      const updated = { ...userProfile, ...payload };
+      const updated = {
+        ...userProfile,
+        displayName: payload.displayName !== undefined ? payload.displayName : userProfile.displayName,
+        photoURL: payload.photoURL !== undefined ? payload.photoURL : userProfile.photoURL,
+        county: payload.county !== undefined ? payload.county : userProfile.county,
+        constituency: payload.constituency !== undefined ? payload.constituency : userProfile.constituency,
+        bio: payload.bio !== undefined ? payload.bio : userProfile.bio,
+        occupation: payload.occupation !== undefined ? payload.occupation : userProfile.occupation
+      };
       setUserProfile(updated);
       setCachedSession(updated);
     } catch (err) {
+      console.error('Failed to update full profile:', err);
       handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.uid}`);
     }
+  };
+
+  const blockUser = async (targetUserId: string) => {
+    if (!currentUser) return;
+    setBlockedUserIds((prev) => (prev.includes(targetUserId) ? prev : [...prev, targetUserId]));
+    await blockUserApi(currentUser.uid, targetUserId);
+  };
+
+  const unblockUser = async (targetUserId: string) => {
+    if (!currentUser) return;
+    setBlockedUserIds((prev) => prev.filter((id) => id !== targetUserId));
+    await unblockUserApi(currentUser.uid, targetUserId);
+  };
+
+  const muteUser = async (targetUserId: string) => {
+    if (!currentUser) return;
+    setMutedUserIds((prev) => (prev.includes(targetUserId) ? prev : [...prev, targetUserId]));
+    await muteUserApi(currentUser.uid, targetUserId);
+  };
+
+  const unmuteUser = async (targetUserId: string) => {
+    if (!currentUser) return;
+    setMutedUserIds((prev) => prev.filter((id) => id !== targetUserId));
+    await unmuteUserApi(currentUser.uid, targetUserId);
   };
 
   const registerWithEmailPassword = async (
@@ -379,6 +472,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: email.trim(),
       county: county || 'Nairobi',
       constituency: constituency || undefined,
+      blockedUserIds: [],
+      mutedUserIds: [],
       isOnline: true,
       lastSeen: new Date().toISOString(),
       createdAt: new Date().toISOString()
@@ -391,6 +486,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         photoURL: '',
         county: newProfile.county,
         constituency: newProfile.constituency || '',
+        blockedUserIds: [],
+        mutedUserIds: [],
         isOnline: true,
         lastSeen: serverTimestamp(),
         createdAt: serverTimestamp()
@@ -422,6 +519,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentUser,
         userProfile,
         loading,
+        blockedUserIds,
+        mutedUserIds,
+        blockUser,
+        unblockUser,
+        muteUser,
+        unmuteUser,
         loginWithGoogle,
         registerWithEmailPassword,
         loginWithEmailPassword,

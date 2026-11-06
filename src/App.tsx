@@ -567,8 +567,8 @@ function AppContent() {
         initialMode={authModalInitialMode}
       />
 
-      {/* Desktop & Mobile Footer - Completely hidden in chat for true full screen messaging panel */}
-      {activeTab !== 'chat' && (
+      {/* Desktop & Mobile Footer - Completely hidden in chat and feed for true distraction-free browsing */}
+      {activeTab !== 'chat' && activeTab !== 'community' && (
         <Footer
           onSelectTab={(tab) => {
             setActiveTab(tab);

@@ -61,7 +61,11 @@ import {
   AlertTriangle,
   ShieldAlert,
   ShieldCheck,
-  Info
+  Info,
+  Ban,
+  VolumeX,
+  Volume2,
+  MoreVertical
 } from 'lucide-react';
 
 interface CommunityFeedProps {
@@ -73,7 +77,17 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   onOpenDirectChatWithUser,
   onViewUserProfile
 }) => {
-  const { currentUser, userProfile, openAuthModal } = useAuth();
+  const {
+    currentUser,
+    userProfile,
+    openAuthModal,
+    blockedUserIds,
+    mutedUserIds,
+    blockUser,
+    unblockUser,
+    muteUser,
+    unmuteUser
+  } = useAuth();
 
   // Feed states
   const [posts, setPosts] = useState<CommunityPost[]>([]);
@@ -144,6 +158,11 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [reportDetails, setReportDetails] = useState('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [blockedSafetyResult, setBlockedSafetyResult] = useState<SafetyScanResult | null>(null);
+
+  // Block & Mute user states from Feed
+  const [openPostMenuId, setOpenPostMenuId] = useState<string | null>(null);
+  const [userToBlock, setUserToBlock] = useState<{ id: string; name: string } | null>(null);
+  const [isBlockingInProgress, setIsBlockingInProgress] = useState(false);
 
   const isDeveloper = !!currentUser?.email && currentUser.email.toLowerCase().trim() === 'muriithipeterkangethe237@gmail.com';
 
@@ -596,8 +615,51 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
   };
 
-  // Search and Audience filter
+  // Block & Mute actions
+  const handleConfirmBlockAuthor = async () => {
+    if (!userToBlock) return;
+    setIsBlockingInProgress(true);
+    try {
+      await blockUser(userToBlock.id);
+      triggerToast(`Blocked @${userToBlock.name}. Their posts and messages are now hidden.`);
+      setUserToBlock(null);
+      setOpenPostMenuId(null);
+    } catch (err) {
+      console.error('Failed to block author:', err);
+      triggerToast('Could not block author. Please try again.');
+    } finally {
+      setIsBlockingInProgress(false);
+    }
+  };
+
+  const handleToggleMuteAuthor = async (authorId: string, authorName: string) => {
+    try {
+      if (mutedUserIds.includes(authorId)) {
+        await unmuteUser(authorId);
+        triggerToast(`Unmuted notifications from ${authorName}`);
+      } else {
+        await muteUser(authorId);
+        triggerToast(`Muted notifications from ${authorName}`);
+      }
+      setOpenPostMenuId(null);
+    } catch (err) {
+      console.error('Failed to mute/unmute author:', err);
+      triggerToast('Failed to update mute setting.');
+    }
+  };
+
+  // Count posts hidden because of blocked users
+  const blockedPostsCount = useMemo(() => {
+    if (!blockedUserIds || blockedUserIds.length === 0) return 0;
+    return posts.filter((p) => blockedUserIds.includes(p.authorId)).length;
+  }, [posts, blockedUserIds]);
+
+  // Search, Audience and Block filter
   const filteredPosts = posts.filter((post) => {
+    // Hide discussions from blocked users
+    if (blockedUserIds && blockedUserIds.includes(post.authorId)) {
+      return false;
+    }
     if (feedAudience === 'following' && !followingIds.includes(post.authorId) && post.authorId !== currentUser?.uid) {
       return false;
     }
@@ -1146,6 +1208,19 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         </div>
       </div>
 
+      {/* Blocked Accounts Notice */}
+      {blockedPostsCount > 0 && (
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Ban className="w-4 h-4 text-slate-400 shrink-0" />
+            <span>
+              <strong>{blockedPostsCount}</strong> discussion{blockedPostsCount > 1 ? 's' : ''} from blocked citizen accounts are hidden from your feed.
+            </span>
+          </div>
+          <span className="text-[10px] text-slate-400 font-semibold">Feed Protected</span>
+        </div>
+      )}
+
       {/* Posts Stream */}
       <div className="space-y-4">
         {filteredPosts.length === 0 ? (
@@ -1318,7 +1393,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0 relative">
                       <span
                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${catMeta.bg}`}
                       >
@@ -1327,26 +1402,99 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         <span className="hidden sm:inline">{catMeta.label}</span>
                       </span>
 
-                      {/* Community Report Flag Button */}
+                      {/* Quick Community Report Flag Button */}
                       {currentUser && !isAuthor && (
                         <button
                           onClick={() => handleOpenReportModal(post)}
-                          className="p-1 text-slate-400 hover:text-amber-600 transition-colors rounded-lg cursor-pointer"
-                          title="Report content to community safety moderators"
+                          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                          title="Report discussion to civic moderators"
                         >
                           <Flag className="w-3.5 h-3.5" />
                         </button>
                       )}
 
-                      {/* Delete Post Button (Author OR Developer) */}
-                      {(isAuthor || isDeveloper) && (
-                        <button
-                          onClick={() => handleOpenDeleteModal(post)}
-                          className="p-1 text-slate-400 hover:text-rose-600 transition-colors rounded-lg cursor-pointer"
-                          title={isDeveloper && !isAuthor ? 'Developer: Remove post' : 'Delete my post'}
-                        >
-                          <Trash2 className="w-4 h-4 text-rose-500" />
-                        </button>
+                      {/* 3-Dots Action Dropdown Menu */}
+                      {currentUser && (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenPostMenuId(openPostMenuId === post.id ? null : post.id);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            title="More options"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+
+                          {openPostMenuId === post.id && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute right-0 top-full mt-1 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95 text-xs text-slate-700 space-y-0.5"
+                            >
+                              {!isAuthor && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleMuteAuthor(post.authorId, post.authorName)}
+                                    className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 font-medium cursor-pointer"
+                                  >
+                                    {mutedUserIds.includes(post.authorId) ? (
+                                      <>
+                                        <Volume2 className="w-3.5 h-3.5 text-amber-600" />
+                                        <span>Unmute @{post.authorName}</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                                        <span>Mute @{post.authorName}</span>
+                                      </>
+                                    )}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenPostMenuId(null);
+                                      setUserToBlock({ id: post.authorId, name: post.authorName });
+                                    }}
+                                    className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2 font-medium cursor-pointer"
+                                  >
+                                    <Ban className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>Block @{post.authorName}</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenPostMenuId(null);
+                                      handleOpenReportModal(post);
+                                    }}
+                                    className="w-full px-3 py-2 text-left hover:bg-amber-50 text-amber-800 flex items-center gap-2 font-medium cursor-pointer"
+                                  >
+                                    <Flag className="w-3.5 h-3.5 text-amber-600" />
+                                    <span>Report Post</span>
+                                  </button>
+                                </>
+                              )}
+
+                              {(isAuthor || isDeveloper) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenPostMenuId(null);
+                                    handleOpenDeleteModal(post);
+                                  }}
+                                  className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2 font-medium cursor-pointer border-t border-slate-100"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                  <span>{isDeveloper && !isAuthor ? 'Dev: Delete Post' : 'Delete My Post'}</span>
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2256,6 +2404,66 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer"
               >
                 {isSubmittingReport ? 'Submitting...' : 'Submit Report'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: CONFIRM BLOCK AUTHOR */}
+      {userToBlock && (
+        <div
+          onClick={() => setUserToBlock(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-rose-200 animate-in zoom-in-95"
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-rose-100">
+              <h3 className="font-bold text-sm text-rose-600 flex items-center gap-1.5">
+                <Ban className="w-4 h-4" />
+                <span>Block @{userToBlock.name}?</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setUserToBlock(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to block <strong>@{userToBlock.name}</strong>? Their discussions, comments, and messages will no longer appear on your feed or in your inbox.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isBlockingInProgress}
+                onClick={() => setUserToBlock(null)}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isBlockingInProgress}
+                onClick={handleConfirmBlockAuthor}
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer flex items-center gap-1.5"
+              >
+                {isBlockingInProgress ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Blocking...</span>
+                  </>
+                ) : (
+                  <>
+                    <Ban className="w-3.5 h-3.5" />
+                    <span>Yes, Block Citizen</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

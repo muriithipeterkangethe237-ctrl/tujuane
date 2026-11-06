@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
+import { AppLogoIcon } from './AppLogoIcon';
+
 interface HeaderProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
@@ -66,8 +68,8 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => setActiveTab('landing')}
             className="text-left flex items-center gap-2.5 group whitespace-nowrap shrink-0 cursor-pointer"
           >
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center text-white font-bold transition-transform group-hover:scale-105 shadow-xs">
-              <Users className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-slate-950 p-0.5 border border-emerald-500/40 flex items-center justify-center transition-transform group-hover:scale-105 shadow-md overflow-hidden relative shrink-0">
+              <AppLogoIcon className="w-full h-full" />
             </div>
             <div>
               <span className="text-lg font-extrabold tracking-tight text-slate-900 group-hover:text-emerald-700 transition-colors">

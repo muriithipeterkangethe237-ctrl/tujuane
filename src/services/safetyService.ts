@@ -28,7 +28,7 @@ export async function submitSafetyReport(
 ): Promise<string> {
   const reportId = `rep_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const reportRef = doc(db, REPORTS_COLLECTION, reportId);
-  const postRef = doc(db, POSTS_COLLECTION, params.postId);
+  const postRef = params.postId ? doc(db, POSTS_COLLECTION, params.postId) : null;
 
   const payload = {
     ...params,
@@ -40,16 +40,18 @@ export async function submitSafetyReport(
   try {
     await setDoc(reportRef, payload);
 
-    // Update post report stats & flag status
-    try {
-      await updateDoc(postRef, {
-        isFlagged: true,
-        safetyCategory: params.category,
-        safetyReason: params.details || `Reported for ${params.category}`,
-        moderationStatus: 'under_review'
-      });
-    } catch {
-      // Non-fatal if post doc fails update
+    // Update post report stats & flag status if applicable
+    if (postRef) {
+      try {
+        await updateDoc(postRef, {
+          isFlagged: true,
+          safetyCategory: params.category,
+          safetyReason: params.details || `Reported for ${params.category}`,
+          moderationStatus: 'under_review'
+        });
+      } catch {
+        // Non-fatal if post doc fails update
+      }
     }
 
     return reportId;

@@ -19,7 +19,12 @@ import {
   Upload,
   Trash2,
   User,
-  Info
+  Info,
+  Ban,
+  VolumeX,
+  Volume2,
+  Flag,
+  AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { UserProfile } from '../types/chat';
@@ -39,6 +44,7 @@ import {
 import { subscribeToCommunityPosts } from '../services/communityService';
 import { ALL_47_COUNTIES, getConstituenciesByCounty } from '../data/kenyaCounties';
 import { compressImage } from '../utils/imageCompressor';
+import { ReportModal } from './ReportModal';
 
 interface UserProfileModalProps {
   user: UserProfile;
@@ -65,7 +71,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   onStartDirectChat,
   onSelectPost
 }) => {
-  const { currentUser, userProfile, updateFullProfile } = useAuth();
+  const {
+    currentUser,
+    userProfile,
+    updateFullProfile,
+    blockedUserIds,
+    mutedUserIds,
+    blockUser,
+    unblockUser,
+    muteUser,
+    unmuteUser
+  } = useAuth();
   const isOwnProfile = currentUser?.uid === user.uid;
 
   // Social states
@@ -88,6 +104,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Moderation & safety states
+  const [isReportOpen, setIsReportOpen] = useState(false);
+  const [isSafetyActionPending, setIsSafetyActionPending] = useState(false);
+  const isBlocked = blockedUserIds.includes(user.uid);
+  const isMuted = mutedUserIds.includes(user.uid);
 
   // Real-time live presence tracking
   const [livePresence, setLivePresence] = useState<{
@@ -274,11 +297,42 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     }
   };
 
+  // Block / Unblock citizen
+  const handleToggleBlock = async () => {
+    if (!currentUser || isOwnProfile) return;
+    setIsSafetyActionPending(true);
+    try {
+      if (isBlocked) {
+        await unblockUser(user.uid);
+      } else {
+        await blockUser(user.uid);
+      }
+    } finally {
+      setIsSafetyActionPending(false);
+    }
+  };
+
+  // Mute / Unmute citizen
+  const handleToggleMute = async () => {
+    if (!currentUser || isOwnProfile) return;
+    setIsSafetyActionPending(true);
+    try {
+      if (isMuted) {
+        await unmuteUser(user.uid);
+      } else {
+        await muteUser(user.uid);
+      }
+    } finally {
+      setIsSafetyActionPending(false);
+    }
+  };
+
   // Save full profile edits
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isOwnProfile) return;
     setIsSaving(true);
+    setSaveError(null);
     try {
       await updateFullProfile({
         displayName: editName.trim() || user.displayName,
@@ -299,8 +353,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
       setIsEditing(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to update profile:', err);
+      setSaveError(err?.message || 'Failed to update profile. Please check your network and try again.');
     } finally {
       setIsSaving(false);
     }
@@ -553,77 +608,145 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 </div>
               </div>
 
-              {/* Non-own profile: Social Interaction Bar (Follow & Friend) */}
+              {/* Non-own profile: Social Interaction Bar (Follow & Friend) & Safety Controls */}
               {!isOwnProfile && currentUser && (
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-                  {/* Follow Button */}
-                  <button
-                    onClick={handleToggleFollow}
-                    disabled={isActionPending}
-                    className={`inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-                      isFollowing
-                        ? 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-rose-50 hover:text-rose-700'
-                        : isFollower
-                        ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'
-                        : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
-                    } disabled:opacity-50 shadow-2xs`}
-                  >
-                    {isFollowing ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Following</span>
-                      </>
-                    ) : isFollower ? (
-                      <>
-                        <Heart className="w-3.5 h-3.5" />
-                        <span>Follow Back</span>
-                      </>
-                    ) : (
-                      <>
-                        <Heart className="w-3.5 h-3.5" />
-                        <span>Follow Citizen</span>
-                      </>
-                    )}
-                  </button>
+                <div className="space-y-3 pt-2 border-t border-slate-100">
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Follow Button */}
+                    <button
+                      onClick={handleToggleFollow}
+                      disabled={isActionPending}
+                      className={`inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                        isFollowing
+                          ? 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-rose-50 hover:text-rose-700'
+                          : isFollower
+                          ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'
+                          : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
+                      } disabled:opacity-50 shadow-2xs`}
+                    >
+                      {isFollowing ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Following</span>
+                        </>
+                      ) : isFollower ? (
+                        <>
+                          <Heart className="w-3.5 h-3.5" />
+                          <span>Follow Back</span>
+                        </>
+                      ) : (
+                        <>
+                          <Heart className="w-3.5 h-3.5" />
+                          <span>Follow Citizen</span>
+                        </>
+                      )}
+                    </button>
 
-                  {/* Friend Request Button */}
-                  {friendshipStatus === 'friends' ? (
-                    <button
-                      onClick={handleRemoveFriend}
-                      disabled={isActionPending}
-                      className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-50 text-emerald-800 hover:bg-rose-50 hover:text-rose-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Friends ✓</span>
-                    </button>
-                  ) : friendshipStatus === 'pending_sent' ? (
-                    <button
-                      onClick={handleRemoveFriend}
-                      disabled={isActionPending}
-                      className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-amber-50 text-amber-800 hover:bg-rose-50 hover:text-rose-700 border border-amber-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      <Clock className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Request Sent</span>
-                    </button>
-                  ) : friendshipStatus === 'pending_received' ? (
-                    <button
-                      onClick={handleAcceptFriend}
-                      disabled={isActionPending}
-                      className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition-all cursor-pointer shadow-xs disabled:opacity-50"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Accept Friend Request</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleSendFriend}
-                      disabled={isActionPending}
-                      className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      <UserPlus className="w-3.5 h-3.5" />
-                      <span>Add Friend</span>
-                    </button>
-                  )}
+                    {/* Friend Request Button */}
+                    {friendshipStatus === 'friends' ? (
+                      <button
+                        onClick={handleRemoveFriend}
+                        disabled={isActionPending}
+                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-50 text-emerald-800 hover:bg-rose-50 hover:text-rose-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Friends ✓</span>
+                      </button>
+                    ) : friendshipStatus === 'pending_sent' ? (
+                      <button
+                        onClick={handleRemoveFriend}
+                        disabled={isActionPending}
+                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-amber-50 text-amber-800 hover:bg-rose-50 hover:text-rose-700 border border-amber-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Request Sent</span>
+                      </button>
+                    ) : friendshipStatus === 'pending_received' ? (
+                      <button
+                        onClick={handleAcceptFriend}
+                        disabled={isActionPending}
+                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Accept Friend Request</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleSendFriend}
+                        disabled={isActionPending}
+                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>Add Friend</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Citizen Safety & Moderation Controls (Block, Mute, Report) */}
+                  <div className="pt-1 pb-1 space-y-2">
+                    {isBlocked && (
+                      <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center gap-2">
+                        <Ban className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span className="font-medium">
+                          You have blocked this citizen. Their direct messages and posts are hidden from your feed.
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between gap-2 flex-wrap text-xs pt-1">
+                      {/* Mute/Unmute */}
+                      <button
+                        type="button"
+                        onClick={handleToggleMute}
+                        disabled={isSafetyActionPending}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer border text-[11px] ${
+                          isMuted
+                            ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                        }`}
+                        title={isMuted ? 'Unmute notifications from this citizen' : 'Silence notifications from this citizen'}
+                      >
+                        {isMuted ? (
+                          <>
+                            <VolumeX className="w-3.5 h-3.5 text-amber-600" />
+                            <span>Muted (Click to Unmute)</span>
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Mute Citizen</span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Block/Unblock */}
+                      <button
+                        type="button"
+                        onClick={handleToggleBlock}
+                        disabled={isSafetyActionPending}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer border text-[11px] ${
+                          isBlocked
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                            : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                        }`}
+                        title={isBlocked ? 'Unblock this citizen' : 'Block this citizen from contacting you'}
+                      >
+                        <Ban className="w-3.5 h-3.5" />
+                        <span>{isBlocked ? 'Unblock Account' : 'Block Account'}</span>
+                      </button>
+
+                      {/* Report */}
+                      <button
+                        type="button"
+                        onClick={() => setIsReportOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200 hover:border-rose-200 rounded-xl font-bold transition-all cursor-pointer text-[11px]"
+                        title="Report this citizen account to civic moderators"
+                      >
+                        <Flag className="w-3.5 h-3.5 text-rose-500" />
+                        <span>Report Account</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -856,11 +979,24 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 </div>
               )}
 
+              {saveError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium rounded-xl flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-bold">Could not save profile changes</p>
+                    <p className="text-[11px] text-rose-700 mt-0.5">{saveError}</p>
+                  </div>
+                </div>
+              )}
+
               {/* Submit Action Buttons */}
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setIsEditing(false)}
+                  onClick={() => {
+                    setIsEditing(false);
+                    setSaveError(null);
+                  }}
                   className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
                 >
                   Cancel
@@ -886,7 +1022,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             {isEditing ? (
               <button
                 type="button"
-                onClick={() => setIsEditing(false)}
+                onClick={() => {
+                  setIsEditing(false);
+                  setSaveError(null);
+                }}
                 className="px-3.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl transition-colors cursor-pointer"
               >
                 Cancel Edit
@@ -906,6 +1045,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Reusable Report Modal for reporting citizen account */}
+      <ReportModal
+        isOpen={isReportOpen}
+        onClose={() => setIsReportOpen(false)}
+        target={{
+          type: 'user',
+          authorId: user.uid,
+          authorName: user.displayName,
+          snippet: user.bio || `Citizen representing ${user.county || 'Kenya'}`
+        }}
+      />
     </div>
   );
 };

@@ -48,6 +48,8 @@ export interface CommunityComment {
   authorPhotoUrl?: string;
   content: string;
   mediaUrl?: string;
+  replyToCommentId?: string;
+  replyToAuthorName?: string;
   createdAt: string;
 }
 

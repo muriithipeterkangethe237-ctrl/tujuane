@@ -9,8 +9,11 @@ export interface UserProfile {
   occupation?: string;
   isOnline?: boolean;
   lastSeen?: string;
+  blockedUserIds?: string[];
+  mutedUserIds?: string[];
   createdAt: string;
 }
+
 
 export interface HotspotReference {
   id: string;
