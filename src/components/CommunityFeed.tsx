@@ -65,7 +65,8 @@ import {
   Ban,
   VolumeX,
   Volume2,
-  MoreVertical
+  MoreVertical,
+  CornerUpLeft
 } from 'lucide-react';
 
 interface CommunityFeedProps {
@@ -116,6 +117,11 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [commentInput, setCommentInput] = useState('');
   const [commentImage, setCommentImage] = useState<string | null>(null);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [replyingToComment, setReplyingToComment] = useState<{
+    commentId: string;
+    authorName: string;
+    authorId: string;
+  } | null>(null);
 
   // Lightbox Modal state
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string; author: string } | null>(null);
@@ -493,11 +499,43 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     setIsSubmittingComment(true);
     const commentText = commentInput.trim();
     try {
-      await addCommunityComment(postId, userProfile, commentText, commentImage || undefined);
+      await addCommunityComment(
+        postId,
+        userProfile,
+        commentText,
+        commentImage || undefined,
+        replyingToComment?.commentId,
+        replyingToComment?.authorName
+      );
       
+      // Notify comment author if replying to a specific comment
+      if (
+        replyingToComment &&
+        replyingToComment.authorId &&
+        replyingToComment.authorId !== currentUser.uid
+      ) {
+        sendUserNotification({
+          userId: replyingToComment.authorId,
+          category: 'post_interaction',
+          type: 'post_comment',
+          title: 'Reply to your Comment',
+          message: `${userProfile.displayName} replied: "${commentText.slice(0, 60)}${commentText.length > 60 ? '...' : ''}"`,
+          postId,
+          actorId: currentUser.uid,
+          actorName: userProfile.displayName,
+          actorPhoto: userProfile.photoURL,
+          actorCounty: userProfile.county
+        }).catch(() => {});
+      }
+
       // Notify post author
       const targetPost = posts.find((p) => p.id === postId);
-      if (targetPost && targetPost.authorId && targetPost.authorId !== currentUser.uid) {
+      if (
+        targetPost &&
+        targetPost.authorId &&
+        targetPost.authorId !== currentUser.uid &&
+        (!replyingToComment || replyingToComment.authorId !== targetPost.authorId)
+      ) {
         sendUserNotification({
           userId: targetPost.authorId,
           category: 'post_interaction',
@@ -510,11 +548,12 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           actorName: userProfile.displayName,
           actorPhoto: userProfile.photoURL,
           actorCounty: userProfile.county
-        });
+        }).catch(() => {});
       }
 
       setCommentInput('');
       setCommentImage(null);
+      setReplyingToComment(null);
       if (commentFileInputRef.current) commentFileInputRef.current.value = '';
     } catch (err) {
       console.error('Error posting comment:', err);
@@ -1654,31 +1693,77 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                             key={comment.id}
                             className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2"
                           >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-between gap-2">
+                              {/* Comment Author - Click to view profile */}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onViewUserProfile?.({
+                                    uid: comment.authorId,
+                                    displayName: comment.authorName,
+                                    photoURL: comment.authorPhotoUrl,
+                                    email: '',
+                                    county: 'Kenya Citizen',
+                                    createdAt: ''
+                                  })
+                                }
+                                className="flex items-center gap-2 hover:opacity-85 transition-opacity text-left cursor-pointer group"
+                                title={`View ${comment.authorName}'s citizen profile`}
+                              >
                                 {comment.authorPhotoUrl ? (
                                   <img
                                     src={comment.authorPhotoUrl}
                                     alt={comment.authorName}
-                                    className="w-6 h-6 rounded-full object-cover"
+                                    className="w-6 h-6 rounded-full object-cover ring-1 ring-slate-200"
                                   />
                                 ) : (
-                                  <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px]">
+                                  <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-[10px]">
                                     {comment.authorName.charAt(0)}
                                   </div>
                                 )}
-                                <span className="font-bold text-xs text-slate-900">
-                                  {comment.authorName}
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-xs text-slate-900 group-hover:text-emerald-700 transition-colors">
+                                    {comment.authorName}
+                                  </span>
+                                  {comment.replyToAuthorName && (
+                                    <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded-md font-medium">
+                                      <CornerUpLeft className="w-2.5 h-2.5" />
+                                      <span>@{comment.replyToAuthorName}</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-slate-400">
+                                  {comment.createdAt
+                                    ? new Date(comment.createdAt).toLocaleTimeString([], {
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })
+                                    : ''}
                                 </span>
+
+                                {/* Reply to this specific comment */}
+                                {currentUser && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setReplyingToComment({
+                                        commentId: comment.id,
+                                        authorName: comment.authorName,
+                                        authorId: comment.authorId
+                                      });
+                                      setCommentInput(`@${comment.authorName} `);
+                                    }}
+                                    className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer flex items-center gap-0.5"
+                                    title={`Reply to ${comment.authorName}`}
+                                  >
+                                    <CornerUpLeft className="w-3 h-3" />
+                                    <span>Reply</span>
+                                  </button>
+                                )}
                               </div>
-                              <span className="text-[10px] text-slate-400">
-                                {comment.createdAt
-                                  ? new Date(comment.createdAt).toLocaleTimeString([], {
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })
-                                  : ''}
-                              </span>
                             </div>
 
                             <p className="text-xs text-slate-700 leading-relaxed pl-8">
@@ -1708,7 +1793,28 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
                     {/* Comment input form */}
                     {currentUser ? (
-                      <div className="pt-2">
+                      <div className="pt-2 space-y-1.5">
+                        {/* Replying-To Banner */}
+                        {replyingToComment && (
+                          <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 animate-in fade-in">
+                            <div className="flex items-center gap-1.5">
+                              <CornerUpLeft className="w-3.5 h-3.5 text-emerald-700" />
+                              <span>Replying to <strong>@{replyingToComment.authorName}</strong></span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReplyingToComment(null);
+                                setCommentInput('');
+                              }}
+                              className="text-emerald-700 hover:text-emerald-900 p-0.5 rounded cursor-pointer"
+                              title="Cancel reply"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+
                         <div className="flex items-start gap-2">
                           <input
                             type="text"
@@ -1720,7 +1826,11 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                 handleSubmitComment(post.id);
                               }
                             }}
-                            placeholder="Write a reply to the community..."
+                            placeholder={
+                              replyingToComment
+                                ? `Reply to @${replyingToComment.authorName}...`
+                                : 'Write a reply to the community...'
+                            }
                             className="flex-1 px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
                           />
 

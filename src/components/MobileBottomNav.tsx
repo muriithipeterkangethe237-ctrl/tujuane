@@ -6,6 +6,7 @@ interface MobileBottomNavProps {
   setActiveTab: (tab: string) => void;
   pendingFriendRequestsCount?: number;
   unreadNotificationsCount?: number;
+  unreadMessagesCount?: number;
   onOpenNotifications?: () => void;
 }
 
@@ -14,6 +15,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   setActiveTab,
   pendingFriendRequestsCount = 0,
   unreadNotificationsCount = 0,
+  unreadMessagesCount = 0,
   onOpenNotifications
 }) => {
   const tabs = [
@@ -42,9 +44,13 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                     isActive ? 'text-emerald-700 stroke-[2.5]' : 'text-slate-400'
                   }`}
                 />
-                {tab.id === 'chat' && (
+                {tab.id === 'chat' && unreadMessagesCount > 0 ? (
+                  <span className="absolute -top-1 -right-2 bg-emerald-600 text-white font-black text-[9px] min-w-4 h-4 px-1 rounded-full flex items-center justify-center ring-2 ring-white animate-pulse shadow-xs">
+                    {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                  </span>
+                ) : tab.id === 'chat' ? (
                   <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white" />
-                )}
+                ) : null}
                 {tab.id === 'members' && pendingFriendRequestsCount > 0 && (
                   <span className="absolute -top-1 -right-2 bg-amber-500 text-slate-950 font-black text-[9px] w-4 h-4 rounded-full flex items-center justify-center ring-2 ring-white">
                     {pendingFriendRequestsCount > 9 ? '9+' : pendingFriendRequestsCount}

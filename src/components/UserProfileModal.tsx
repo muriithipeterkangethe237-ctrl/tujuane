@@ -52,6 +52,7 @@ interface UserProfileModalProps {
   onClose: () => void;
   onStartDirectChat: (targetUser: UserProfile) => void;
   onSelectPost?: (postId: string) => void;
+  onProfileUpdated?: (updated: UserProfile) => void;
 }
 
 // Preset citizen avatar suggestions
@@ -69,7 +70,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   isOpen,
   onClose,
   onStartDirectChat,
-  onSelectPost
+  onSelectPost,
+  onProfileUpdated
 }) => {
   const {
     currentUser,
@@ -83,6 +85,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     unmuteUser
   } = useAuth();
   const isOwnProfile = currentUser?.uid === user.uid;
+  const currentTargetUser = isOwnProfile && userProfile ? userProfile : user;
+  const [localUser, setLocalUser] = useState<UserProfile>(currentTargetUser);
+
+  useEffect(() => {
+    const fresh = isOwnProfile && userProfile ? userProfile : user;
+    setLocalUser(fresh);
+  }, [user, userProfile, isOwnProfile]);
 
   // Social states
   const [followingList, setFollowingList] = useState<FollowRelationship[]>([]);
@@ -94,12 +103,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   // Edit Mode state (only for own profile)
   const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState(user.displayName || '');
-  const [editPhotoURL, setEditPhotoURL] = useState<string>(user.photoURL || '');
-  const [editCounty, setEditCounty] = useState(user.county || 'Nairobi');
-  const [editConstituency, setEditConstituency] = useState(user.constituency || '');
-  const [editBio, setEditBio] = useState(user.bio || '');
-  const [editOccupation, setEditOccupation] = useState(user.occupation || '');
+  const [editName, setEditName] = useState(currentTargetUser.displayName || '');
+  const [editPhotoURL, setEditPhotoURL] = useState<string>(currentTargetUser.photoURL || '');
+  const [editCounty, setEditCounty] = useState(currentTargetUser.county || 'Nairobi');
+  const [editConstituency, setEditConstituency] = useState(currentTargetUser.constituency || '');
+  const [editBio, setEditBio] = useState(currentTargetUser.bio || '');
+  const [editOccupation, setEditOccupation] = useState(currentTargetUser.occupation || '');
   const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -109,8 +118,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   // Moderation & safety states
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isSafetyActionPending, setIsSafetyActionPending] = useState(false);
-  const isBlocked = blockedUserIds.includes(user.uid);
-  const isMuted = mutedUserIds.includes(user.uid);
+  const isBlocked = blockedUserIds.includes(localUser.uid);
+  const isMuted = mutedUserIds.includes(localUser.uid);
 
   // Real-time live presence tracking
   const [livePresence, setLivePresence] = useState<{
@@ -118,39 +127,41 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     lastSeen?: string;
     lastSeenText: string;
   }>({
-    isOnline: isUserOnline(user.isOnline, user.lastSeen),
-    lastSeen: user.lastSeen,
-    lastSeenText: formatLastSeen(user.lastSeen, isUserOnline(user.isOnline, user.lastSeen))
+    isOnline: isUserOnline(localUser.isOnline, localUser.lastSeen),
+    lastSeen: localUser.lastSeen,
+    lastSeenText: formatLastSeen(localUser.lastSeen, isUserOnline(localUser.isOnline, localUser.lastSeen))
   });
 
   useEffect(() => {
-    if (!isOpen || !user?.uid) return;
+    if (!isOpen || !localUser?.uid) return;
     setLivePresence({
-      isOnline: isUserOnline(user.isOnline, user.lastSeen),
-      lastSeen: user.lastSeen,
-      lastSeenText: formatLastSeen(user.lastSeen, isUserOnline(user.isOnline, user.lastSeen))
+      isOnline: isUserOnline(localUser.isOnline, localUser.lastSeen),
+      lastSeen: localUser.lastSeen,
+      lastSeenText: formatLastSeen(localUser.lastSeen, isUserOnline(localUser.isOnline, localUser.lastSeen))
     });
-    const unsub = subscribeToUserPresence(user.uid, (presence) => {
+    const unsub = subscribeToUserPresence(localUser.uid, (presence) => {
       setLivePresence(presence);
     });
     return () => unsub();
-  }, [isOpen, user?.uid, user.isOnline, user.lastSeen]);
+  }, [isOpen, localUser?.uid, localUser.isOnline, localUser.lastSeen]);
 
   // Social action progress
   const [isActionPending, setIsActionPending] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync edit form with user changes
+  // Sync edit form with localUser changes only when switching users or entering edit mode
   useEffect(() => {
-    setEditName(user.displayName || '');
-    setEditPhotoURL(user.photoURL || '');
-    setEditCounty(user.county || 'Nairobi');
-    setEditConstituency(user.constituency || '');
-    setEditBio(user.bio || '');
-    setEditOccupation(user.occupation || '');
-    setPhotoError(null);
-  }, [user]);
+    if (isOpen) {
+      setEditName(localUser.displayName || '');
+      setEditPhotoURL(localUser.photoURL || '');
+      setEditCounty(localUser.county || 'Nairobi');
+      setEditConstituency(localUser.constituency || '');
+      setEditBio(localUser.bio || '');
+      setEditOccupation(localUser.occupation || '');
+      setPhotoError(null);
+    }
+  }, [isOpen, localUser.uid]);
 
   // Available constituencies for selected county
   const availableConstituencies = getConstituenciesByCounty(editCounty);
@@ -334,21 +345,35 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     setIsSaving(true);
     setSaveError(null);
     try {
+      const finalName = editName.trim() || localUser.displayName;
+      const finalPhoto = editPhotoURL;
+      const finalCounty = editCounty;
+      const finalConstituency = editConstituency;
+      const finalBio = editBio.trim();
+      const finalOccupation = editOccupation.trim();
+
       await updateFullProfile({
-        displayName: editName.trim() || user.displayName,
-        photoURL: editPhotoURL,
-        county: editCounty,
-        constituency: editConstituency,
-        bio: editBio.trim(),
-        occupation: editOccupation.trim()
+        displayName: finalName,
+        photoURL: finalPhoto,
+        county: finalCounty,
+        constituency: finalConstituency,
+        bio: finalBio,
+        occupation: finalOccupation
       });
-      // also update user in parent viewing state
-      user.displayName = editName.trim() || user.displayName;
-      user.photoURL = editPhotoURL;
-      user.county = editCounty;
-      user.constituency = editConstituency;
-      user.bio = editBio.trim();
-      user.occupation = editOccupation.trim();
+
+      // Instantly update local state in modal
+      const updatedUser: UserProfile = {
+        ...localUser,
+        displayName: finalName,
+        photoURL: finalPhoto ? finalPhoto : undefined,
+        county: finalCounty,
+        constituency: finalConstituency || undefined,
+        bio: finalBio || undefined,
+        occupation: finalOccupation || undefined
+      };
+
+      setLocalUser(updatedUser);
+      onProfileUpdated?.(updatedUser);
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -361,7 +386,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     }
   };
 
-  const activePhoto = isEditing ? editPhotoURL : user.photoURL;
+  const activePhoto = isEditing ? editPhotoURL : localUser.photoURL;
 
   return (
     <div
@@ -420,12 +445,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 {activePhoto ? (
                   <img
                     src={activePhoto}
-                    alt={user.displayName}
+                    alt={localUser.displayName}
                     className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl object-cover border-4 border-white shadow-md bg-white"
                   />
                 ) : (
                   <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-emerald-100 text-emerald-800 font-extrabold flex items-center justify-center text-3xl border-4 border-white shadow-md">
-                    {user.displayName.charAt(0).toUpperCase()}
+                    {localUser.displayName.charAt(0).toUpperCase()}
                   </div>
                 )}
 
@@ -462,7 +487,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                    {isEditing ? editName || 'Citizen Member' : user.displayName}
+                    {isEditing ? editName || 'Citizen Member' : localUser.displayName}
                   </h2>
                   {isOwnProfile && (
                     <span className="text-[10px] bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-full border border-slate-200">
@@ -474,8 +499,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
                   <MapPin className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
                   <span>
-                    {(isEditing ? editConstituency : user.constituency) ? `${isEditing ? editConstituency : user.constituency}, ` : ''}
-                    {(isEditing ? editCounty : user.county) || 'National'}
+                    {(isEditing ? editConstituency : localUser.constituency) ? `${isEditing ? editConstituency : localUser.constituency}, ` : ''}
+                    {(isEditing ? editCounty : localUser.county) || 'National'}
                   </span>
                 </div>
               </div>
@@ -498,7 +523,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               ) : (
                 <button
                   onClick={() => {
-                    onStartDirectChat(user);
+                    onStartDirectChat(localUser);
                     onClose();
                   }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shadow-xs"
@@ -526,7 +551,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             </div>
             <div>
               <div className="font-extrabold text-base sm:text-lg text-slate-900">
-                {user.county || 'All Kenya'}
+                {localUser.county || 'All Kenya'}
               </div>
               <div className="text-[11px] font-semibold text-slate-500 truncate">Home Base</div>
             </div>
@@ -544,7 +569,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       About Me
                     </span>
                   </div>
-                  {isOwnProfile && !user.bio && (
+                  {isOwnProfile && !localUser.bio && (
                     <button
                       onClick={() => setIsEditing(true)}
                       className="text-xs font-semibold text-emerald-700 hover:underline cursor-pointer"
@@ -555,9 +580,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 </div>
 
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-700 space-y-2.5">
-                  {user.bio ? (
+                  {localUser.bio ? (
                     <p className="leading-relaxed font-normal whitespace-pre-line text-slate-800">
-                      {user.bio}
+                      {localUser.bio}
                     </p>
                   ) : (
                     <p className="text-slate-400 italic">
@@ -567,10 +592,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     </p>
                   )}
 
-                  {user.occupation && (
+                  {localUser.occupation && (
                     <div className="pt-1.5 border-t border-slate-200/60 flex items-center gap-1.5 text-[11px] text-emerald-800 font-bold">
                       <Briefcase className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{user.occupation}</span>
+                      <span>{localUser.occupation}</span>
                     </div>
                   )}
                 </div>
@@ -583,7 +608,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   <div>
                     <div className="text-[10px] text-slate-400 font-semibold uppercase">Joined TUJUANE</div>
                     <div className="font-bold text-slate-800">
-                      {user.createdAt ? new Date(user.createdAt).toLocaleDateString([], { month: 'short', year: 'numeric' }) : 'Verified Member'}
+                      {localUser.createdAt ? new Date(localUser.createdAt).toLocaleDateString([], { month: 'short', year: 'numeric' }) : 'Verified Member'}
                     </div>
                   </div>
                 </div>
@@ -755,7 +780,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
                     <FileText className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Recent Discussions by {user.displayName.split(' ')[0]} ({userPosts.length})</span>
+                    <span>Recent Discussions by {localUser.displayName.split(' ')[0]} ({userPosts.length})</span>
                   </div>
                 </div>
 

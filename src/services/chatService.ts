@@ -10,6 +10,7 @@ import {
   onSnapshot,
   serverTimestamp,
   arrayUnion,
+  arrayRemove,
   writeBatch
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
@@ -221,20 +222,21 @@ export async function sendChatMessage(
       lastMessage: preview,
       lastMessageSenderId: sender.uid,
       lastMessageTimestamp: serverTimestamp(),
+      unreadBy: arrayUnion(recipientId),
       [`typingUsers.${sender.uid}`]: {
         isTyping: false,
         updatedAt: Date.now()
       }
     });
 
-    // Send real-time notification to the recipient
+    // Send real-time notification to the recipient without revealing private message text
     if (recipientId && recipientId !== sender.uid) {
       sendUserNotification({
         userId: recipientId,
         category: 'direct_chat',
         type: 'direct_message',
         title: `Message from ${sender.displayName || 'Citizen'}`,
-        message: preview,
+        message: 'New direct message',
         actorId: sender.uid,
         actorName: sender.displayName,
         actorPhoto: sender.photoURL,
@@ -297,7 +299,11 @@ export async function markMessagesAsRead(
   if (eligible.length === 0) return;
 
   try {
+    const chatRef = doc(db, 'chats', chatId);
     const batch = writeBatch(db);
+    batch.update(chatRef, {
+      unreadBy: arrayRemove(recipientId)
+    });
     for (const msg of eligible) {
       const msgRef = doc(db, 'chats', chatId, 'messages', msg.id);
       batch.update(msgRef, {
@@ -398,6 +404,7 @@ export function subscribeToUserChats(
             ? d.lastMessageTimestamp.toDate().toISOString()
             : undefined,
           typingUsers: d.typingUsers || {},
+          unreadBy: Array.isArray(d.unreadBy) ? d.unreadBy : [],
           createdAt: d.createdAt?.toDate ? d.createdAt.toDate().toISOString() : new Date().toISOString()
         };
       });

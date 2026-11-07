@@ -26,6 +26,7 @@ interface HeaderProps {
   pendingReportsCount?: number;
   pendingFriendRequestsCount?: number;
   unreadNotificationsCount?: number;
+  unreadMessagesCount?: number;
   onOpenNotifications?: () => void;
   onViewOwnProfile?: () => void;
 }
@@ -41,6 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
   pendingReportsCount = 0,
   pendingFriendRequestsCount = 0,
   unreadNotificationsCount = 0,
+  unreadMessagesCount = 0,
   onOpenNotifications,
   onViewOwnProfile
 }) => {
@@ -131,11 +133,22 @@ export const Header: React.FC<HeaderProps> = ({
                 : 'hover:text-slate-900'
             }`}
           >
-            <MessageSquare className="w-4 h-4 text-emerald-600" />
+            <div className="relative">
+              <MessageSquare className="w-4 h-4 text-emerald-600" />
+              {unreadMessagesCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-600 animate-ping ring-2 ring-white" />
+              )}
+            </div>
             <span>1-on-1 Chat</span>
-            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
-              Live
-            </span>
+            {unreadMessagesCount > 0 ? (
+              <span className="bg-emerald-600 text-white font-black text-[10px] px-1.5 py-0.2 rounded-full animate-pulse shadow-xs">
+                {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+              </span>
+            ) : (
+              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+                Live
+              </span>
+            )}
           </button>
 
           <button
@@ -265,15 +278,6 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
           )}
-
-          <button
-            onClick={() => setActiveTab('chat')}
-            className="md:hidden p-2 text-slate-700 hover:text-slate-900 relative"
-            aria-label="Community Chat"
-          >
-            <MessageSquare className="w-5 h-5" />
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500" />
-          </button>
         </div>
       </div>
     </header>

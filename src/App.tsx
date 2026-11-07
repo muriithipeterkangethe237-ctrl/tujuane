@@ -23,6 +23,7 @@ import { CommunityPost } from './types/community';
 import { subscribeToSafetyReports } from './services/safetyService';
 import { subscribeToIncomingFriendRequests } from './services/socialService';
 import { subscribeToCommunityPosts } from './services/communityService';
+import { subscribeToUserChats } from './services/chatService';
 import {
   subscribeToUserNotifications,
   calculateAccountStanding
@@ -48,14 +49,14 @@ function AppContent() {
   // Profile Viewing state
   const [viewingProfileUser, setViewingProfileUser] = useState<UserProfile | null>(null);
 
-  // Badge counters for safety reports and friend requests
+  // Badge counters for safety reports, friend requests, and unread chat messages
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
   const [pendingFriendRequestsCount, setPendingFriendRequestsCount] = useState<number>(0);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState<number>(0);
 
   // Direct chat target user when clicking "Chat" from Feed or Members Directory
   const [directChatTargetUser, setDirectChatTargetUser] = useState<UserProfile | null>(null);
   const [isChatThreadOpen, setIsChatThreadOpen] = useState(false);
-
 
   // Notification Channel states
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -89,18 +90,26 @@ function AppContent() {
     return () => unsub();
   }, [currentUser]);
 
-  // Calculate real-time account standing based on posts and notifications
+  // Subscribe to real-time user direct chats to display unread badge on Chat icon
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      setUnreadMessagesCount(0);
+      return;
+    }
 
-    const unsub = subscribeToCommunityPosts({}, (posts) => {
-      const standing = calculateAccountStanding(currentUser.uid, posts, userNotifications);
-      setAccountStanding(standing);
+    const unsub = subscribeToUserChats(currentUser.uid, (chats) => {
+      const unreadCount = chats.filter(
+        (c) => Array.isArray(c.unreadBy) && c.unreadBy.includes(currentUser.uid)
+      ).length;
+      setUnreadMessagesCount(unreadCount);
     });
     return () => unsub();
-  }, [currentUser, userNotifications]);
+  }, [currentUser]);
 
-  const unreadNotificationsCount = userNotifications.filter((n) => !n.read).length;
+  // Notifications count for bell (message notifications appear as badge on the chats icon)
+  const unreadNotificationsCount = userNotifications.filter(
+    (n) => !n.read && n.category !== 'direct_chat'
+  ).length;
 
   // Keep viewingProfileUser in sync if own profile was updated
   useEffect(() => {
@@ -342,6 +351,7 @@ function AppContent() {
         pendingReportsCount={pendingReportsCount}
         pendingFriendRequestsCount={pendingFriendRequestsCount}
         unreadNotificationsCount={unreadNotificationsCount}
+        unreadMessagesCount={unreadMessagesCount}
         onOpenNotifications={openNotificationsModal}
         onViewOwnProfile={() => {
           if (userProfile) {
@@ -527,12 +537,15 @@ function AppContent() {
       {/* Citizen Profile Viewing & Editing Modal */}
       {viewingProfileUser && (
         <UserProfileModal
-          user={viewingProfileUser}
+          user={viewingProfileUser.uid === userProfile?.uid && userProfile ? userProfile : viewingProfileUser}
           isOpen={!!viewingProfileUser}
           onClose={() => setViewingProfileUser(null)}
           onStartDirectChat={handleStartChatWithUser}
           onSelectPost={(_postId) => {
             setActiveTab('community');
+          }}
+          onProfileUpdated={(updatedProfile) => {
+            setViewingProfileUser(updatedProfile);
           }}
         />
       )}
@@ -583,6 +596,7 @@ function AppContent() {
           activeTab={activeTab}
           pendingFriendRequestsCount={pendingFriendRequestsCount}
           unreadNotificationsCount={unreadNotificationsCount}
+          unreadMessagesCount={unreadMessagesCount}
           onOpenNotifications={openNotificationsModal}
           setActiveTab={(tab) => {
             setActiveTab(tab);

@@ -5,6 +5,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  onSnapshot,
   serverTimestamp,
   Timestamp
 } from 'firebase/firestore';
@@ -149,9 +150,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = snap.data();
         const profile: UserProfile = {
           uid: user.uid,
-          displayName: user.displayName || data.displayName || 'TUJUANE Community Member',
-          email: user.email || data.email || '',
-          photoURL: user.photoURL || data.photoURL || undefined,
+          // Firestore saved profile ALWAYS takes precedence over Google/Firebase Auth
+          displayName:
+            data.displayName && typeof data.displayName === 'string' && data.displayName.trim()
+              ? data.displayName.trim()
+              : user.displayName || 'TUJUANE Community Member',
+          email: data.email || user.email || '',
+          // If user saved a photo or explicitly cleared it in Firestore, respect it over Google auth photo
+          photoURL:
+            data.photoURL !== undefined && data.photoURL !== null
+              ? data.photoURL.trim() ? data.photoURL : undefined
+              : user.photoURL || undefined,
           county: data.county || 'Nairobi',
           constituency: data.constituency || undefined,
           bio: data.bio || undefined,
@@ -210,7 +219,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return syncUserProfile(user, retries - 1);
       }
       console.warn('Operating in offline mode for user profile:', err?.message || err);
-      // Fallback local profile if offline or permission pending
+      // Prefer cached session over resetting to blank
+      const cached = getCachedSession();
+      if (cached && cached.uid === user.uid) {
+        setUserProfile(cached);
+        return;
+      }
       const fallbackProfile: UserProfile = {
         uid: user.uid,
         displayName: user.displayName || 'TUJUANE Member',
@@ -248,6 +262,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => unsubscribe();
   }, []);
+
+  // Real-time snapshot subscription to own user document in Firestore to prevent stale/reverting edits
+  useEffect(() => {
+    if (!currentUser) return;
+    const userDocRef = doc(db, 'users', currentUser.uid);
+    const unsub = onSnapshot(
+      userDocRef,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        setUserProfile((prev) => {
+          const updated: UserProfile = {
+            uid: currentUser.uid,
+            displayName:
+              data.displayName && typeof data.displayName === 'string' && data.displayName.trim()
+                ? data.displayName.trim()
+                : prev?.displayName || currentUser.displayName || 'TUJUANE Community Member',
+            email: data.email || prev?.email || currentUser.email || '',
+            photoURL:
+              data.photoURL !== undefined && data.photoURL !== null
+                ? data.photoURL.trim() ? data.photoURL : undefined
+                : prev?.photoURL || currentUser.photoURL || undefined,
+            county: data.county || prev?.county || 'Nairobi',
+            constituency: data.constituency !== undefined ? data.constituency : prev?.constituency,
+            bio: data.bio !== undefined ? data.bio : prev?.bio,
+            occupation: data.occupation !== undefined ? data.occupation : prev?.occupation,
+            blockedUserIds: Array.isArray(data.blockedUserIds) ? data.blockedUserIds : (prev?.blockedUserIds || []),
+            mutedUserIds: Array.isArray(data.mutedUserIds) ? data.mutedUserIds : (prev?.mutedUserIds || []),
+            isOnline: data.isOnline !== undefined ? Boolean(data.isOnline) : true,
+            lastSeen: data.lastSeen?.toDate ? data.lastSeen.toDate().toISOString() : (typeof data.lastSeen === 'string' ? data.lastSeen : new Date().toISOString()),
+            createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (typeof data.createdAt === 'string' ? data.createdAt : prev?.createdAt || new Date().toISOString())
+          };
+          setCachedSession(updated);
+          return updated;
+        });
+      },
+      (err) => {
+        console.warn('Real-time user profile sync notice:', err?.message || err);
+      }
+    );
+    return () => unsub();
+  }, [currentUser]);
 
   // Real-time presence heartbeat & visibility tracker for active member status
   useEffect(() => {
@@ -371,10 +427,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     bio?: string;
     occupation?: string;
   }) => {
-    if (!currentUser || !userProfile) return;
+    if (!currentUser) return;
     const userDocRef = doc(db, 'users', currentUser.uid);
     try {
       const payload: any = {
+        uid: currentUser.uid,
+        email: currentUser.email || userProfile?.email || '',
         lastSeen: serverTimestamp()
       };
       if (updates.displayName !== undefined) payload.displayName = updates.displayName.trim();
@@ -387,38 +445,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Use setDoc with merge: true so it never throws if the document doesn't exist
       await setDoc(userDocRef, payload, { merge: true });
 
-      // Guard Firebase Auth updateProfile: Only pass photoURL if it's an HTTP/HTTPS URL under 2000 chars.
-      // Base64 photos are stored safely in Firestore, preventing the fatal auth/invalid-photo-url error.
-      if (currentUser) {
-        try {
-          const authUpdates: { displayName?: string; photoURL?: string } = {};
-          if (payload.displayName) authUpdates.displayName = payload.displayName;
-          if (
-            payload.photoURL &&
-            (payload.photoURL.startsWith('http://') || payload.photoURL.startsWith('https://')) &&
-            payload.photoURL.length <= 2000
-          ) {
-            authUpdates.photoURL = payload.photoURL;
-          }
-          if (Object.keys(authUpdates).length > 0) {
-            await updateProfile(currentUser, authUpdates);
-          }
-        } catch (authErr) {
-          console.warn('Firebase Auth user profile sync notice (non-fatal):', authErr);
-        }
-      }
-
-      const updated = {
-        ...userProfile,
-        displayName: payload.displayName !== undefined ? payload.displayName : userProfile.displayName,
-        photoURL: payload.photoURL !== undefined ? payload.photoURL : userProfile.photoURL,
-        county: payload.county !== undefined ? payload.county : userProfile.county,
-        constituency: payload.constituency !== undefined ? payload.constituency : userProfile.constituency,
-        bio: payload.bio !== undefined ? payload.bio : userProfile.bio,
-        occupation: payload.occupation !== undefined ? payload.occupation : userProfile.occupation
+      const baseProfile: UserProfile = userProfile || {
+        uid: currentUser.uid,
+        displayName: payload.displayName || currentUser.displayName || 'TUJUANE Member',
+        email: currentUser.email || '',
+        photoURL: payload.photoURL || undefined,
+        county: payload.county || 'Nairobi',
+        constituency: undefined,
+        bio: undefined,
+        occupation: undefined,
+        createdAt: new Date().toISOString()
       };
+
+      const updated: UserProfile = {
+        ...baseProfile,
+        displayName: payload.displayName !== undefined && payload.displayName ? payload.displayName : baseProfile.displayName,
+        photoURL: payload.photoURL !== undefined ? (payload.photoURL.trim() ? payload.photoURL : undefined) : baseProfile.photoURL,
+        county: payload.county !== undefined ? payload.county : baseProfile.county,
+        constituency: payload.constituency !== undefined ? payload.constituency : baseProfile.constituency,
+        bio: payload.bio !== undefined ? payload.bio : baseProfile.bio,
+        occupation: payload.occupation !== undefined ? payload.occupation : baseProfile.occupation
+      };
+
       setUserProfile(updated);
       setCachedSession(updated);
+
+      // Only sync displayName to Firebase Auth if it changed
+      if (payload.displayName && currentUser.displayName !== payload.displayName) {
+        try {
+          await updateProfile(currentUser, { displayName: payload.displayName });
+        } catch (authErr) {
+          console.warn('Firebase Auth user display name sync notice (non-fatal):', authErr);
+        }
+      }
     } catch (err) {
       console.error('Failed to update full profile:', err);
       handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.uid}`);

@@ -52,6 +52,7 @@ service cloud.firestore {
         && (!('lastMessageSenderId' in data) || (data.lastMessageSenderId is string && data.lastMessageSenderId.size() <= 128))
         && (!('lastMessageTimestamp' in data) || data.lastMessageTimestamp is timestamp)
         && (!('participantDetails' in data) || data.participantDetails is map)
+        && (!('unreadBy' in data) || data.unreadBy is list)
         && (!('typingUsers' in data) || data.typingUsers is map);
     }
 

@@ -1008,7 +1008,9 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                   </div>
 
                   <p className="text-xs text-slate-700 mt-1 line-clamp-2 leading-relaxed">
-                    {notif.message}
+                    {notif.category === 'direct_chat' || notif.type === 'direct_message'
+                      ? 'Sent you a new private message. Tap below to open chat.'
+                      : notif.message}
                   </p>
 
                   {/* Context snippet if attached */}

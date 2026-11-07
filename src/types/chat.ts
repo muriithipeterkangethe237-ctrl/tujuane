@@ -65,6 +65,7 @@ export interface ChatConversation {
       updatedAt?: number;
     }
   >;
+  unreadBy?: string[];
   createdAt: string;
 }
 

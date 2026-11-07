@@ -56,6 +56,8 @@ import {
   Paperclip,
   FileText,
   CornerUpLeft,
+  CornerUpRight,
+  Share2,
   Edit2,
   Trash2,
   MoreVertical,
@@ -169,10 +171,22 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   const [fileError, setFileError] = useState<string | null>(null);
   const [isCompressingImage, setIsCompressingImage] = useState(false);
 
-  // Message Management (Reply, Edit, Delete menu)
+  // Message Management (Reply, Edit, Delete, Forward, Long-press menu)
   const [replyingToMessage, setReplyingToMessage] = useState<any | null>(null);
   const [editingMessage, setEditingMessage] = useState<any | null>(null);
   const [openMenuMessageId, setOpenMenuMessageId] = useState<string | null>(null);
+  const [actionModalMessage, setActionModalMessage] = useState<ChatMessage | null>(null);
+  const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
+  const [forwardSearch, setForwardSearch] = useState('');
+  const [forwardTab, setForwardTab] = useState<'citizens' | 'channels' | 'groups'>('citizens');
+  const [isForwardingSending, setIsForwardingSending] = useState(false);
+  const [chatToast, setChatToast] = useState<string | null>(null);
+
+  const showChatToast = (msg: string) => {
+    setChatToast(msg);
+    setTimeout(() => setChatToast(null), 3000);
+  };
+
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
     message: ChatMessage;
     type: 'forEveryone' | 'forMe';
@@ -788,6 +802,119 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // Long-press gesture detector on message bubbles
+  const longPressTimerRef = useRef<any>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const handleMessageTouchStart = (msg: ChatMessage, e: React.TouchEvent) => {
+    if (msg.isDeletedForEveryone) return;
+    const touch = e.touches[0];
+    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      try {
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate(40);
+        }
+      } catch {}
+      setActionModalMessage(msg);
+    }, 450);
+  };
+
+  const handleMessageTouchMove = (e: React.TouchEvent) => {
+    if (!longPressTimerRef.current) return;
+    const touch = e.touches[0];
+    const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
+    const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
+    if (dx > 10 || dy > 10) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleMessageTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleMessageContextMenu = (e: React.MouseEvent, msg: ChatMessage) => {
+    if (msg.isDeletedForEveryone) return;
+    e.preventDefault();
+    setActionModalMessage(msg);
+  };
+
+  // Forward message execution to citizen, channel, or group
+  const handleExecuteForwardToCitizen = async (targetCitizen: UserProfile) => {
+    if (!forwardingMessage || !userProfile || !currentUser) return;
+    setIsForwardingSending(true);
+    try {
+      const targetChatId = await getOrCreateDirectChat(userProfile, targetCitizen);
+      await sendChatMessage(
+        targetChatId,
+        userProfile,
+        targetCitizen.uid,
+        forwardingMessage.text || '',
+        undefined,
+        forwardingMessage.mediaUrl,
+        forwardingMessage.attachment
+      );
+      notificationService.playChime();
+      showChatToast(`Message forwarded to ${targetCitizen.displayName}`);
+      setForwardingMessage(null);
+    } catch (err) {
+      console.error('Failed to forward message:', err);
+      showChatToast('Failed to forward message.');
+    } finally {
+      setIsForwardingSending(false);
+    }
+  };
+
+  const handleExecuteForwardToChannel = async (channel: CommunityChannel) => {
+    if (!forwardingMessage || !userProfile) return;
+    setIsForwardingSending(true);
+    try {
+      await sendChannelMessage(
+        channel.id,
+        userProfile,
+        forwardingMessage.text || '',
+        forwardingMessage.mediaUrl,
+        forwardingMessage.attachment
+      );
+      notificationService.playChime();
+      showChatToast(`Message forwarded to #${channel.name}`);
+      setForwardingMessage(null);
+    } catch (err) {
+      console.error('Failed to forward to channel:', err);
+      showChatToast('Failed to forward message.');
+    } finally {
+      setIsForwardingSending(false);
+    }
+  };
+
+  const handleExecuteForwardToGroup = async (group: GroupChat) => {
+    if (!forwardingMessage || !userProfile) return;
+    setIsForwardingSending(true);
+    try {
+      await sendGroupMessage(
+        group.id,
+        userProfile,
+        forwardingMessage.text || '',
+        forwardingMessage.mediaUrl,
+        forwardingMessage.attachment
+      );
+      notificationService.playChime();
+      showChatToast(`Message forwarded to group ${group.name}`);
+      setForwardingMessage(null);
+    } catch (err) {
+      console.error('Failed to forward to group:', err);
+      showChatToast('Failed to forward message.');
+    } finally {
+      setIsForwardingSending(false);
+    }
   };
 
   // Filter conversations
@@ -1831,11 +1958,17 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                       >
                         <div className="relative max-w-[85%] sm:max-w-[70%]">
                           <div
-                            className={`rounded-2xl p-3.5 shadow-2xs space-y-2 ${
+                            onTouchStart={(e) => handleMessageTouchStart(msg, e)}
+                            onTouchMove={handleMessageTouchMove}
+                            onTouchEnd={handleMessageTouchEnd}
+                            onTouchCancel={handleMessageTouchEnd}
+                            onContextMenu={(e) => handleMessageContextMenu(e, msg)}
+                            className={`rounded-2xl p-3.5 shadow-2xs space-y-2 transition-all active:scale-[0.99] select-text cursor-pointer ${
                               isMe
                                 ? 'bg-slate-900 text-white rounded-br-xs'
                                 : 'bg-white border border-slate-200 text-slate-900 rounded-bl-xs'
                             }`}
+                            title="Long press or right-click to edit, delete, or forward"
                           >
                             {/* Quoted Message */}
                             {msg.replyTo && (
@@ -1994,6 +2127,17 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                               >
                                 <CornerUpLeft className="w-3.5 h-3.5 text-slate-500" />
                                 <span>Reply</span>
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  setForwardingMessage(msg);
+                                  setOpenMenuMessageId(null);
+                                }}
+                                className="w-full px-3 py-1.5 text-left hover:bg-slate-100 flex items-center gap-2 cursor-pointer text-emerald-700 font-medium"
+                              >
+                                <CornerUpRight className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Forward</span>
                               </button>
 
                               {msg.text && (
@@ -2826,6 +2970,341 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
             : null
         }
       />
+
+      {/* CHAT TOAST ALERT */}
+      {chatToast && (
+        <div className="fixed top-20 right-4 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2 border border-slate-700">
+          <Check className="w-4 h-4 text-emerald-400 stroke-[2.5]" />
+          <span>{chatToast}</span>
+        </div>
+      )}
+
+      {/* LONG-PRESS MESSAGE ACTION SHEET / MODAL */}
+      {actionModalMessage && (
+        <div
+          onClick={() => setActionModalMessage(null)}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl sm:max-w-sm w-full p-5 space-y-4 shadow-2xl border border-slate-200 animate-in slide-in-from-bottom-4 sm:zoom-in-95"
+          >
+            {/* Header / Message Preview */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-800">Message Options</span>
+                <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-medium">
+                  {actionModalMessage.senderId === currentUser?.uid ? 'Sent by you' : `From ${actionModalMessage.senderName || 'Member'}`}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActionModalMessage(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Message snippet preview */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 max-h-24 overflow-hidden text-ellipsis line-clamp-3 leading-relaxed">
+              {actionModalMessage.text || (actionModalMessage.mediaUrl ? '📷 Photo attachment' : actionModalMessage.attachment ? `📎 ${actionModalMessage.attachment.name}` : 'Shared content')}
+            </div>
+
+            {/* Actions Grid */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {/* Reply */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleStartReply(actionModalMessage);
+                  setActionModalMessage(null);
+                }}
+                className="p-3 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-800 rounded-xl border border-slate-200 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <CornerUpLeft className="w-4 h-4 text-emerald-600" />
+                <span>Reply</span>
+              </button>
+
+              {/* Forward */}
+              <button
+                type="button"
+                onClick={() => {
+                  setForwardingMessage(actionModalMessage);
+                  setActionModalMessage(null);
+                }}
+                className="p-3 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-800 rounded-xl border border-slate-200 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <CornerUpRight className="w-4 h-4 text-emerald-600" />
+                <span>Forward</span>
+              </button>
+
+              {/* Edit (if own message) */}
+              {actionModalMessage.senderId === currentUser?.uid && !actionModalMessage.isDeletedForEveryone && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleStartEdit(actionModalMessage);
+                    setActionModalMessage(null);
+                  }}
+                  className="p-3 bg-slate-50 hover:bg-amber-50 hover:text-amber-800 rounded-xl border border-slate-200 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Edit2 className="w-4 h-4 text-amber-600" />
+                  <span>Edit Message</span>
+                </button>
+              )}
+
+              {/* Copy */}
+              {actionModalMessage.text && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleCopyText(actionModalMessage.text);
+                    setActionModalMessage(null);
+                    showChatToast('Message copied to clipboard');
+                  }}
+                  className="p-3 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl border border-slate-200 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Copy className="w-4 h-4 text-slate-500" />
+                  <span>Copy Text</span>
+                </button>
+              )}
+
+              {/* Delete for Me */}
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteConfirmation({ message: actionModalMessage, type: 'forMe' });
+                  setActionModalMessage(null);
+                }}
+                className="p-3 bg-slate-50 hover:bg-rose-50 text-slate-700 hover:text-rose-700 rounded-xl border border-slate-200 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4 text-slate-400" />
+                <span>Delete for Me</span>
+              </button>
+
+              {/* Delete for Everyone */}
+              {actionModalMessage.senderId === currentUser?.uid && !actionModalMessage.isDeletedForEveryone && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteConfirmation({ message: actionModalMessage, type: 'forEveryone' });
+                    setActionModalMessage(null);
+                  }}
+                  className="p-3 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 font-bold flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span>Delete for All</span>
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setActionModalMessage(null)}
+              className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* FORWARD MESSAGE MODAL */}
+      {forwardingMessage && (
+        <div
+          onClick={() => setForwardingMessage(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95 max-h-[90vh] flex flex-col"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                  <CornerUpRight className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">Forward Message</h3>
+                  <span className="text-[10px] text-slate-500">
+                    Select a citizen, channel, or group
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setForwardingMessage(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Message preview snippet */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 space-y-1">
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                Forwarding content:
+              </div>
+              <div className="italic line-clamp-2">
+                "{forwardingMessage.text || (forwardingMessage.mediaUrl ? '📷 Photo attachment' : forwardingMessage.attachment ? `📎 ${forwardingMessage.attachment.name}` : 'Shared content')}"
+              </div>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={forwardSearch}
+                onChange={(e) => setForwardSearch(e.target.value)}
+                placeholder="Search citizen or channel..."
+                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+              />
+            </div>
+
+            {/* Destination Type Tabs */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setForwardTab('citizens')}
+                className={`flex-1 py-1.5 rounded-lg text-center transition-all cursor-pointer ${
+                  forwardTab === 'citizens' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Citizens ({communityUsers.filter((u) => u.uid !== currentUser?.uid).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setForwardTab('channels')}
+                className={`flex-1 py-1.5 rounded-lg text-center transition-all cursor-pointer ${
+                  forwardTab === 'channels' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Channels ({DEFAULT_CHANNELS.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setForwardTab('groups')}
+                className={`flex-1 py-1.5 rounded-lg text-center transition-all cursor-pointer ${
+                  forwardTab === 'groups' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Groups ({communityGroups.length})
+              </button>
+            </div>
+
+            {/* List of targets */}
+            <div className="flex-1 overflow-y-auto space-y-2 min-h-[200px] max-h-[300px] pr-1 divide-y divide-slate-100">
+              {/* Citizens */}
+              {forwardTab === 'citizens' && (
+                communityUsers
+                  .filter((u) => u.uid !== currentUser?.uid)
+                  .filter((u) => !forwardSearch.trim() || u.displayName.toLowerCase().includes(forwardSearch.toLowerCase()) || (u.county || '').toLowerCase().includes(forwardSearch.toLowerCase()))
+                  .map((citizen) => (
+                    <div key={citizen.uid} className="pt-2 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {citizen.photoURL ? (
+                          <img src={citizen.photoURL} alt={citizen.displayName} className="w-8 h-8 rounded-full object-cover shrink-0" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0">
+                            {citizen.displayName.charAt(0)}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-slate-900 truncate">{citizen.displayName}</div>
+                          <div className="text-[10px] text-slate-400 truncate">{citizen.county || 'Nairobi'} County</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isForwardingSending}
+                        onClick={() => handleExecuteForwardToCitizen(citizen)}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shrink-0 flex items-center gap-1 shadow-2xs"
+                      >
+                        <Send className="w-3 h-3" />
+                        <span>Send</span>
+                      </button>
+                    </div>
+                  ))
+              )}
+
+              {/* Channels */}
+              {forwardTab === 'channels' && (
+                DEFAULT_CHANNELS
+                  .filter((ch) => !forwardSearch.trim() || ch.name.toLowerCase().includes(forwardSearch.toLowerCase()))
+                  .map((ch) => (
+                    <div key={ch.id} className="pt-2 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-xl bg-slate-900 text-emerald-400 font-mono font-bold flex items-center justify-center text-xs shrink-0">
+                          #
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-slate-900 truncate">#{ch.name}</div>
+                          <div className="text-[10px] text-slate-400 truncate">{ch.description}</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isForwardingSending}
+                        onClick={() => handleExecuteForwardToChannel(ch)}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shrink-0 flex items-center gap-1 shadow-2xs"
+                      >
+                        <Send className="w-3 h-3" />
+                        <span>Send</span>
+                      </button>
+                    </div>
+                  ))
+              )}
+
+              {/* Groups */}
+              {forwardTab === 'groups' && (
+                communityGroups.length === 0 ? (
+                  <div className="text-center py-8 text-xs text-slate-400">
+                    You haven't joined any groups yet.
+                  </div>
+                ) : (
+                  communityGroups
+                    .filter((g: GroupChat) => !forwardSearch.trim() || g.name.toLowerCase().includes(forwardSearch.toLowerCase()))
+                    .map((grp: GroupChat) => (
+                      <div key={grp.id} className="pt-2 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-800 font-bold flex items-center justify-center text-sm shrink-0">
+                            {grp.icon || '👥'}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-slate-900 truncate">{grp.name}</div>
+                            <div className="text-[10px] text-slate-400 truncate">{grp.members.length} members</div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isForwardingSending}
+                          onClick={() => handleExecuteForwardToGroup(grp)}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shrink-0 flex items-center gap-1 shadow-2xs"
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>Send</span>
+                        </button>
+                      </div>
+                    ))
+                )
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setForwardingMessage(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
