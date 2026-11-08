@@ -14,7 +14,11 @@ import {
   approvePostSafety,
   removePostByModerator
 } from '../services/safetyService';
-import { subscribeToCommunityUsers } from '../services/chatService';
+import {
+  subscribeToCommunityUsers,
+  updateCitizenAccountStatus,
+  isDeveloperAccount
+} from '../services/chatService';
 import { sendUserNotification } from '../services/userNotificationService';
 import { analyzeContentSafety, getSafetyExplanation } from '../utils/safetyFilter';
 import {
@@ -41,7 +45,14 @@ import {
   ChevronDown,
   Info,
   Check,
-  X
+  X,
+  Ban,
+  Clock,
+  UserX,
+  UserCheck,
+  Calendar,
+  AlertOctagon,
+  Shield
 } from 'lucide-react';
 
 const DEVELOPER_EMAIL = 'muriithipeterkangethe237@gmail.com';
@@ -131,6 +142,107 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
   const [testTitle, setTestTitle] = useState('');
   const [testResult, setTestResult] = useState<any | null>(null);
 
+  // User status filter
+  const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'active' | 'suspended' | 'banned'>('all');
+
+  // Suspension Modal State
+  const [selectedUserForSuspend, setSelectedUserForSuspend] = useState<UserProfile | null>(null);
+  const [suspendDuration, setSuspendDuration] = useState<'24h' | '3d' | '7d' | '30d' | 'custom'>('24h');
+  const [customSuspendDate, setCustomSuspendDate] = useState<string>('');
+  const [suspendReasonPreset, setSuspendReasonPreset] = useState<string>('Violation of community civility & safety guidelines');
+  const [suspendReasonCustom, setSuspendReasonCustom] = useState<string>('');
+  const [isSubmittingSuspend, setIsSubmittingSuspend] = useState(false);
+
+  // Permanent Ban Modal State
+  const [selectedUserForBan, setSelectedUserForBan] = useState<UserProfile | null>(null);
+  const [banReasonPreset, setBanReasonPreset] = useState<string>('Severe or repeated violations of community safety rules');
+  const [banReasonCustom, setBanReasonCustom] = useState<string>('');
+  const [isSubmittingBan, setIsSubmittingBan] = useState(false);
+
+  // Reactivate Modal State
+  const [selectedUserForReactivate, setSelectedUserForReactivate] = useState<UserProfile | null>(null);
+  const [isSubmittingReactivate, setIsSubmittingReactivate] = useState(false);
+
+  const handleConfirmSuspend = async () => {
+    if (!selectedUserForSuspend) return;
+    setIsSubmittingSuspend(true);
+    try {
+      let durationMs = 24 * 60 * 60 * 1000;
+      if (suspendDuration === '3d') durationMs = 3 * 24 * 60 * 60 * 1000;
+      else if (suspendDuration === '7d') durationMs = 7 * 24 * 60 * 60 * 1000;
+      else if (suspendDuration === '30d') durationMs = 30 * 24 * 60 * 60 * 1000;
+
+      let untilIso = new Date(Date.now() + durationMs).toISOString();
+      if (suspendDuration === 'custom' && customSuspendDate) {
+        untilIso = new Date(customSuspendDate).toISOString();
+      }
+
+      const reason = suspendReasonCustom.trim() || suspendReasonPreset;
+      await updateCitizenAccountStatus(
+        selectedUserForSuspend.uid,
+        'suspended',
+        reason,
+        untilIso,
+        currentUser?.email || DEVELOPER_EMAIL
+      );
+
+      showToast(`⚠️ Account for ${selectedUserForSuspend.displayName} suspended.`);
+      setSelectedUserForSuspend(null);
+      setSuspendReasonCustom('');
+    } catch (err) {
+      console.error('Failed to suspend citizen:', err);
+      showToast('Error updating account suspension status.');
+    } finally {
+      setIsSubmittingSuspend(false);
+    }
+  };
+
+  const handleConfirmBan = async () => {
+    if (!selectedUserForBan) return;
+    setIsSubmittingBan(true);
+    try {
+      const reason = banReasonCustom.trim() || banReasonPreset;
+      await updateCitizenAccountStatus(
+        selectedUserForBan.uid,
+        'banned',
+        reason,
+        undefined,
+        currentUser?.email || DEVELOPER_EMAIL
+      );
+
+      showToast(`⛔ Account for ${selectedUserForBan.displayName} permanently banned.`);
+      setSelectedUserForBan(null);
+      setBanReasonCustom('');
+    } catch (err) {
+      console.error('Failed to ban citizen:', err);
+      showToast('Error updating account ban status.');
+    } finally {
+      setIsSubmittingBan(false);
+    }
+  };
+
+  const handleConfirmReactivate = async () => {
+    if (!selectedUserForReactivate) return;
+    setIsSubmittingReactivate(true);
+    try {
+      await updateCitizenAccountStatus(
+        selectedUserForReactivate.uid,
+        'active',
+        '',
+        undefined,
+        currentUser?.email || DEVELOPER_EMAIL
+      );
+
+      showToast(`✅ Citizen ${selectedUserForReactivate.displayName} reactivated to active status.`);
+      setSelectedUserForReactivate(null);
+    } catch (err) {
+      console.error('Failed to reactivate citizen:', err);
+      showToast('Error reactivating account.');
+    } finally {
+      setIsSubmittingReactivate(false);
+    }
+  };
+
   const isDeveloperUser = !!currentUser?.email && currentUser.email.toLowerCase().trim() === DEVELOPER_EMAIL.toLowerCase();
 
   // Close modals on Escape key
@@ -140,11 +252,14 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
         if (selectedPostForAdvisory) setSelectedPostForAdvisory(null);
         if (selectedPostForDelete) setSelectedPostForDelete(null);
         if (selectedUserForStatus) setSelectedUserForStatus(null);
+        if (selectedUserForSuspend) setSelectedUserForSuspend(null);
+        if (selectedUserForBan) setSelectedUserForBan(null);
+        if (selectedUserForReactivate) setSelectedUserForReactivate(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedPostForAdvisory, selectedPostForDelete, selectedUserForStatus]);
+  }, [selectedPostForAdvisory, selectedPostForDelete, selectedUserForStatus, selectedUserForSuspend, selectedUserForBan, selectedUserForReactivate]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -165,9 +280,13 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
     let unsubUsers = () => {};
     if (currentUser) {
-      unsubUsers = subscribeToCommunityUsers(currentUser.uid, (loadedUsers) => {
-        setUsers(loadedUsers);
-      });
+      unsubUsers = subscribeToCommunityUsers(
+        currentUser.uid,
+        (loadedUsers) => {
+          setUsers(loadedUsers);
+        },
+        true // includeDeveloper = true so developer sees all users in this panel
+      );
     }
 
     return () => {
@@ -242,16 +361,35 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
   // Filtered users
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
+      // Status filter
+      if (userStatusFilter === 'active') {
+        if (u.accountStatus && u.accountStatus !== 'active') return false;
+      } else if (userStatusFilter === 'suspended') {
+        if (u.accountStatus !== 'suspended') return false;
+      } else if (userStatusFilter === 'banned') {
+        if (u.accountStatus !== 'banned') return false;
+      }
+
       if (!userSearch.trim()) return true;
       const q = userSearch.toLowerCase();
       return (
         u.displayName.toLowerCase().includes(q) ||
         (u.email || '').toLowerCase().includes(q) ||
         (u.county || '').toLowerCase().includes(q) ||
-        (u.constituency || '').toLowerCase().includes(q)
+        (u.constituency || '').toLowerCase().includes(q) ||
+        (u.banReason || '').toLowerCase().includes(q)
       );
     });
-  }, [users, userSearch]);
+  }, [users, userSearch, userStatusFilter]);
+
+  // Citizen account status metrics
+  const userMetrics = useMemo(() => {
+    const total = users.length;
+    const active = users.filter((u) => !u.accountStatus || u.accountStatus === 'active').length;
+    const suspended = users.filter((u) => u.accountStatus === 'suspended').length;
+    const banned = users.filter((u) => u.accountStatus === 'banned').length;
+    return { total, active, suspended, banned };
+  }, [users]);
 
   // Moderation actions
   const handleApprovePost = async (post: CommunityPost) => {
@@ -841,17 +979,17 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
         </div>
       )}
 
-      {/* TAB 3: CITIZEN ACTIVITY */}
+      {/* TAB 3: CITIZEN ACTIVITY & ACCOUNT MODERATION */}
       {activeTab === 'users' && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                 <Users className="w-5 h-5 text-sky-600" />
-                <span>Registered Citizens & Presence Directory</span>
+                <span>Citizen Account Moderation & Standing Directory</span>
               </h2>
               <p className="text-xs text-slate-500">
-                Overview of registered citizens, location tags, and community status.
+                Manage registered citizen access, suspend accounts with preset durations, permanently ban offenders, or restore standing.
               </p>
             </div>
 
@@ -861,10 +999,92 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                 type="text"
                 value={userSearch}
                 onChange={(e) => setUserSearch(e.target.value)}
-                placeholder="Search citizens by name or county..."
-                className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                placeholder="Search by name, email, county, or ban reason..."
+                className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none w-full sm:w-64"
               />
             </div>
+          </div>
+
+          {/* Account Standing Summary Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <button
+              onClick={() => setUserStatusFilter('all')}
+              className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                userStatusFilter === 'all'
+                  ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-400/30'
+                  : 'border-slate-200 bg-slate-50 hover:bg-slate-100/70'
+              }`}
+            >
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Citizens</div>
+              <div className="text-xl font-black text-slate-900 mt-1">{userMetrics.total}</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">All registered</div>
+            </button>
+
+            <button
+              onClick={() => setUserStatusFilter('active')}
+              className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                userStatusFilter === 'active'
+                  ? 'border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-400/30'
+                  : 'border-slate-200 bg-slate-50 hover:bg-slate-100/70'
+              }`}
+            >
+              <div className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                Active
+              </div>
+              <div className="text-xl font-black text-emerald-900 mt-1">{userMetrics.active}</div>
+              <div className="text-[10px] text-emerald-600 mt-0.5">Full platform access</div>
+            </button>
+
+            <button
+              onClick={() => setUserStatusFilter('suspended')}
+              className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                userStatusFilter === 'suspended'
+                  ? 'border-amber-500 bg-amber-50/60 ring-2 ring-amber-400/30'
+                  : 'border-slate-200 bg-slate-50 hover:bg-slate-100/70'
+              }`}
+            >
+              <div className="text-[11px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Clock className="w-3 h-3 text-amber-500" />
+                Suspended
+              </div>
+              <div className="text-xl font-black text-amber-900 mt-1">{userMetrics.suspended}</div>
+              <div className="text-[10px] text-amber-600 mt-0.5">Timed restrictions</div>
+            </button>
+
+            <button
+              onClick={() => setUserStatusFilter('banned')}
+              className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                userStatusFilter === 'banned'
+                  ? 'border-rose-500 bg-rose-50/60 ring-2 ring-rose-400/30'
+                  : 'border-slate-200 bg-slate-50 hover:bg-slate-100/70'
+              }`}
+            >
+              <div className="text-[11px] font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Ban className="w-3 h-3 text-rose-500" />
+                Permanently Banned
+              </div>
+              <div className="text-xl font-black text-rose-900 mt-1">{userMetrics.banned}</div>
+              <div className="text-[10px] text-rose-600 mt-0.5">Barred indefinitely</div>
+            </button>
+          </div>
+
+          {/* Filter Pills */}
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            <span className="font-bold text-slate-500 text-[11px]">Filter by Status:</span>
+            {(['all', 'active', 'suspended', 'banned'] as const).map((st) => (
+              <button
+                key={st}
+                onClick={() => setUserStatusFilter(st)}
+                className={`px-3 py-1 rounded-xl font-bold capitalize transition-colors cursor-pointer ${
+                  userStatusFilter === st
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {st} {st === 'all' ? `(${userMetrics.total})` : `(${userMetrics[st]})`}
+              </button>
+            ))}
           </div>
 
           <div className="overflow-x-auto">
@@ -872,54 +1092,169 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
               <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold border-b border-slate-200">
                 <tr>
                   <th className="py-2.5 px-3">Citizen</th>
-                  <th className="py-2.5 px-3">County / Constituency</th>
-                  <th className="py-2.5 px-3">Email</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3 text-right">Action</th>
+                  <th className="py-2.5 px-3">Location</th>
+                  <th className="py-2.5 px-3">Account Standing</th>
+                  <th className="py-2.5 px-3 text-right">Moderator Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredUsers.map((u) => (
-                  <tr key={u.uid} className="hover:bg-slate-50/80">
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-2">
-                        {u.photoURL ? (
-                          <img src={u.photoURL} alt={u.displayName} className="w-7 h-7 rounded-full object-cover" />
-                        ) : (
-                          <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs">
-                            {u.displayName.charAt(0)}
-                          </div>
-                        )}
-                        <div>
-                          <div className="font-bold text-slate-900">{u.displayName}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">UID: {u.uid.slice(0, 8)}...</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="font-semibold text-slate-700">{u.county || 'Nairobi'}</span>
-                      {u.constituency && <span className="text-slate-400"> ({u.constituency})</span>}
-                    </td>
-                    <td className="py-3 px-3 font-mono text-[11px] text-slate-600">
-                      {u.email || 'Google Auth'}
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        Active
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-right">
-                      <button
-                        onClick={() => setSelectedUserForStatus(u)}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer"
-                        title="Send Account Status Notification or Verified Badge"
-                      >
-                        Account Notice
-                      </button>
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-10 text-center text-slate-400">
+                      No citizens matching current filter or search criteria.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredUsers.map((u) => {
+                    const isDev = isDeveloperAccount(u.email, u.isDeveloper);
+                    const isBanned = u.accountStatus === 'banned';
+                    const isSuspended = u.accountStatus === 'suspended';
+                    const isUntilFuture = isSuspended && u.suspendedUntil && new Date(u.suspendedUntil).getTime() > Date.now();
+
+                    return (
+                      <tr key={u.uid} className={`hover:bg-slate-50/80 ${isBanned ? 'bg-rose-50/30' : isSuspended ? 'bg-amber-50/30' : ''}`}>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-2.5">
+                            {u.photoURL ? (
+                              <img src={u.photoURL} alt={u.displayName} className="w-8 h-8 rounded-full object-cover shrink-0 ring-1 ring-slate-200" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0">
+                                {u.displayName.charAt(0)}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                                <span>{u.displayName}</span>
+                                {isDev && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200">
+                                    <Shield className="w-2.5 h-2.5 text-purple-600" />
+                                    Developer
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-500 font-mono truncate max-w-[200px]">
+                                {u.email || 'Google Auth Citizen'}
+                              </div>
+                              <div className="text-[9px] text-slate-400 font-mono">UID: {u.uid.slice(0, 10)}...</div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-3">
+                          <div className="font-semibold text-slate-800">{u.county || 'Nairobi'}</div>
+                          {u.constituency ? (
+                            <div className="text-[11px] text-slate-500">{u.constituency}</div>
+                          ) : (
+                            <div className="text-[10px] text-slate-400">All Constituencies</div>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-3">
+                          {isDev ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">
+                              <Shield className="w-3 h-3 text-purple-600" />
+                              Platform Developer (Protected)
+                            </span>
+                          ) : isBanned ? (
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-200">
+                                <Ban className="w-3 h-3 text-rose-600" />
+                                Permanently Banned
+                              </span>
+                              {u.banReason && (
+                                <div className="text-[10px] text-rose-700 italic max-w-xs truncate" title={u.banReason}>
+                                  Reason: {u.banReason}
+                                </div>
+                              )}
+                            </div>
+                          ) : isSuspended ? (
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-200">
+                                <Clock className="w-3 h-3 text-amber-600" />
+                                Suspended {u.suspendedUntil ? `until ${new Date(u.suspendedUntil).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
+                              </span>
+                              {u.banReason && (
+                                <div className="text-[10px] text-amber-700 italic max-w-xs truncate" title={u.banReason}>
+                                  Reason: {u.banReason}
+                                </div>
+                              )}
+                              {!isUntilFuture && u.suspendedUntil && (
+                                <div className="text-[9px] text-slate-400 font-semibold">(Suspension window elapsed)</div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              Active Citizen
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-3 text-right">
+                          {isDev ? (
+                            <span className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-400 bg-slate-100 select-none">
+                              Super Admin
+                            </span>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              {/* Reinstatement button for suspended or banned users */}
+                              {(isBanned || isSuspended) && (
+                                <button
+                                  onClick={() => setSelectedUserForReactivate(u)}
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer flex items-center gap-1"
+                                  title="Restore citizen to good standing"
+                                >
+                                  <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>Reactivate</span>
+                                </button>
+                              )}
+
+                              {/* Suspend button for active citizens */}
+                              {!isBanned && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedUserForSuspend(u);
+                                    setSuspendDuration('24h');
+                                    setSuspendReasonCustom('');
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors cursor-pointer flex items-center gap-1"
+                                  title="Temporarily suspend account with custom duration"
+                                >
+                                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>{isSuspended ? 'Extend' : 'Suspend'}</span>
+                                </button>
+                              )}
+
+                              {/* Permanent Ban button */}
+                              {!isBanned && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedUserForBan(u);
+                                    setBanReasonCustom('');
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 transition-colors cursor-pointer flex items-center gap-1"
+                                  title="Permanently ban citizen from TUJUANE"
+                                >
+                                  <Ban className="w-3.5 h-3.5 text-rose-600" />
+                                  <span>Ban</span>
+                                </button>
+                              )}
+
+                              {/* Standard status notification */}
+                              <button
+                                onClick={() => setSelectedUserForStatus(u)}
+                                className="px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+                                title="Send Account Status Notification or Verified Badge"
+                              >
+                                Notice
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -1360,6 +1695,321 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                 className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50"
               >
                 {isSendingStatus ? 'Sending...' : 'Send Channel Notification'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: SUSPEND CITIZEN ACCOUNT */}
+      {selectedUserForSuspend && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setSelectedUserForSuspend(null)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-amber-600" />
+                <span>Suspend Citizen Account</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSelectedUserForSuspend(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Target Citizen Header */}
+            <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-200/80 flex items-center gap-3">
+              {selectedUserForSuspend.photoURL ? (
+                <img
+                  src={selectedUserForSuspend.photoURL}
+                  alt={selectedUserForSuspend.displayName}
+                  className="w-10 h-10 rounded-full object-cover shrink-0 ring-1 ring-amber-300"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-amber-200 text-amber-900 font-black flex items-center justify-center text-sm shrink-0">
+                  {selectedUserForSuspend.displayName.charAt(0)}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="font-black text-xs text-slate-900 truncate">
+                  {selectedUserForSuspend.displayName}
+                </div>
+                <div className="text-[11px] text-slate-600 truncate">
+                  {selectedUserForSuspend.email || 'Citizen'} • {selectedUserForSuspend.county || 'Nairobi'}
+                </div>
+                <div className="text-[9px] text-slate-400 font-mono">UID: {selectedUserForSuspend.uid}</div>
+              </div>
+            </div>
+
+            {/* Duration Selector */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-700">
+                Suspension Duration
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs">
+                {(['24h', '3d', '7d', '30d'] as const).map((dur) => (
+                  <button
+                    key={dur}
+                    type="button"
+                    onClick={() => setSuspendDuration(dur)}
+                    className={`py-2 px-1 text-center font-bold rounded-xl border transition-all cursor-pointer ${
+                      suspendDuration === dur
+                        ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {dur === '24h' ? '24 Hours' : dur === '3d' ? '3 Days' : dur === '7d' ? '7 Days' : '30 Days'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => setSuspendDuration('custom')}
+                  className={`w-full py-1.5 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                    suspendDuration === 'custom'
+                      ? 'bg-amber-50 text-amber-900 border-amber-500 ring-1 ring-amber-400'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Custom Expiration Date & Time</span>
+                </button>
+
+                {suspendDuration === 'custom' && (
+                  <div className="mt-2">
+                    <input
+                      type="datetime-local"
+                      value={customSuspendDate}
+                      onChange={(e) => setCustomSuspendDate(e.target.value)}
+                      min={new Date().toISOString().slice(0, 16)}
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Violation Reason */}
+            <div className="space-y-2 text-xs">
+              <label className="block font-bold text-slate-700">
+                Reason for Suspension
+              </label>
+              <select
+                value={suspendReasonPreset}
+                onChange={(e) => setSuspendReasonPreset(e.target.value)}
+                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              >
+                <option value="Violation of community civility & safety guidelines">Civic & Safety Policy Violation</option>
+                <option value="Posting scam offers, fraudulent hustle or false job requests">Fraud / Scam / M-Pesa Request</option>
+                <option value="Incitement, tribal slurs or derogatory attacks">Ethnic Incitement / Hate Speech</option>
+                <option value="Harassment, unwanted bullying or repeated targeting of citizens">Harassment / Bullying</option>
+                <option value="Posting adult, explicit or distressing uncensored media">Adult / Inappropriate Media</option>
+                <option value="Spamming commercial promotions or unsolicited mass messages">Spamming / Flooding</option>
+                <option value="Other / Specific disciplinary action">Custom Infraction Details</option>
+              </select>
+
+              <textarea
+                rows={2}
+                value={suspendReasonCustom}
+                onChange={(e) => setSuspendReasonCustom(e.target.value)}
+                placeholder="Optional notes or additional context for the citizen..."
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="p-2.5 bg-slate-50 rounded-xl text-[11px] text-slate-500 flex items-start gap-2">
+              <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>The citizen will be unable to publish posts, send chats, or leave comments until the suspension duration ends. An account alert will notify them.</span>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedUserForSuspend(null)}
+                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingSuspend || (suspendDuration === 'custom' && !customSuspendDate)}
+                onClick={handleConfirmSuspend}
+                className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>{isSubmittingSuspend ? 'Suspending...' : 'Confirm Suspension'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PERMANENTLY BAN CITIZEN ACCOUNT */}
+      {selectedUserForBan && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setSelectedUserForBan(null)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-rose-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-rose-100">
+              <h3 className="font-bold text-sm text-rose-700 flex items-center gap-2">
+                <AlertOctagon className="w-5 h-5 text-rose-600" />
+                <span>Permanently Ban Citizen</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSelectedUserForBan(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-rose-50 rounded-2xl border border-rose-200 text-xs text-rose-900 space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <Ban className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>Irrevocable Restriction Warning</span>
+              </div>
+              <p className="text-[11px] text-rose-700 leading-relaxed">
+                This will permanently bar <strong>{selectedUserForBan.displayName}</strong> from posting in discussions, participating in community chats, and commenting across TUJUANE.
+              </p>
+            </div>
+
+            {/* Target Citizen Info */}
+            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center gap-3">
+              {selectedUserForBan.photoURL ? (
+                <img
+                  src={selectedUserForBan.photoURL}
+                  alt={selectedUserForBan.displayName}
+                  className="w-10 h-10 rounded-full object-cover shrink-0 ring-1 ring-rose-300"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-800 font-black flex items-center justify-center text-sm shrink-0">
+                  {selectedUserForBan.displayName.charAt(0)}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="font-black text-xs text-slate-900 truncate">
+                  {selectedUserForBan.displayName}
+                </div>
+                <div className="text-[11px] text-slate-600 truncate">
+                  {selectedUserForBan.email || 'Citizen'} • {selectedUserForBan.county || 'Nairobi'}
+                </div>
+                <div className="text-[9px] text-slate-400 font-mono">UID: {selectedUserForBan.uid}</div>
+              </div>
+            </div>
+
+            {/* Reason for Ban */}
+            <div className="space-y-2 text-xs">
+              <label className="block font-bold text-slate-700">
+                Violation Classification
+              </label>
+              <select
+                value={banReasonPreset}
+                onChange={(e) => setBanReasonPreset(e.target.value)}
+                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-rose-500 focus:outline-none"
+              >
+                <option value="Severe or repeated violations of community safety rules">Severe Civic Safety Violation</option>
+                <option value="Severe fraud, monetary scam, or criminal impersonation">Severe Fraud / Financial Scam</option>
+                <option value="Repeated ethnic hatred, incitement to violence, or illegal material">Hate Speech / Violence Incitement</option>
+                <option value="Persistent harassment and coordinated malicious targeting">Severe Harassment / Doxxing</option>
+                <option value="Explicit adult material or dangerous contraband">Explicit Adult / Unlawful Media</option>
+                <option value="Persistent malicious bot or disruptive account">Malicious Automated Bot / Sybil Attack</option>
+                <option value="Other permanent bar">Custom Reason</option>
+              </select>
+
+              <textarea
+                rows={2}
+                value={banReasonCustom}
+                onChange={(e) => setBanReasonCustom(e.target.value)}
+                placeholder="Specific justification details for permanently barring this account..."
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedUserForBan(null)}
+                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingBan}
+                onClick={handleConfirmBan}
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Ban className="w-3.5 h-3.5" />
+                <span>{isSubmittingBan ? 'Banning...' : 'Confirm Permanent Ban'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REACTIVATE / RESTORE CITIZEN ACCOUNT */}
+      {selectedUserForReactivate && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setSelectedUserForReactivate(null)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-emerald-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
+              <h3 className="font-bold text-sm text-emerald-800 flex items-center gap-2">
+                <UserCheck className="w-5 h-5 text-emerald-600" />
+                <span>Restore Citizen Account</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSelectedUserForReactivate(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to restore <strong>{selectedUserForReactivate.displayName}</strong> to Active Standing?
+              This will lift all suspension or ban restrictions and enable them to post, comment, and chat normally again.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedUserForReactivate(null)}
+                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingReactivate}
+                onClick={handleConfirmReactivate}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>{isSubmittingReactivate ? 'Restoring...' : 'Restore Citizen Standing'}</span>
               </button>
             </div>
           </div>

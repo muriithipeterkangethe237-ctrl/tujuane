@@ -1,6 +1,6 @@
 /**
  * Service Worker Registration for TUJUANE
- * Registers service worker to enable app shell caching and offline support.
+ * Registers service worker and forces update checks to guarantee the latest app icon and assets.
  */
 
 export function registerServiceWorker(): void {
@@ -9,7 +9,8 @@ export function registerServiceWorker(): void {
       navigator.serviceWorker
         .register('/sw.js')
         .then((registration) => {
-          console.log('TUJUANE Service Worker registered with scope:', registration.scope);
+          // Immediately check for service worker update
+          registration.update().catch(() => {});
         })
         .catch((error) => {
           console.warn('TUJUANE Service Worker registration failed:', error);

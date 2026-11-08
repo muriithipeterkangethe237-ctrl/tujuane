@@ -590,12 +590,25 @@ export async function updateUserPresence(
   }
 }
 
+const DEVELOPER_EMAIL = 'muriithipeterkangethe237@gmail.com';
+
 /**
- * Subscribe to all community members registered in TUJUANE
+ * Check if a user is the platform developer
+ */
+export function isDeveloperAccount(email?: string, isDev?: boolean): boolean {
+  if (isDev) return true;
+  if (!email) return false;
+  return email.toLowerCase().trim() === DEVELOPER_EMAIL.toLowerCase().trim();
+}
+
+/**
+ * Subscribe to community members registered in TUJUANE.
+ * By default, hides the platform developer account from public citizen views.
  */
 export function subscribeToCommunityUsers(
   currentUserId: string,
-  callback: (users: UserProfile[]) => void
+  callback: (users: UserProfile[]) => void,
+  includeDeveloper: boolean = false
 ): () => void {
   const path = 'users';
   const q = query(collection(db, path));
@@ -612,20 +625,49 @@ export function subscribeToCommunityUsers(
             ? d.lastSeen
             : undefined;
           const online = isUserOnline(!!d.isOnline, lastSeenIso);
+          const email = d.email || '';
+          const isDev = d.isDeveloper !== undefined ? Boolean(d.isDeveloper) : isDeveloperAccount(email);
 
           return {
             uid: docSnap.id,
             displayName: d.displayName || 'TUJUANE Member',
-            email: d.email || '',
+            email,
             photoURL: d.photoURL || undefined,
             county: d.county || 'Nairobi',
             constituency: d.constituency || undefined,
+            bio: d.bio || undefined,
+            occupation: d.occupation || undefined,
             isOnline: online,
             lastSeen: lastSeenIso,
+            blockedUserIds: Array.isArray(d.blockedUserIds) ? d.blockedUserIds : [],
+            mutedUserIds: Array.isArray(d.mutedUserIds) ? d.mutedUserIds : [],
+            isDeveloper: isDev,
+            accountStatus: (d.accountStatus as 'active' | 'suspended' | 'banned') || 'active',
+            suspendedUntil: d.suspendedUntil?.toDate
+              ? d.suspendedUntil.toDate().toISOString()
+              : typeof d.suspendedUntil === 'string'
+              ? d.suspendedUntil
+              : undefined,
+            banReason: d.banReason || undefined,
+            statusUpdatedAt: d.statusUpdatedAt?.toDate
+              ? d.statusUpdatedAt.toDate().toISOString()
+              : typeof d.statusUpdatedAt === 'string'
+              ? d.statusUpdatedAt
+              : undefined,
+            statusUpdatedBy: d.statusUpdatedBy || undefined,
             createdAt: d.createdAt?.toDate ? d.createdAt.toDate().toISOString() : new Date().toISOString()
           };
         })
-        .filter((u) => u.uid !== currentUserId);
+        .filter((u) => {
+          // If developer views directory in developer control panel, they see all citizens
+          if (includeDeveloper) {
+            return true;
+          }
+          // For regular citizens: hide developer account and self
+          if (u.uid === currentUserId) return false;
+          if (isDeveloperAccount(u.email, u.isDeveloper)) return false;
+          return true;
+        });
 
       callback(users);
     },
@@ -634,4 +676,66 @@ export function subscribeToCommunityUsers(
     }
   );
 }
+
+/**
+ * Update a citizen's account status (Active, Suspended, or Banned).
+ * Restricted to developer/admin access.
+ */
+export async function updateCitizenAccountStatus(
+  targetUserId: string,
+  status: 'active' | 'suspended' | 'banned',
+  reason?: string,
+  suspendedUntil?: string,
+  moderatorEmail: string = DEVELOPER_EMAIL
+): Promise<void> {
+  const userRef = doc(db, 'users', targetUserId);
+  const payload: Record<string, any> = {
+    accountStatus: status,
+    banReason: status === 'active' ? '' : (reason || 'Community safety standards violation'),
+    statusUpdatedAt: serverTimestamp(),
+    statusUpdatedBy: moderatorEmail
+  };
+
+  if (status === 'suspended' && suspendedUntil) {
+    payload.suspendedUntil = suspendedUntil;
+  } else {
+    payload.suspendedUntil = '';
+  }
+
+  try {
+    await updateDoc(userRef, payload);
+
+    // Send disciplinary or reinstatement notification to the user
+    let title = 'Account Status Notice';
+    let message = '';
+    let notifStatus: 'good' | 'warning' | 'restricted' = 'good';
+
+    if (status === 'banned') {
+      title = '⛔ Account Permanently Banned';
+      message = `Your account has been permanently restricted from TUJUANE due to serious violations: ${reason || 'Violation of community safety terms'}.`;
+      notifStatus = 'restricted';
+    } else if (status === 'suspended') {
+      const untilDateStr = suspendedUntil ? new Date(suspendedUntil).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : 'temporary duration';
+      title = '⚠️ Account Suspended';
+      message = `Your account has been suspended until ${untilDateStr}. Reason: ${reason || 'Community standards violation'}. During suspension, posting, commenting, and chatting are disabled.`;
+      notifStatus = 'restricted';
+    } else {
+      title = '✅ Account Reinstated';
+      message = 'Your TUJUANE account standing has been restored to Active. You can now post, chat, and participate in community activities.';
+      notifStatus = 'good';
+    }
+
+    await sendUserNotification({
+      userId: targetUserId,
+      category: 'account_status',
+      type: status === 'active' ? 'account_good_standing' : 'account_warning',
+      title,
+      message,
+      accountStatus: notifStatus
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `users/${targetUserId}`);
+  }
+}
+
 

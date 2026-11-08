@@ -16,6 +16,7 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { Footer } from './components/Footer';
 import { NotificationCenterModal } from './components/NotificationCenterModal';
 import { AuthModal } from './components/AuthModal';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UserProfile } from './types/chat';
 import { UserNotification, AccountStandingSummary } from './types/notification';
@@ -28,7 +29,7 @@ import {
   subscribeToUserNotifications,
   calculateAccountStanding
 } from './services/userNotificationService';
-import { Check, ArrowLeft, Home, Sparkles, ShieldAlert, Bell } from 'lucide-react';
+import { Check, ArrowLeft, Home, Sparkles, ShieldAlert, Bell, Ban, Clock, AlertTriangle } from 'lucide-react';
 
 const DEVELOPER_EMAIL = 'muriithipeterkangethe237@gmail.com';
 
@@ -45,6 +46,12 @@ function AppContent() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const isDeveloper = !!currentUser?.email && currentUser.email.toLowerCase().trim() === DEVELOPER_EMAIL.toLowerCase();
+
+  const isBanned = userProfile?.accountStatus === 'banned';
+  const isSuspended =
+    userProfile?.accountStatus === 'suspended' &&
+    (!userProfile.suspendedUntil || new Date(userProfile.suspendedUntil).getTime() > Date.now());
+  const isRestricted = isBanned || isSuspended;
 
   // Profile Viewing state
   const [viewingProfileUser, setViewingProfileUser] = useState<UserProfile | null>(null);
@@ -442,6 +449,51 @@ function AppContent() {
             : 'flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full'
         }
       >
+        {/* Account Restriction Status Alert */}
+        {isRestricted && (
+          <div className="mb-6 p-4 rounded-2xl border shadow-sm animate-fade-in transition-all bg-white overflow-hidden">
+            {isBanned ? (
+              <div className="flex items-start gap-3 bg-rose-50 border border-rose-200/80 p-4 rounded-xl text-rose-900">
+                <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                  <Ban className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-black flex items-center gap-2">
+                    <span>⛔ Account Permanently Banned</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-200 text-rose-900">Restricted</span>
+                  </div>
+                  <p className="text-xs text-rose-800 mt-1 leading-relaxed">
+                    Your citizen account has been permanently restricted from TUJUANE due to safety violations:
+                    <span className="font-bold underline ml-1">{userProfile?.banReason || 'Violation of community safety standards'}</span>.
+                    You cannot publish discussions, participate in direct chats, or post comments.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3 bg-amber-50 border border-amber-200/80 p-4 rounded-xl text-amber-900">
+                <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                  <Clock className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-black flex items-center gap-2">
+                    <span>⚠️ Account Temporarily Suspended</span>
+                    {userProfile?.suspendedUntil && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900">
+                        Until {new Date(userProfile.suspendedUntil).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                    Your citizen account is currently suspended.
+                    Reason: <span className="font-bold ml-1">{userProfile?.banReason || 'Community policy infraction'}</span>.
+                    During this suspension window, creating posts, replying with comments, and sending messages are disabled.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Landing / Community Hub View */}
         {activeTab === 'landing' && (
           <LandingPage onNavigate={handleLandingNavigate} />
@@ -603,6 +655,9 @@ function AppContent() {
           }}
         />
       )}
+
+      {/* Offline Status Badge for PWA Resilience */}
+      <OfflineIndicator />
 
     </div>
   );

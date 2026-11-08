@@ -11,6 +11,12 @@ export interface UserProfile {
   lastSeen?: string;
   blockedUserIds?: string[];
   mutedUserIds?: string[];
+  isDeveloper?: boolean;
+  accountStatus?: 'active' | 'suspended' | 'banned';
+  suspendedUntil?: string;
+  banReason?: string;
+  statusUpdatedAt?: string;
+  statusUpdatedBy?: string;
   createdAt: string;
 }
 

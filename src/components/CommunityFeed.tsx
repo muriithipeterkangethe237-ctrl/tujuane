@@ -369,11 +369,44 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
   };
 
+  const isBanned = userProfile?.accountStatus === 'banned';
+  const isSuspended =
+    userProfile?.accountStatus === 'suspended' &&
+    (!userProfile.suspendedUntil || new Date(userProfile.suspendedUntil).getTime() > Date.now());
+  const isRestricted = isBanned || isSuspended;
+
+  const handleOpenCreateModal = () => {
+    if (!currentUser) {
+      openAuthModal('register');
+      return;
+    }
+    if (isBanned) {
+      triggerToast(`⛔ Account permanently banned: ${userProfile?.banReason || 'Policy violation'}`);
+      return;
+    }
+    if (isSuspended) {
+      const untilStr = userProfile?.suspendedUntil ? new Date(userProfile.suspendedUntil).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : 'temporary duration';
+      triggerToast(`⚠️ Account suspended until ${untilStr}: ${userProfile?.banReason || 'Policy violation'}`);
+      return;
+    }
+    setIsCreateModalOpen(true);
+  };
+
   // Submit new community post with Safety Filtering (Title and location now fully optional)
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !userProfile) {
       openAuthModal();
+      return;
+    }
+
+    if (isBanned) {
+      setFormError(`Your account is permanently banned (${userProfile.banReason || 'Policy violation'}). You cannot publish posts.`);
+      return;
+    }
+    if (isSuspended) {
+      const untilStr = userProfile.suspendedUntil ? new Date(userProfile.suspendedUntil).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : 'temporary duration';
+      setFormError(`Your account is suspended until ${untilStr} (${userProfile.banReason || 'Policy violation'}). You cannot publish posts.`);
       return;
     }
 
@@ -484,6 +517,16 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const handleSubmitComment = async (postId: string) => {
     if (!currentUser || !userProfile) {
       openAuthModal();
+      return;
+    }
+
+    if (isBanned) {
+      triggerToast(`⛔ Account permanently banned: ${userProfile.banReason || 'Policy violation'}`);
+      return;
+    }
+    if (isSuspended) {
+      const untilStr = userProfile.suspendedUntil ? new Date(userProfile.suspendedUntil).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : 'temporary duration';
+      triggerToast(`⚠️ Account suspended until ${untilStr}: ${userProfile.banReason || 'Policy violation'}`);
       return;
     }
 
@@ -800,7 +843,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
             {currentUser ? (
               <button
-                onClick={() => setIsCreateModalOpen(true)}
+                onClick={handleOpenCreateModal}
                 className="px-5 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm rounded-xl transition-all shadow-lg hover:shadow-emerald-500/25 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
@@ -1274,7 +1317,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             </p>
             {currentUser && (
               <button
-                onClick={() => setIsCreateModalOpen(true)}
+                onClick={handleOpenCreateModal}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-2 cursor-pointer transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />

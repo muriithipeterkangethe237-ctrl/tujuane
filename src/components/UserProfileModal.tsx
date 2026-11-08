@@ -214,6 +214,37 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   if (!isOpen) return null;
 
+  const isDeveloperUser = localUser?.email?.toLowerCase().trim() === 'muriithipeterkangethe237@gmail.com' || localUser?.isDeveloper;
+  const isViewingSelfDeveloper = currentUser?.email?.toLowerCase().trim() === 'muriithipeterkangethe237@gmail.com';
+
+  if (isDeveloperUser && !isViewingSelfDeveloper) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
+        onClick={onClose}
+      >
+        <div
+          className="bg-white rounded-3xl max-w-sm w-full p-6 text-center space-y-3 shadow-2xl border border-slate-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="w-12 h-12 rounded-full bg-purple-50 border border-purple-200 flex items-center justify-center mx-auto text-purple-700">
+            <ShieldCheck className="w-6 h-6" />
+          </div>
+          <h3 className="font-bold text-slate-900 text-sm">Protected System Profile</h3>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            This account is reserved for system platform maintenance and administration, and is shielded from public citizen interactions.
+          </p>
+          <button
+            onClick={onClose}
+            className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Social status helpers
   const isFollowing = followingList.some((f) => f.followingId === user.uid);
   const isFollower = followersList.some((f) => f.followerId === currentUser?.uid);

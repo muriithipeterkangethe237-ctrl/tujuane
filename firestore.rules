@@ -24,6 +24,10 @@ service cloud.firestore {
       return resource.data;
     }
 
+    function isDeveloper() {
+      return isSignedIn() && request.auth.token.email == 'muriithipeterkangethe237@gmail.com';
+    }
+
     // Validation for UserProfile
     function isValidUserProfile(data) {
       return data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128
@@ -38,6 +42,12 @@ service cloud.firestore {
         && (!('lastSeen' in data) || data.lastSeen is timestamp || data.lastSeen is string)
         && (!('blockedUserIds' in data) || (data.blockedUserIds is list && data.blockedUserIds.size() <= 500))
         && (!('mutedUserIds' in data) || (data.mutedUserIds is list && data.mutedUserIds.size() <= 500))
+        && (!('isDeveloper' in data) || data.isDeveloper is bool)
+        && (!('accountStatus' in data) || data.accountStatus in ['active', 'suspended', 'banned'])
+        && (!('suspendedUntil' in data) || data.suspendedUntil is timestamp || data.suspendedUntil is string)
+        && (!('banReason' in data) || (data.banReason is string && data.banReason.size() <= 500))
+        && (!('statusUpdatedAt' in data) || data.statusUpdatedAt is timestamp || data.statusUpdatedAt is string)
+        && (!('statusUpdatedBy' in data) || (data.statusUpdatedBy is string && data.statusUpdatedBy.size() <= 128))
         && (!('createdAt' in data) || data.createdAt is timestamp || data.createdAt is string);
     }
 
@@ -148,9 +158,16 @@ service cloud.firestore {
         && isValidUserProfile(incoming());
       allow update: if isSignedIn() 
         && isValidId(userId) 
-        && request.auth.uid == userId 
         && incoming().uid == existing().uid
-        && isValidUserProfile(incoming());
+        && isValidUserProfile(incoming())
+        && (
+          isDeveloper()
+          || (
+            request.auth.uid == userId
+            && (!('isDeveloper' in incoming()) || incoming().isDeveloper == existing().get('isDeveloper', false))
+            && (!('accountStatus' in incoming()) || incoming().accountStatus == existing().get('accountStatus', 'active'))
+          )
+        );
 
       allow delete: if false;
     }

@@ -17,6 +17,12 @@
         "lastSeen": { "type": "string", "format": "date-time" },
         "blockedUserIds": { "type": "array" },
         "mutedUserIds": { "type": "array" },
+        "isDeveloper": { "type": "boolean" },
+        "accountStatus": { "type": "string", "enum": ["active", "suspended", "banned"] },
+        "suspendedUntil": { "type": "string" },
+        "banReason": { "type": "string", "maxLength": 500 },
+        "statusUpdatedAt": { "type": "string" },
+        "statusUpdatedBy": { "type": "string", "maxLength": 128 },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "displayName", "createdAt"]

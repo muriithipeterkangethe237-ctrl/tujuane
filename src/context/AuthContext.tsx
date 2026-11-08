@@ -167,6 +167,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           occupation: data.occupation || undefined,
           blockedUserIds: Array.isArray(data.blockedUserIds) ? data.blockedUserIds : [],
           mutedUserIds: Array.isArray(data.mutedUserIds) ? data.mutedUserIds : [],
+          isDeveloper: data.isDeveloper !== undefined ? Boolean(data.isDeveloper) : (user.email?.toLowerCase().trim() === 'muriithipeterkangethe237@gmail.com'),
+          accountStatus: (data.accountStatus as 'active' | 'suspended' | 'banned') || 'active',
+          suspendedUntil: data.suspendedUntil?.toDate
+            ? data.suspendedUntil.toDate().toISOString()
+            : typeof data.suspendedUntil === 'string'
+            ? data.suspendedUntil
+            : undefined,
+          banReason: data.banReason || undefined,
+          statusUpdatedAt: data.statusUpdatedAt?.toDate
+            ? data.statusUpdatedAt.toDate().toISOString()
+            : typeof data.statusUpdatedAt === 'string'
+            ? data.statusUpdatedAt
+            : undefined,
+          statusUpdatedBy: data.statusUpdatedBy || undefined,
           isOnline: true,
           lastSeen: new Date().toISOString(),
           createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString()
@@ -290,6 +304,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             occupation: data.occupation !== undefined ? data.occupation : prev?.occupation,
             blockedUserIds: Array.isArray(data.blockedUserIds) ? data.blockedUserIds : (prev?.blockedUserIds || []),
             mutedUserIds: Array.isArray(data.mutedUserIds) ? data.mutedUserIds : (prev?.mutedUserIds || []),
+            isDeveloper: data.isDeveloper !== undefined ? Boolean(data.isDeveloper) : (prev?.isDeveloper ?? (currentUser.email?.toLowerCase().trim() === 'muriithipeterkangethe237@gmail.com')),
+            accountStatus: (data.accountStatus as 'active' | 'suspended' | 'banned') || prev?.accountStatus || 'active',
+            suspendedUntil: data.suspendedUntil?.toDate
+              ? data.suspendedUntil.toDate().toISOString()
+              : typeof data.suspendedUntil === 'string'
+              ? data.suspendedUntil
+              : prev?.suspendedUntil,
+            banReason: data.banReason !== undefined ? data.banReason : prev?.banReason,
+            statusUpdatedAt: data.statusUpdatedAt?.toDate
+              ? data.statusUpdatedAt.toDate().toISOString()
+              : typeof data.statusUpdatedAt === 'string'
+              ? data.statusUpdatedAt
+              : prev?.statusUpdatedAt,
+            statusUpdatedBy: data.statusUpdatedBy !== undefined ? data.statusUpdatedBy : prev?.statusUpdatedBy,
             isOnline: data.isOnline !== undefined ? Boolean(data.isOnline) : true,
             lastSeen: data.lastSeen?.toDate ? data.lastSeen.toDate().toISOString() : (typeof data.lastSeen === 'string' ? data.lastSeen : new Date().toISOString()),
             createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (typeof data.createdAt === 'string' ? data.createdAt : prev?.createdAt || new Date().toISOString())

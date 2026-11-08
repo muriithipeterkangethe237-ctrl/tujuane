@@ -1,21 +1,26 @@
 /**
- * TUJUANE Service Worker
- * Pre-caches application shell and essential assets for offline operation.
+ * TUJUANE Service Worker (v4)
+ * Pre-caches application shell, icons, and essential assets.
+ * Purges old caches to ensure the new app icon displays on all installed web apps.
  */
 
-const CACHE_NAME = 'kenyanet-v1';
+const CACHE_NAME = 'tujuane-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
-  '/src/main.tsx',
-  '/src/index.css',
-  '/manifest.json'
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-maskable-192.png',
+  '/icon-maskable-512.png',
+  '/apple-touch-icon.png',
+  '/favicon.png',
+  '/icon.svg'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Pre-cache static assets; failure on some files won't abort
       return Promise.allSettled(
         STATIC_ASSETS.map((url) =>
           cache.add(url).catch((err) => console.log('SW cache skip:', url, err))
@@ -23,6 +28,7 @@ self.addEventListener('install', (event) => {
       );
     })
   );
+  // Force active service worker immediately without waiting for old instances
   self.skipWaiting();
 });
 
@@ -32,6 +38,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log('Purging legacy PWA cache:', key);
             return caches.delete(key);
           }
         })
@@ -47,6 +54,27 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
+  // Network-first for manifest and app icons to guarantee newest icon is served
+  if (
+    url.pathname.includes('manifest.json') ||
+    url.pathname.includes('icon') ||
+    url.pathname.includes('apple-touch-icon') ||
+    url.pathname.includes('favicon')
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   // For navigation requests (loading the HTML page)
   if (event.request.mode === 'navigate') {
     event.respondWith(
@@ -57,48 +85,44 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first with cache fallback for HTML/scripts/CSS
+  // Stale-while-revalidate for general assets
   event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            // Cache same-origin requests or fonts
-            if (url.origin === location.origin || url.hostname.includes('googleapis.com') || url.hostname.includes('gstatic.com')) {
-              cache.put(event.request, responseToCache);
-            }
-          });
-        }
-        return networkResponse;
-      })
-      .catch(() => {
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) return cachedResponse;
-          // Fallback response for offline state
-          return new Response('Offline: Data loaded from IndexedDB', {
-            status: 200,
-            headers: { 'Content-Type': 'text/plain' },
-          });
-        });
-      })
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchPromise = fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              if (
+                url.origin === location.origin ||
+                url.hostname.includes('googleapis.com') ||
+                url.hostname.includes('gstatic.com')
+              ) {
+                cache.put(event.request, clone);
+              }
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => cachedResponse);
+
+      return cachedResponse || fetchPromise;
+    })
   );
 });
 
-// Notification click handler: Focuses or opens the TUJUANE app when the user taps a notification in the notification bar
+// Notification click handler: Focuses or opens the TUJUANE app
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = (event.notification.data && event.notification.data.url) || '/';
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // If an existing app window or tab is already open, focus it
       for (const client of clientList) {
         if ('focus' in client) {
           return client.focus();
         }
       }
-      // Otherwise open a new window to the TUJUANE app
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }
@@ -106,7 +130,7 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// Push notification event listener for real-time background messages
+// Push notification event listener with new PWA app icon
 self.addEventListener('push', (event) => {
   let data = {};
   if (event.data) {
@@ -128,8 +152,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'TUJUANE Kenya Community';
   const options = {
     body: data.body || 'You have new activity waiting for you on TUJUANE.',
-    icon: data.icon || '/icon.svg',
-    badge: data.badge || '/icon.svg',
+    icon: data.icon || '/icon-192.png',
+    badge: data.badge || '/icon-192.png',
     tag: data.tag || `tujuane_${Date.now()}`,
     renotify: true,
     vibrate: [200, 100, 200],

@@ -644,6 +644,18 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     e.preventDefault();
     if (!currentUser || !userProfile) return;
 
+    if (userProfile.accountStatus === 'banned') {
+      setChatToast(`⛔ Account permanently banned: ${userProfile.banReason || 'Policy violation'}`);
+      setTimeout(() => setChatToast(null), 4000);
+      return;
+    }
+    if (userProfile.accountStatus === 'suspended' && (!userProfile.suspendedUntil || new Date(userProfile.suspendedUntil).getTime() > Date.now())) {
+      const untilStr = userProfile.suspendedUntil ? new Date(userProfile.suspendedUntil).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : 'temporary duration';
+      setChatToast(`⚠️ Account suspended until ${untilStr}: ${userProfile.banReason || 'Policy violation'}`);
+      setTimeout(() => setChatToast(null), 4000);
+      return;
+    }
+
     // Reset typing status for direct chats
     if (activeChatMode === 'direct' && activeChatId) {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -2482,8 +2494,18 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               </div>
             )}
 
-            {/* Blocked Account Composer Notice OR Message Input Form */}
-            {activeChatMode === 'direct' && activePartner && blockedUserIds.includes(activePartner.uid) ? (
+            {/* Blocked Account Composer Notice OR Account Restriction Notice OR Message Input Form */}
+            {userProfile?.accountStatus === 'banned' ? (
+              <div className="shrink-0 p-4 bg-rose-50 border-t border-rose-200 text-center text-xs text-rose-800 flex items-center justify-center gap-2 font-semibold pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <Ban className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>Account permanently banned ({userProfile.banReason || 'Policy violations'}). Messaging disabled.</span>
+              </div>
+            ) : userProfile?.accountStatus === 'suspended' && (!userProfile.suspendedUntil || new Date(userProfile.suspendedUntil).getTime() > Date.now()) ? (
+              <div className="shrink-0 p-4 bg-amber-50 border-t border-amber-200 text-center text-xs text-amber-800 flex items-center justify-center gap-2 font-semibold pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Account suspended until {userProfile.suspendedUntil ? new Date(userProfile.suspendedUntil).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'temporary duration'} ({userProfile.banReason || 'Policy violation'}). Messaging disabled.</span>
+              </div>
+            ) : activeChatMode === 'direct' && activePartner && blockedUserIds.includes(activePartner.uid) ? (
               <div className="shrink-0 p-4 bg-slate-100 border-t border-slate-200 text-center text-xs text-slate-600 flex items-center justify-center gap-2 font-medium pb-[max(1rem,env(safe-area-inset-bottom))]">
                 <Ban className="w-4 h-4 text-rose-500 shrink-0" />
                 <span>You have blocked this account. Unblock to send messages.</span>

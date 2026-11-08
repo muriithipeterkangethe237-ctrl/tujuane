@@ -16,6 +16,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 
 import { AppLogoIcon } from './AppLogoIcon';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   activeTab: string;
@@ -192,6 +193,9 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Zone 3: Actions & Google Sign-In */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* PWA In-App Install Prompt */}
+          <PWAInstallButton variant="header" />
+
           {/* Notification Channel Bell */}
           {currentUser && onOpenNotifications && (
             <button

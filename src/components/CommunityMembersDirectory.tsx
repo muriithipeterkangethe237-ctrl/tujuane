@@ -286,6 +286,11 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
     return members.filter((m) => {
       if (currentUser && m.uid === currentUser.uid) return false;
 
+      // Hide platform developer account from other citizens
+      if (m.email?.toLowerCase().trim() === 'muriithipeterkangethe237@gmail.com' || m.isDeveloper) {
+        return false;
+      }
+
       // Sub-tab filter
       if (activeSubTab === 'friends' && !acceptedFriendIds.has(m.uid)) {
         return false;
