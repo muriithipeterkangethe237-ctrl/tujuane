@@ -470,21 +470,21 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-xs animate-in fade-in duration-200"
     >
       <div
-        className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[92vh] overflow-hidden"
+        className="bg-white dark:bg-slate-900 w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[92vh] overflow-hidden transition-colors"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Top Header */}
-        <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50/90 shrink-0">
+        <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/90 dark:bg-slate-850/90 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-emerald-700 text-white flex items-center justify-center shadow-xs">
               <Bell className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
                   Real-Time Notification Channel
                 </h2>
                 {unreadCount > 0 && (
@@ -493,7 +493,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Live push alerts on direct chats, upvotes, replies, and community trust standing
               </p>
             </div>
@@ -505,7 +505,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                 type="button"
                 onClick={handleMarkAllRead}
                 disabled={isProcessing}
-                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 transition-colors cursor-pointer border border-emerald-200"
+                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-colors cursor-pointer border border-emerald-200 dark:border-emerald-800"
                 title="Mark all notifications as read"
               >
                 <CheckCheck className="w-3.5 h-3.5" />
@@ -519,7 +519,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                 e.stopPropagation();
                 onClose();
               }}
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+              className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
               aria-label="Close"
               title="Close notifications (Esc)"
             >
@@ -640,93 +640,93 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
 
         {/* Expandable Notification Type Preferences Accordion */}
         {showPreferences && (
-          <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 text-xs shrink-0 animate-in fade-in slide-in-from-top-1">
+          <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-xs shrink-0 animate-in fade-in slide-in-from-top-1">
             <div className="flex items-center justify-between mb-2">
-              <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                <Settings className="w-3.5 h-3.5 text-emerald-700" />
+              <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Settings className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
                 <span>Notification Type Preferences</span>
               </div>
-              <span className="text-[11px] text-slate-500">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
                 Choose which events trigger real-time push and chimes
               </span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 cursor-pointer hover:bg-slate-100/60 select-none">
+              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
                 <input
                   type="checkbox"
                   checked={preferences.typePreferences.direct_message}
                   onChange={() => handleToggleTypePreference('direct_message')}
                   className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                 />
-                <span className="font-semibold text-slate-700 truncate">💬 Direct Chats</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">💬 Direct Chats</span>
               </label>
 
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 cursor-pointer hover:bg-slate-100/60 select-none">
+              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
                 <input
                   type="checkbox"
                   checked={preferences.typePreferences.post_like}
                   onChange={() => handleToggleTypePreference('post_like')}
                   className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                 />
-                <span className="font-semibold text-slate-700 truncate">❤️ Post Upvotes</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">❤️ Post Upvotes</span>
               </label>
 
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 cursor-pointer hover:bg-slate-100/60 select-none">
+              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
                 <input
                   type="checkbox"
                   checked={preferences.typePreferences.post_comment}
                   onChange={() => handleToggleTypePreference('post_comment')}
                   className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                 />
-                <span className="font-semibold text-slate-700 truncate">💬 Replies</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">💬 Replies</span>
               </label>
 
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 cursor-pointer hover:bg-slate-100/60 select-none">
+              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
                 <input
                   type="checkbox"
                   checked={preferences.typePreferences.friend_request}
                   onChange={() => handleToggleTypePreference('friend_request')}
                   className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                 />
-                <span className="font-semibold text-slate-700 truncate">🤝 Connections</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">🤝 Connections</span>
               </label>
 
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 cursor-pointer hover:bg-slate-100/60 select-none">
+              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
                 <input
                   type="checkbox"
                   checked={preferences.typePreferences.new_follower}
                   onChange={() => handleToggleTypePreference('new_follower')}
                   className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                 />
-                <span className="font-semibold text-slate-700 truncate">👥 Followers</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">👥 Followers</span>
               </label>
 
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 cursor-pointer hover:bg-slate-100/60 select-none">
+              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
                 <input
                   type="checkbox"
                   checked={preferences.typePreferences.account_status}
                   onChange={() => handleToggleTypePreference('account_status')}
                   className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                 />
-                <span className="font-semibold text-slate-700 truncate">🛡️ Trust Badges</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">🛡️ Trust Badges</span>
               </label>
 
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 cursor-pointer hover:bg-slate-100/60 select-none">
+              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
                 <input
                   type="checkbox"
                   checked={preferences.typePreferences.post_advisory}
                   onChange={() => handleToggleTypePreference('post_advisory')}
                   className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                 />
-                <span className="font-semibold text-slate-700 truncate">⚠️ Safety Advisories</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">⚠️ Safety Advisories</span>
               </label>
 
               <div className="flex items-center justify-end">
                 <button
                   type="button"
                   onClick={() => setShowPreferences(false)}
-                  className="text-emerald-700 hover:text-emerald-900 font-bold px-2 py-1 text-xs"
+                  className="text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300 font-bold px-2 py-1 text-xs cursor-pointer"
                 >
                   Done
                 </button>
@@ -803,14 +803,14 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
         </div>
 
         {/* Notification Type Granular Filter Tabs */}
-        <div className="px-5 pt-2.5 pb-2 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 bg-white shrink-0">
+        <div className="px-5 pt-2.5 pb-2 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-white dark:bg-slate-900 shrink-0">
           <div className="flex items-center gap-1 overflow-x-auto text-xs font-semibold no-scrollbar py-0.5 max-w-full">
             <button
               onClick={() => setActiveFilter('all')}
               className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeFilter === 'all'
                   ? 'bg-emerald-700 text-white shadow-2xs font-bold'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               <span>All</span>
@@ -822,13 +822,13 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeFilter === 'direct_message'
                   ? 'bg-sky-700 text-white shadow-2xs font-bold'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               <Send className="w-3 h-3 text-sky-500" />
               <span>Direct Chats</span>
               {countByType.direct_message > 0 && (
-                <span className="text-[10px] font-mono px-1 rounded-full bg-sky-200/40">
+                <span className="text-[10px] font-mono px-1 rounded-full bg-sky-200/40 dark:bg-sky-900/60">
                   {countByType.direct_message}
                 </span>
               )}
@@ -839,13 +839,13 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeFilter === 'post_like'
                   ? 'bg-rose-700 text-white shadow-2xs font-bold'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               <Heart className="w-3 h-3 text-rose-500 fill-rose-500" />
               <span>Likes</span>
               {countByType.post_like > 0 && (
-                <span className="text-[10px] font-mono px-1 rounded-full bg-rose-200/40">
+                <span className="text-[10px] font-mono px-1 rounded-full bg-rose-200/40 dark:bg-rose-900/60">
                   {countByType.post_like}
                 </span>
               )}
@@ -856,13 +856,13 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeFilter === 'post_comment'
                   ? 'bg-blue-700 text-white shadow-2xs font-bold'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               <MessageSquare className="w-3 h-3 text-blue-500" />
               <span>Replies</span>
               {countByType.post_comment > 0 && (
-                <span className="text-[10px] font-mono px-1 rounded-full bg-blue-200/40">
+                <span className="text-[10px] font-mono px-1 rounded-full bg-blue-200/40 dark:bg-blue-900/60">
                   {countByType.post_comment}
                 </span>
               )}
@@ -873,13 +873,13 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeFilter === 'friend_request'
                   ? 'bg-indigo-700 text-white shadow-2xs font-bold'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               <UserPlus className="w-3 h-3 text-indigo-500" />
               <span>Requests</span>
               {countByType.friend_request > 0 && (
-                <span className="text-[10px] font-mono px-1 rounded-full bg-indigo-200/40">
+                <span className="text-[10px] font-mono px-1 rounded-full bg-indigo-200/40 dark:bg-indigo-900/60">
                   {countByType.friend_request}
                 </span>
               )}
@@ -890,13 +890,13 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeFilter === 'new_follower'
                   ? 'bg-teal-700 text-white shadow-2xs font-bold'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               <ThumbsUp className="w-3 h-3 text-teal-500" />
               <span>Followers</span>
               {countByType.new_follower > 0 && (
-                <span className="text-[10px] font-mono px-1 rounded-full bg-teal-200/40">
+                <span className="text-[10px] font-mono px-1 rounded-full bg-teal-200/40 dark:bg-teal-900/60">
                   {countByType.new_follower}
                 </span>
               )}
@@ -907,7 +907,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeFilter === 'account_status'
                   ? 'bg-emerald-700 text-white shadow-2xs font-bold'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               <Shield className="w-3 h-3 text-emerald-500" />
@@ -919,16 +919,16 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeFilter === 'safety'
                   ? 'bg-amber-700 text-white shadow-2xs font-bold'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
-              <ShieldAlert className="w-3 h-3 text-amber-500" />
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
               <span>Safety</span>
             </button>
           </div>
 
           <div className="flex items-center gap-2.5 text-xs shrink-0">
-            <label className="flex items-center gap-1.5 text-slate-600 cursor-pointer font-medium select-none">
+            <label className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 cursor-pointer font-medium select-none">
               <input
                 type="checkbox"
                 checked={unreadOnly}
@@ -952,16 +952,16 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
         </div>
 
         {/* Scrollable Notifications Feed */}
-        <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+        <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
           {filteredNotifications.length === 0 ? (
             <div className="py-16 px-4 text-center">
-              <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mb-3">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center mb-3">
                 <Bell className="w-7 h-7" />
               </div>
-              <h3 className="text-base font-bold text-slate-900">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
                 No notifications in this filter
               </h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1">
                 {unreadOnly
                   ? 'No unread alerts in this category. You are fully up to date!'
                   : 'Start a discussion, chat with citizens, or share local county updates to see real-time activity here.'}
@@ -973,7 +973,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                 key={notif.id}
                 onClick={() => handleNotificationClick(notif)}
                 className={`p-4 transition-colors flex items-start gap-3.5 cursor-pointer relative group ${
-                  notif.read ? 'bg-white hover:bg-slate-50/80' : 'bg-emerald-50/40 hover:bg-emerald-50/70'
+                  notif.read ? 'bg-white dark:bg-slate-900 hover:bg-slate-50/80 dark:hover:bg-slate-800/60' : 'bg-emerald-50/40 dark:bg-emerald-950/30 hover:bg-emerald-50/70 dark:hover:bg-emerald-950/50'
                 }`}
               >
                 {/* Unread indicator bar */}
@@ -991,23 +991,23 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                       {/* Granular notification type badge */}
                       {renderNotificationTypeBadge(notif.type)}
 
-                      <span className="text-xs font-bold text-slate-900 truncate">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
                         {notif.title}
                       </span>
 
                       {notif.actorCounty && (
-                        <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded-md">
+                        <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded-md">
                           {notif.actorCounty}
                         </span>
                       )}
                     </div>
 
-                    <span className="text-[10px] text-slate-400 whitespace-nowrap shrink-0">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0">
                       {formatTimeAgo(notif.createdAt)}
                     </span>
                   </div>
 
-                  <p className="text-xs text-slate-700 mt-1 line-clamp-2 leading-relaxed">
+                  <p className="text-xs text-slate-700 dark:text-slate-300 mt-1 line-clamp-2 leading-relaxed">
                     {notif.category === 'direct_chat' || notif.type === 'direct_message'
                       ? 'Sent you a new private message. Tap below to open chat.'
                       : notif.message}
@@ -1015,7 +1015,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
 
                   {/* Context snippet if attached */}
                   {notif.postTitle && (
-                    <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-[11px] font-medium text-slate-700 max-w-full truncate border border-slate-200">
+                    <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-700 dark:text-slate-300 max-w-full truncate border border-slate-200 dark:border-slate-700">
                       <Flame className="w-3 h-3 text-amber-500 shrink-0" />
                       <span className="truncate">{notif.postTitle}</span>
                       <ExternalLink className="w-3 h-3 text-slate-400 shrink-0" />

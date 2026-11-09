@@ -18,6 +18,7 @@ import { NotificationCenterModal } from './components/NotificationCenterModal';
 import { AuthModal } from './components/AuthModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { UserProfile } from './types/chat';
 import { UserNotification, AccountStandingSummary } from './types/notification';
 import { CommunityPost } from './types/community';
@@ -340,10 +341,10 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-20 right-4 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 animate-bounce">
+        <div className="fixed top-20 right-4 z-50 bg-slate-900 dark:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 animate-bounce border border-slate-700">
           <Check className="w-4 h-4 text-emerald-400" />
           <span>{toastMessage}</span>
         </div>
@@ -381,28 +382,28 @@ function AppContent() {
 
       {/* Contextual Top Back Bar for non-landing pages (omitted on chat for full-screen experience) */}
       {activeTab !== 'landing' && activeTab !== 'chat' && (
-        <div className="bg-slate-100/90 border-b border-slate-200/80 px-4 sm:px-6 lg:px-8 py-2 sticky top-16 z-30 backdrop-blur-xs">
+        <div className="bg-slate-100/90 dark:bg-slate-900/90 border-b border-slate-200/80 dark:border-slate-800 px-4 sm:px-6 lg:px-8 py-2 sticky top-16 z-30 backdrop-blur-xs transition-colors">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2.5 min-w-0">
               <button
                 onClick={handleGoBack}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white hover:bg-slate-200 text-slate-800 font-bold border border-slate-300 shadow-2xs hover:shadow-xs transition-all cursor-pointer group"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold border border-slate-300 dark:border-slate-700 shadow-2xs hover:shadow-xs transition-all cursor-pointer group"
                 aria-label="Back to previous screen"
               >
-                <ArrowLeft className="w-3.5 h-3.5 text-emerald-700 stroke-[2.5] group-hover:-translate-x-0.5 transition-transform" />
+                <ArrowLeft className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 stroke-[2.5] group-hover:-translate-x-0.5 transition-transform" />
                 <span>Back</span>
               </button>
 
-              <div className="flex items-center gap-1.5 text-slate-500 truncate">
+              <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 truncate">
                 <button
                   onClick={() => setActiveTab('landing')}
-                  className="hover:text-emerald-700 flex items-center gap-1 cursor-pointer font-medium"
+                  className="hover:text-emerald-700 dark:hover:text-emerald-400 flex items-center gap-1 cursor-pointer font-medium"
                 >
-                  <Home className="w-3 h-3 text-slate-400" />
+                  <Home className="w-3 h-3 text-slate-400 dark:text-slate-500" />
                   <span className="hidden sm:inline">Hub</span>
                 </button>
                 <span>/</span>
-                <span className="font-semibold text-slate-800 truncate">
+                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
                   {getPageTitle(activeTab)}
                 </span>
               </div>
@@ -665,8 +666,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

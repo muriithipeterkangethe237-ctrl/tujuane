@@ -220,23 +220,23 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   if (isDeveloperUser && !isViewingSelfDeveloper) {
     return (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-xs animate-fade-in"
         onClick={onClose}
       >
         <div
-          className="bg-white rounded-3xl max-w-sm w-full p-6 text-center space-y-3 shadow-2xl border border-slate-200"
+          className="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 text-center space-y-3 shadow-2xl border border-slate-200 dark:border-slate-800"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="w-12 h-12 rounded-full bg-purple-50 border border-purple-200 flex items-center justify-center mx-auto text-purple-700">
+          <div className="w-12 h-12 rounded-full bg-purple-50 dark:bg-purple-950/80 border border-purple-200 dark:border-purple-800 flex items-center justify-center mx-auto text-purple-700 dark:text-purple-300">
             <ShieldCheck className="w-6 h-6" />
           </div>
-          <h3 className="font-bold text-slate-900 text-sm">Protected System Profile</h3>
-          <p className="text-xs text-slate-500 leading-relaxed">
+          <h3 className="font-bold text-slate-900 dark:text-white text-sm">Protected System Profile</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
             This account is reserved for system platform maintenance and administration, and is shielded from public citizen interactions.
           </p>
           <button
             onClick={onClose}
-            className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+            className="w-full py-2 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
           >
             Close
           </button>
@@ -426,7 +426,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden my-6 relative flex flex-col max-h-[92vh]"
+        className="bg-white dark:bg-slate-900 rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-6 relative flex flex-col max-h-[92vh] transition-colors"
       >
         {/* Hidden File Input for Profile Photo Upload */}
         <input
@@ -477,10 +477,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   <img
                     src={activePhoto}
                     alt={localUser.displayName}
-                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl object-cover border-4 border-white shadow-md bg-white"
+                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl object-cover border-4 border-white dark:border-slate-850 shadow-md bg-white dark:bg-slate-900"
                   />
                 ) : (
-                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-emerald-100 text-emerald-800 font-extrabold flex items-center justify-center text-3xl border-4 border-white shadow-md">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-extrabold flex items-center justify-center text-3xl border-4 border-white dark:border-slate-850 shadow-md">
                     {localUser.displayName.charAt(0).toUpperCase()}
                   </div>
                 )}
@@ -493,7 +493,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       if (!isEditing) setIsEditing(true);
                       fileInputRef.current?.click();
                     }}
-                    className="absolute -bottom-1 -right-1 p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl border-2 border-white shadow-md transition-transform group-hover:scale-105 cursor-pointer"
+                    className="absolute -bottom-1 -right-1 p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl border-2 border-white dark:border-slate-800 shadow-md transition-transform group-hover:scale-105 cursor-pointer"
                     title="Change Profile Picture"
                   >
                     <Camera className="w-3.5 h-3.5" />
@@ -503,12 +503,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 {!isOwnProfile && (
                   livePresence.isOnline ? (
                     <span
-                      className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white ring-2 ring-emerald-400/50 animate-pulse"
+                      className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-800 ring-2 ring-emerald-400/50 animate-pulse"
                       title="Active online now"
                     />
                   ) : (
                     <span
-                      className="absolute bottom-1 right-1 w-4 h-4 bg-slate-400 rounded-full border-2 border-white"
+                      className="absolute bottom-1 right-1 w-4 h-4 bg-slate-400 rounded-full border-2 border-white dark:border-slate-800"
                       title={livePresence.lastSeenText}
                     />
                   )
@@ -517,18 +517,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
               <div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                     {isEditing ? editName || 'Citizen Member' : localUser.displayName}
                   </h2>
                   {isOwnProfile && (
-                    <span className="text-[10px] bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-full border border-slate-200">
+                    <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
                       You
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
-                  <MapPin className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 font-medium">
+                  <MapPin className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
                   <span>
                     {(isEditing ? editConstituency : localUser.constituency) ? `${isEditing ? editConstituency : localUser.constituency}, ` : ''}
                     {(isEditing ? editCounty : localUser.county) || 'National'}
@@ -544,11 +544,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   onClick={() => setIsEditing(!isEditing)}
                   className={`inline-flex items-center gap-1.5 px-3.5 py-2 font-bold text-xs rounded-xl transition-all cursor-pointer border shadow-2xs ${
                     isEditing
-                      ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
-                      : 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                      ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/40'
+                      : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
                   }`}
                 >
-                  <Edit3 className="w-3.5 h-3.5 text-emerald-700" />
+                  <Edit3 className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
                   <span>{isEditing ? 'Cancel Edit' : 'Edit Profile'}</span>
                 </button>
               ) : (
@@ -567,24 +567,24 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           </div>
 
           {/* Social Stats Strip */}
-          <div className="grid grid-cols-3 gap-2 py-3 px-4 bg-slate-50 rounded-2xl border border-slate-200 text-center">
+          <div className="grid grid-cols-3 gap-2 py-3 px-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 text-center">
             <div>
-              <div className="font-extrabold text-base sm:text-lg text-slate-900">
+              <div className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white">
                 {userPosts.length}
               </div>
-              <div className="text-[11px] font-semibold text-slate-500">Discussions</div>
+              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Discussions</div>
             </div>
             <div>
-              <div className="font-extrabold text-base sm:text-lg text-slate-900">
+              <div className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white">
                 {followersList.length}
               </div>
-              <div className="text-[11px] font-semibold text-slate-500">Followers</div>
+              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Followers</div>
             </div>
             <div>
-              <div className="font-extrabold text-base sm:text-lg text-slate-900">
+              <div className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white">
                 {localUser.county || 'All Kenya'}
               </div>
-              <div className="text-[11px] font-semibold text-slate-500 truncate">Home Base</div>
+              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">Home Base</div>
             </div>
           </div>
 
@@ -595,24 +595,24 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Info className="w-4 h-4 text-emerald-700" />
-                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                    <Info className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
                       About Me
                     </span>
                   </div>
                   {isOwnProfile && !localUser.bio && (
                     <button
                       onClick={() => setIsEditing(true)}
-                      className="text-xs font-semibold text-emerald-700 hover:underline cursor-pointer"
+                      className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
                     >
                       + Add About Info
                     </button>
                   )}
                 </div>
 
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-700 space-y-2.5">
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 text-xs text-slate-700 dark:text-slate-300 space-y-2.5">
                   {localUser.bio ? (
-                    <p className="leading-relaxed font-normal whitespace-pre-line text-slate-800">
+                    <p className="leading-relaxed font-normal whitespace-pre-line text-slate-800 dark:text-slate-200">
                       {localUser.bio}
                     </p>
                   ) : (
@@ -624,8 +624,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   )}
 
                   {localUser.occupation && (
-                    <div className="pt-1.5 border-t border-slate-200/60 flex items-center gap-1.5 text-[11px] text-emerald-800 font-bold">
-                      <Briefcase className="w-3.5 h-3.5 text-emerald-600" />
+                    <div className="pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center gap-1.5 text-[11px] text-emerald-800 dark:text-emerald-300 font-bold">
+                      <Briefcase className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                       <span>{localUser.occupation}</span>
                     </div>
                   )}
@@ -633,29 +633,29 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               </div>
 
               {/* Citizen Details Metadata */}
-              <div className="grid grid-cols-2 gap-3 text-xs text-slate-600">
-                <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center gap-2.5">
+              <div className="grid grid-cols-2 gap-3 text-xs text-slate-600 dark:text-slate-400">
+                <div className="p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 flex items-center gap-2.5">
                   <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
                   <div>
                     <div className="text-[10px] text-slate-400 font-semibold uppercase">Joined TUJUANE</div>
-                    <div className="font-bold text-slate-800">
+                    <div className="font-bold text-slate-800 dark:text-slate-200">
                       {localUser.createdAt ? new Date(localUser.createdAt).toLocaleDateString([], { month: 'short', year: 'numeric' }) : 'Verified Member'}
                     </div>
                   </div>
                 </div>
 
-                <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center gap-2.5">
+                <div className="p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 flex items-center gap-2.5">
                   <Clock className="w-4 h-4 text-slate-400 shrink-0" />
                   <div>
                     <div className="text-[10px] text-slate-400 font-semibold uppercase">Presence</div>
-                    <div className="font-bold text-slate-800 truncate text-xs sm:text-sm">
+                    <div className="font-bold text-slate-800 dark:text-slate-200 truncate text-xs sm:text-sm">
                       {livePresence.isOnline ? (
-                        <span className="text-emerald-700 flex items-center gap-1 font-bold">
+                        <span className="text-emerald-700 dark:text-emerald-400 flex items-center gap-1 font-bold">
                           <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block shadow-[0_0_6px_#10b981]" />
                           Online Now
                         </span>
                       ) : (
-                        <span className="text-slate-600 font-medium">
+                        <span className="text-slate-600 dark:text-slate-400 font-medium">
                           {livePresence.lastSeenText}
                         </span>
                       )}
@@ -862,11 +862,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               </div>
 
               {/* 1. Profile Picture Editor */}
-              <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+              <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
                   <span>Profile Picture</span>
                   {isCompressingPhoto && (
-                    <span className="text-[11px] text-emerald-600 font-semibold animate-pulse">
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold animate-pulse">
                       Processing photo...
                     </span>
                   )}
@@ -881,7 +881,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         className="w-18 h-18 rounded-2xl object-cover border-2 border-emerald-500 shadow-sm"
                       />
                     ) : (
-                      <div className="w-18 h-18 rounded-2xl bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-2xl border-2 border-slate-200">
+                      <div className="w-18 h-18 rounded-2xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-black flex items-center justify-center text-2xl border-2 border-slate-200 dark:border-slate-700">
                         {editName.charAt(0).toUpperCase() || 'U'}
                       </div>
                     )}
@@ -903,22 +903,22 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         <button
                           type="button"
                           onClick={() => setEditPhotoURL('')}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-slate-300 hover:border-rose-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-slate-300 dark:border-slate-700 hover:border-rose-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                           <span>Remove</span>
                         </button>
                       )}
                     </div>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       Supports JPG, PNG or WebP. Auto-compressed for rapid loading.
                     </p>
                   </div>
                 </div>
 
                 {/* Preset Avatars Bar */}
-                <div className="pt-2 border-t border-slate-200/70">
-                  <span className="text-[11px] font-semibold text-slate-600 block mb-1.5">
+                <div className="pt-2 border-t border-slate-200/70 dark:border-slate-700/60">
+                  <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1.5">
                     Or pick a preset avatar:
                   </span>
                   <div className="flex items-center gap-2 overflow-x-auto pb-1">
@@ -928,7 +928,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         key={idx}
                         onClick={() => setEditPhotoURL(url)}
                         className={`w-9 h-9 rounded-xl overflow-hidden shrink-0 border-2 transition-transform hover:scale-105 cursor-pointer ${
-                          editPhotoURL === url ? 'border-emerald-600 ring-2 ring-emerald-300' : 'border-transparent opacity-80 hover:opacity-100'
+                          editPhotoURL === url ? 'border-emerald-600 ring-2 ring-emerald-300 dark:ring-emerald-600' : 'border-transparent opacity-80 hover:opacity-100'
                         }`}
                       >
                         <img src={url} alt={`Preset ${idx + 1}`} className="w-full h-full object-cover" />
@@ -938,19 +938,19 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 </div>
 
                 {photoError && (
-                  <p className="text-xs text-rose-600 font-semibold">{photoError}</p>
+                  <p className="text-xs text-rose-600 dark:text-rose-400 font-semibold">{photoError}</p>
                 )}
               </div>
 
               {/* 2. Display Name */}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-800">Display Name *</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200">Display Name *</label>
                 <input
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   maxLength={60}
-                  className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                  className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
                   required
                 />
               </div>
@@ -958,7 +958,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               {/* 3. About / Bio */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-800">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
                     About / Bio
                   </label>
                   <span className="text-[11px] text-slate-400 font-medium">
@@ -971,37 +971,37 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   rows={4}
                   maxLength={500}
                   placeholder="Share a short bio about yourself, your hustles, your community passions, or what you care about in your constituency..."
-                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 resize-none leading-relaxed"
+                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white resize-none leading-relaxed"
                 />
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   This description will appear on your public citizen card and discussions.
                 </p>
               </div>
 
               {/* 4. Occupation / Hustle */}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-800">Occupation / Hustle / Community Role</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200">Occupation / Hustle / Community Role</label>
                 <input
                   type="text"
                   value={editOccupation}
                   onChange={(e) => setEditOccupation(e.target.value)}
                   placeholder="e.g. Software Hustler, Dairy Farmer, Student, Youth Representative"
                   maxLength={80}
-                  className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                  className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
                 />
               </div>
 
               {/* 5. County & Constituency Representation */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-800">Home County</label>
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">Home County</label>
                   <select
                     value={editCounty}
                     onChange={(e) => {
                       setEditCounty(e.target.value);
                       setEditConstituency('');
                     }}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 cursor-pointer"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white cursor-pointer"
                   >
                     {ALL_47_COUNTIES.map((c) => (
                       <option key={c} value={c}>
@@ -1012,11 +1012,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-800">Constituency (Optional)</label>
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">Constituency (Optional)</label>
                   <select
                     value={editConstituency}
                     onChange={(e) => setEditConstituency(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 cursor-pointer"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white cursor-pointer"
                   >
                     <option value="">Select Constituency</option>
                     {availableConstituencies.map((con) => (
@@ -1029,31 +1029,31 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               </div>
 
               {saveSuccess && (
-                <div className="p-3 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-600" />
+                <div className="p-3 bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-xs font-bold rounded-xl flex items-center gap-2 border border-emerald-300 dark:border-emerald-800">
+                  <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   <span>Profile updated successfully!</span>
                 </div>
               )}
 
               {saveError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium rounded-xl flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs font-medium rounded-xl flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <p className="font-bold">Could not save profile changes</p>
-                    <p className="text-[11px] text-rose-700 mt-0.5">{saveError}</p>
+                    <p className="text-[11px] text-rose-700 dark:text-rose-300 mt-0.5">{saveError}</p>
                   </div>
                 </div>
               )}
 
               {/* Submit Action Buttons */}
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => {
                     setIsEditing(false);
                     setSaveError(null);
                   }}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1070,8 +1070,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         </div>
 
         {/* Modal Footer with Explicit Functional Close Button */}
-        <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs shrink-0">
-          <span className="text-slate-400 text-[11px]">
+        <div className="px-5 py-3 bg-slate-50 dark:bg-slate-850/80 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs shrink-0">
+          <span className="text-slate-400 dark:text-slate-500 text-[11px]">
             Verified TUJUANE Citizen Profile
           </span>
           <div className="flex items-center gap-2">
@@ -1082,7 +1082,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   setIsEditing(false);
                   setSaveError(null);
                 }}
-                className="px-3.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold rounded-xl transition-colors cursor-pointer"
               >
                 Cancel Edit
               </button>
@@ -1093,7 +1093,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 e.stopPropagation();
                 onClose();
               }}
-              className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 active:scale-95 text-white font-bold rounded-xl transition-all cursor-pointer shadow-xs"
+              className="px-4 py-1.5 bg-slate-800 dark:bg-emerald-600 hover:bg-slate-900 dark:hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-xl transition-all cursor-pointer shadow-xs"
               title="Close profile dialog"
             >
               Close

@@ -54,6 +54,7 @@ interface AuthContextType {
   loginWithEmailPassword: (email: string, password: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
+  switchAccount: (targetMode?: 'google' | 'email') => Promise<void>;
   updateUserCounty: (county: string) => Promise<void>;
   updateUserLocation: (county: string, constituency?: string) => Promise<void>;
   updateFullProfile: (updates: {
@@ -426,6 +427,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const switchAccount = async (targetMode: 'google' | 'email' = 'google') => {
+    await logout();
+    if (targetMode === 'google') {
+      googleProvider.setCustomParameters({ prompt: 'select_account' });
+      await loginWithGoogle();
+    } else {
+      openAuthModal('signin');
+    }
+  };
+
   const updateUserCounty = async (county: string) => {
     return updateUserLocation(county);
   };
@@ -617,6 +628,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithEmailPassword,
         resetPassword,
         logout,
+        switchAccount,
         updateUserCounty,
         updateUserLocation,
         updateFullProfile,
