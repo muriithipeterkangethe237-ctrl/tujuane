@@ -880,73 +880,28 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         </div>
       )}
 
-      {/* Hero Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-md">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-3 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-xs font-semibold text-emerald-300 border border-white/10">
-              <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-              <span>TUJUANE Citizen Feed · 47 Counties</span>
-            </div>
-
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Community Stories, Discussions & Hustles
-            </h1>
-
-            <p className="text-slate-300 text-xs sm:text-sm leading-relaxed">
-              Share neighborhood happenings, post job & hustle opportunities, upload photos,
-              and connect with Kenyans across all 47 counties.
-            </p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
-            {currentUser ? (
-              <button
-                onClick={handleOpenCreateModal}
-                className="px-5 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm rounded-xl transition-all shadow-lg hover:shadow-emerald-500/25 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Plus className="w-4 h-4 stroke-[3]" />
-                <span>Start Discussion</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => openAuthModal('register')}
-                className="px-5 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm rounded-xl transition-all shadow-lg hover:shadow-emerald-500/25 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <UserCheck className="w-4 h-4" />
-                <span>Sign In / Register</span>
-              </button>
-            )}
-          </div>
+      {/* Feed Action Header: Add Discussion Button */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
+        <div>
+          <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+            <span>Community Feed</span>
+            <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 rounded-full text-[10px] font-bold">
+              47 Counties
+            </span>
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Share updates, hustle stories, and neighborhood news across Kenya
+          </p>
         </div>
 
-        {/* Quick Statistics Banner */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-6 mt-6 border-t border-slate-700/60 text-xs">
-          <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-            <div className="text-slate-400 text-[11px]">Total Discussions</div>
-            <div className="text-xl font-bold font-mono text-white mt-0.5">{posts.length}</div>
-          </div>
-          <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-            <div className="text-slate-400 text-[11px]">Hustle & Jobs</div>
-            <div className="text-xl font-bold font-mono text-emerald-400 mt-0.5">
-              {posts.filter((p) => p.category === 'hustle').length}
-            </div>
-          </div>
-          <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-            <div className="text-slate-400 text-[11px]">Local Happenings</div>
-            <div className="text-xl font-bold font-mono text-amber-300 mt-0.5">
-              {posts.filter((p) => p.category === 'local_news').length}
-            </div>
-          </div>
-          <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-            <div className="text-slate-400 text-[11px]">Media Photos Shared</div>
-            <div className="text-xl font-bold font-mono text-purple-300 mt-0.5">
-              {posts.filter((p) => !!p.mediaUrl).length}
-            </div>
-          </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={currentUser ? handleOpenCreateModal : () => openAuthModal('register')}
+            className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md hover:shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>Add Discussion</span>
+          </button>
         </div>
       </div>
 
@@ -1400,22 +1355,22 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       {/* Posts Stream */}
       <div className="space-y-4">
         {filteredPosts.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center space-y-4 transition-colors">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 flex items-center justify-center mx-auto">
               <MessageSquare className="w-6 h-6" />
             </div>
-            <h3 className="font-bold text-slate-800 text-base">No discussions found in this section</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">No discussions found in this section</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
               Be the first to start a conversation, share a local update, or post an opportunity for{' '}
               {selectedCounty === 'All' ? 'Kenya' : `${selectedCounty} County`}!
             </p>
             {currentUser && (
               <button
                 onClick={handleOpenCreateModal}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-2 cursor-pointer transition-colors"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-2 cursor-pointer transition-colors shadow-xs"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Start Discussion</span>
+                <span>Add Discussion</span>
               </button>
             )}
           </div>
