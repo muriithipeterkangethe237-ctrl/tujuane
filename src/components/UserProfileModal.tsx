@@ -666,7 +666,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
               {/* Non-own profile: Social Interaction Bar (Follow & Friend) & Safety Controls */}
               {!isOwnProfile && currentUser && (
-                <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
                   <div className="grid grid-cols-2 gap-2">
                     {/* Follow Button */}
                     <button
@@ -674,7 +674,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       disabled={isActionPending}
                       className={`inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
                         isFollowing
-                          ? 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-rose-50 hover:text-rose-700'
+                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700'
                           : isFollower
                           ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'
                           : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
@@ -682,7 +682,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     >
                       {isFollowing ? (
                         <>
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                           <span>Following</span>
                         </>
                       ) : isFollower ? (
@@ -703,18 +703,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       <button
                         onClick={handleRemoveFriend}
                         disabled={isActionPending}
-                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-50 text-emerald-800 hover:bg-rose-50 hover:text-rose-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
                       >
-                        <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        <UserCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                         <span>Friends ✓</span>
                       </button>
                     ) : friendshipStatus === 'pending_sent' ? (
                       <button
                         onClick={handleRemoveFriend}
                         disabled={isActionPending}
-                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-amber-50 text-amber-800 hover:bg-rose-50 hover:text-rose-700 border border-amber-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 border border-amber-200 dark:border-amber-800 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
                       >
-                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                         <span>Request Sent</span>
                       </button>
                     ) : friendshipStatus === 'pending_received' ? (
@@ -730,7 +730,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       <button
                         onClick={handleSendFriend}
                         disabled={isActionPending}
-                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                        className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-slate-700 dark:text-slate-200 hover:text-emerald-800 dark:hover:text-emerald-300 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
                       >
                         <UserPlus className="w-3.5 h-3.5" />
                         <span>Add Friend</span>
@@ -741,8 +741,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   {/* Citizen Safety & Moderation Controls (Block, Mute, Report) */}
                   <div className="pt-1 pb-1 space-y-2">
                     {isBlocked && (
-                      <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center gap-2">
-                        <Ban className="w-4 h-4 text-rose-600 shrink-0" />
+                      <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl text-xs text-rose-800 dark:text-rose-300 flex items-center gap-2">
+                        <Ban className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
                         <span className="font-medium">
                           You have blocked this citizen. Their direct messages and posts are hidden from your feed.
                         </span>
@@ -757,19 +757,19 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         disabled={isSafetyActionPending}
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer border text-[11px] ${
                           isMuted
-                            ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
-                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                            ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
                         }`}
                         title={isMuted ? 'Unmute notifications from this citizen' : 'Silence notifications from this citizen'}
                       >
                         {isMuted ? (
                           <>
-                            <VolumeX className="w-3.5 h-3.5 text-amber-600" />
+                            <VolumeX className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                             <span>Muted (Click to Unmute)</span>
                           </>
                         ) : (
                           <>
-                            <Volume2 className="w-3.5 h-3.5 text-slate-500" />
+                            <Volume2 className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                             <span>Mute Citizen</span>
                           </>
                         )}
@@ -782,8 +782,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         disabled={isSafetyActionPending}
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer border text-[11px] ${
                           isBlocked
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                            : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+                            : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/40'
                         }`}
                         title={isBlocked ? 'Unblock this citizen' : 'Block this citizen from contacting you'}
                       >
@@ -795,7 +795,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsReportOpen(true)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200 hover:border-rose-200 rounded-xl font-bold transition-all cursor-pointer text-[11px]"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-700 dark:text-slate-200 hover:text-rose-700 dark:hover:text-rose-300 border border-slate-200 dark:border-slate-700 hover:border-rose-200 dark:hover:border-rose-800 rounded-xl font-bold transition-all cursor-pointer text-[11px]"
                         title="Report this citizen account to civic moderators"
                       >
                         <Flag className="w-3.5 h-3.5 text-rose-500" />
@@ -807,18 +807,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               )}
 
               {/* Authored Community Posts */}
-              <div className="space-y-3 pt-3 border-t border-slate-100">
+              <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <div className="flex items-center justify-between">
-                  <div className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-emerald-700" />
+                  <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
                     <span>Recent Discussions by {localUser.displayName.split(' ')[0]} ({userPosts.length})</span>
                   </div>
                 </div>
 
                 {isLoadingPosts ? (
-                  <div className="py-6 text-center text-xs text-slate-400">Loading discussions...</div>
+                  <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">Loading discussions...</div>
                 ) : userPosts.length === 0 ? (
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-center text-xs text-slate-500">
+                  <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 text-center text-xs text-slate-500 dark:text-slate-400">
                     No community discussions posted yet.
                   </div>
                 ) : (
@@ -830,15 +830,15 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                           if (onSelectPost) onSelectPost(post.id);
                           onClose();
                         }}
-                        className="p-3 bg-slate-50 hover:bg-emerald-50 rounded-xl border border-slate-200 hover:border-emerald-200 transition-all cursor-pointer space-y-1"
+                        className="p-3 bg-slate-50 dark:bg-slate-800/80 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-xl border border-slate-200 dark:border-slate-700/60 hover:border-emerald-200 dark:hover:border-emerald-800 transition-all cursor-pointer space-y-1"
                       >
-                        <div className="font-bold text-xs text-slate-900 truncate">
+                        <div className="font-bold text-xs text-slate-900 dark:text-white truncate">
                           {post.title}
                         </div>
-                        <p className="text-[11px] text-slate-600 line-clamp-2">
+                        <p className="text-[11px] text-slate-600 dark:text-slate-300 line-clamp-2">
                           {post.content}
                         </p>
-                        <div className="flex items-center gap-3 text-[10px] text-slate-400 pt-1">
+                        <div className="flex items-center gap-3 text-[10px] text-slate-400 dark:text-slate-500 pt-1">
                           <span>{post.county ? `${post.county} County` : 'Kenya'}</span>
                           <span>·</span>
                           <span>{new Date(post.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>

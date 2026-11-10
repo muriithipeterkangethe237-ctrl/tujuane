@@ -372,19 +372,19 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
       </section>
 
       {/* Social Navigation Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-slate-200">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-slate-200 dark:border-slate-800">
         <button
           onClick={() => setActiveSubTab('all')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
             activeSubTab === 'all'
-              ? 'bg-emerald-700 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              ? 'bg-emerald-700 dark:bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
           <Users className="w-4 h-4" />
           <span>All Citizens</span>
           <span className={`text-[11px] px-2 py-0.5 rounded-full ${
-            activeSubTab === 'all' ? 'bg-emerald-800 text-emerald-200' : 'bg-slate-200 text-slate-700'
+            activeSubTab === 'all' ? 'bg-emerald-800 dark:bg-emerald-800 text-emerald-200' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
           }`}>
             {members.length}
           </span>
@@ -394,14 +394,14 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
           onClick={() => setActiveSubTab('friends')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
             activeSubTab === 'friends'
-              ? 'bg-emerald-700 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              ? 'bg-emerald-700 dark:bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
           <UserCheck className="w-4 h-4 text-emerald-300" />
           <span>My Friends</span>
           <span className={`text-[11px] px-2 py-0.5 rounded-full ${
-            activeSubTab === 'friends' ? 'bg-emerald-800 text-emerald-200' : 'bg-slate-200 text-slate-700'
+            activeSubTab === 'friends' ? 'bg-emerald-800 dark:bg-emerald-800 text-emerald-200' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
           }`}>
             {acceptedFriendIds.size}
           </span>
@@ -411,8 +411,8 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
           onClick={() => setActiveSubTab('requests')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap relative ${
             activeSubTab === 'requests'
-              ? 'bg-emerald-700 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              ? 'bg-emerald-700 dark:bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
           <Inbox className="w-4 h-4 text-amber-300" />
@@ -428,14 +428,14 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
           onClick={() => setActiveSubTab('following')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
             activeSubTab === 'following'
-              ? 'bg-emerald-700 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              ? 'bg-emerald-700 dark:bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
           <Heart className="w-4 h-4 text-rose-300" />
           <span>Following</span>
           <span className={`text-[11px] px-2 py-0.5 rounded-full ${
-            activeSubTab === 'following' ? 'bg-emerald-800 text-emerald-200' : 'bg-slate-200 text-slate-700'
+            activeSubTab === 'following' ? 'bg-emerald-800 dark:bg-emerald-800 text-emerald-200' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
           }`}>
             {followingIds.size}
           </span>
@@ -445,14 +445,14 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
           onClick={() => setActiveSubTab('followers')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
             activeSubTab === 'followers'
-              ? 'bg-emerald-700 text-white shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              ? 'bg-emerald-700 dark:bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
           <Users className="w-4 h-4 text-blue-300" />
           <span>Followers</span>
           <span className={`text-[11px] px-2 py-0.5 rounded-full ${
-            activeSubTab === 'followers' ? 'bg-emerald-800 text-emerald-200' : 'bg-slate-200 text-slate-700'
+            activeSubTab === 'followers' ? 'bg-emerald-800 dark:bg-emerald-800 text-emerald-200' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
           }`}>
             {followerIds.size}
           </span>
@@ -461,17 +461,17 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
 
       {/* Filter and Search Bar (Visible for All, Friends, Following, Followers) */}
       {activeSubTab !== 'requests' && (
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4 transition-colors">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
             {/* Search Input */}
             <div className="md:col-span-4 relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3.5 top-3" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by name, county, constituency..."
-                className="w-full pl-9 pr-3.5 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                className="w-full pl-9 pr-3.5 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               />
             </div>
 
@@ -480,7 +480,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
               <select
                 value={selectedCounty}
                 onChange={(e) => handleCountyChange(e.target.value)}
-                className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 cursor-pointer"
+                className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer"
               >
                 <option value="All">All 47 Counties</option>
                 {ALL_47_COUNTIES.map((c) => (
@@ -497,7 +497,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                 value={selectedConstituency}
                 onChange={(e) => setSelectedConstituency(e.target.value)}
                 disabled={selectedCounty === 'All' || availableConstituencies.length === 0}
-                className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 cursor-pointer disabled:opacity-50"
+                className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer disabled:opacity-50"
               >
                 <option value="All">
                   {selectedCounty === 'All' ? 'All Constituencies' : `All ${selectedCounty} Constituencies`}
@@ -516,11 +516,11 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                 onClick={() => setOnlyOnline(!onlyOnline)}
                 className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border ${
                   onlyOnline
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                 }`}
               >
-                <Circle className={`w-2.5 h-2.5 ${onlyOnline ? 'fill-emerald-500 text-emerald-500' : 'text-slate-400'}`} />
+                <Circle className={`w-2.5 h-2.5 ${onlyOnline ? 'fill-emerald-500 text-emerald-500' : 'text-slate-400 dark:text-slate-500'}`} />
                 <span className="truncate">Online Only</span>
               </button>
             </div>
@@ -531,23 +531,23 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
       {/* Incoming Requests View */}
       {activeSubTab === 'requests' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
-            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Inbox className="w-5 h-5 text-emerald-700" />
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Inbox className="w-5 h-5 text-emerald-700 dark:text-emerald-400" />
               <span>Incoming Friend Requests ({incomingRequests.length})</span>
             </h2>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               Citizens who want to connect and build a closer civic network with you.
             </p>
           </div>
 
           {incomingRequests.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3 shadow-xs">
-              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
-                <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center space-y-3 shadow-xs">
+              <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400 dark:text-slate-500">
+                <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
               </div>
-              <h3 className="font-bold text-slate-800 text-base">No pending friend requests</h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">No pending friend requests</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
                 When fellow citizens send you friend requests from any of Kenya's 47 counties, you'll see them here to accept or decline.
               </p>
               <button
@@ -562,39 +562,39 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
               {incomingRequests.map((req) => (
                 <div
                   key={req.id}
-                  className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:border-emerald-300 transition-all space-y-4 flex flex-col justify-between"
+                  className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs hover:border-emerald-300 dark:hover:border-emerald-700 transition-all space-y-4 flex flex-col justify-between"
                 >
                   <div className="flex items-start gap-3.5">
                     {req.senderPhoto ? (
                       <img
                         src={req.senderPhoto}
                         alt={req.senderName}
-                        className="w-12 h-12 rounded-2xl object-cover border border-slate-200"
+                        className="w-12 h-12 rounded-2xl object-cover border border-slate-200 dark:border-slate-700"
                       />
                     ) : (
-                      <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-base">
+                      <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-base">
                         {req.senderName.charAt(0).toUpperCase()}
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-sm text-slate-900 truncate">
+                      <h4 className="font-bold text-sm text-slate-900 dark:text-white truncate">
                         {req.senderName}
                       </h4>
-                      <div className="flex items-center gap-1 text-xs text-slate-600 mt-1">
-                        <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <div className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400 mt-1">
+                        <MapPin className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         <span className="truncate">
                           {req.senderConstituency ? `${req.senderConstituency}, ` : ''}
                           {req.senderCounty || 'Nairobi'} County
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-400 mt-1">
+                      <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
                         Requested {new Date(req.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
                       </div>
                     </div>
                   </div>
 
                   {/* Accept / Decline Action Buttons */}
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                     <button
                       onClick={() => handleAcceptRequest(req.id)}
                       disabled={actionInProgress[`req_${req.id}`]}
@@ -606,7 +606,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                     <button
                       onClick={() => handleDeclineRequest(req.id)}
                       disabled={actionInProgress[`req_${req.id}`]}
-                      className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
                     >
                       <X className="w-3.5 h-3.5" />
                       <span>Decline</span>
@@ -623,12 +623,12 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
       {activeSubTab !== 'requests' && (
         <>
           {!currentUser ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-8 sm:p-12 text-center space-y-4 max-w-lg mx-auto shadow-xs">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mx-auto">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 sm:p-12 text-center space-y-4 max-w-lg mx-auto shadow-xs">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center mx-auto">
                 <Users className="w-7 h-7" />
               </div>
-              <h2 className="text-lg font-bold text-slate-900">Sign in to Connect & Follow</h2>
-              <p className="text-xs text-slate-600 leading-relaxed">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Sign in to Connect & Follow</h2>
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                 Join the TUJUANE network to view profiles, follow voices across all 47 counties, send friend requests, and start 1-on-1 chats.
               </p>
               <button
@@ -641,16 +641,16 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
               </button>
             </div>
           ) : loading ? (
-            <div className="py-16 text-center text-slate-500 space-y-3">
+            <div className="py-16 text-center text-slate-500 dark:text-slate-400 space-y-3">
               <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
               <p className="text-xs font-semibold">Loading Kenyan community members across 47 counties...</p>
             </div>
           ) : displayedMembers.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3 shadow-xs">
-              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center space-y-3 shadow-xs">
+              <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400 dark:text-slate-500">
                 <Search className="w-6 h-6" />
               </div>
-              <h3 className="font-bold text-slate-800 text-base">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">
                 {activeSubTab === 'friends'
                   ? 'No friends yet'
                   : activeSubTab === 'following'
@@ -659,7 +659,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                   ? 'No followers yet'
                   : 'No citizens found'}
               </h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
                 {activeSubTab === 'friends'
                   ? 'Send friend requests to community members in the All Citizens tab to build your circle.'
                   : activeSubTab === 'following'
@@ -676,7 +676,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                   setSelectedConstituency('All');
                   setOnlyOnline(false);
                 }}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
               >
                 View All Citizens
               </button>
@@ -693,7 +693,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                 return (
                   <div
                     key={member.uid}
-                    className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 hover:border-emerald-300 hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+                    className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-md transition-all flex flex-col justify-between space-y-4"
                   >
                     <div>
                       {/* Member Info Header */}
@@ -709,21 +709,21 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                             <img
                               src={member.photoURL}
                               alt={member.displayName}
-                              className="w-12 h-12 rounded-2xl object-cover border border-slate-200 group-hover:ring-2 group-hover:ring-emerald-500 transition-all"
+                              className="w-12 h-12 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 group-hover:ring-2 group-hover:ring-emerald-500 transition-all"
                             />
                           ) : (
-                            <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-base group-hover:bg-emerald-200 transition-colors">
+                            <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-base group-hover:bg-emerald-200 transition-colors">
                               {member.displayName.charAt(0).toUpperCase()}
                             </div>
                           )}
                           {isUserOnline(member.isOnline, member.lastSeen) ? (
                             <span
-                              className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white ring-1 ring-emerald-400"
+                              className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900 ring-1 ring-emerald-400"
                               title="Online now"
                             />
                           ) : (
                             <span
-                              className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-slate-400 rounded-full border-2 border-white"
+                              className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-slate-400 rounded-full border-2 border-white dark:border-slate-900"
                               title={formatLastSeen(member.lastSeen, false)}
                             />
                           )}
@@ -735,25 +735,25 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                               onClick={() => {
                                 if (onViewUserProfile) onViewUserProfile(member);
                               }}
-                              className="font-bold text-sm text-slate-900 truncate hover:text-emerald-700 hover:underline cursor-pointer text-left"
+                              className="font-bold text-sm text-slate-900 dark:text-white truncate hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline cursor-pointer text-left"
                               title={`View ${member.displayName}'s Profile`}
                             >
                               {member.displayName}
                             </button>
                             {isFollower && !isFollowing && (
-                              <span className="text-[10px] font-semibold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-md border border-blue-200">
+                              <span className="text-[10px] font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded-md border border-blue-200 dark:border-blue-800">
                                 Follows you
                               </span>
                             )}
                             {friendship.status === 'friends' && (
-                              <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-md border border-emerald-200">
+                              <span className="text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
                                 Friends
                               </span>
                             )}
                           </div>
 
-                          <div className="flex items-center gap-1 text-xs text-slate-600 mt-1">
-                            <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <div className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400 mt-1">
+                            <MapPin className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                             <span className="truncate font-medium">
                               {member.constituency ? `${member.constituency}, ` : ''}
                               {member.county || 'Nairobi'} County
@@ -763,14 +763,14 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                           {onViewUserProfile && (
                             <button
                               onClick={() => onViewUserProfile(member)}
-                              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer mt-0.5 inline-block"
+                              className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300 hover:underline cursor-pointer mt-0.5 inline-block"
                             >
                               View Citizen Profile →
                             </button>
                           )}
 
-                          <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
-                            <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                          <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
                             <span>
                               {formatLastSeen(member.lastSeen, isUserOnline(member.isOnline, member.lastSeen))}
                             </span>
@@ -780,7 +780,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                     </div>
 
                     {/* Social Interaction Buttons: Follow / Friend / Chat */}
-                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                       <div className="grid grid-cols-2 gap-2">
                         {/* Follow Button */}
                         <button
@@ -788,7 +788,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                           disabled={isFollowBusy}
                           className={`inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
                             isFollowing
-                              ? 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200'
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 dark:hover:text-rose-300 hover:border-rose-200 dark:hover:border-rose-800'
                               : isFollower
                               ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 shadow-2xs'
                               : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-2xs'
@@ -797,7 +797,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                         >
                           {isFollowing ? (
                             <>
-                              <Check className="w-3 h-3 text-emerald-600" />
+                              <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                               <span>Following</span>
                             </>
                           ) : isFollower ? (
@@ -817,19 +817,19 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                         {friendship.status === 'friends' && friendship.request ? (
                           <button
                             onClick={() => openUnfriendModal(member, friendship.request!.id)}
-                            className="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-all cursor-pointer"
+                            className="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-700 dark:hover:text-rose-300 hover:border-rose-200 transition-all cursor-pointer"
                             title="Friends. Click to unfriend."
                           >
-                            <UserCheck className="w-3 h-3 text-emerald-600" />
+                            <UserCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                             <span>Friends ✓</span>
                           </button>
                         ) : friendship.status === 'request_sent' && friendship.request ? (
                           <button
                             onClick={() => openCancelRequestModal(member, friendship.request!.id)}
-                            className="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-rose-50 hover:text-rose-700 transition-all cursor-pointer"
+                            className="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl text-xs font-semibold bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-700 dark:hover:text-rose-300 transition-all cursor-pointer"
                             title="Request sent. Click to cancel."
                           >
-                            <Clock className="w-3 h-3 text-amber-600" />
+                            <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                             <span>Requested</span>
                           </button>
                         ) : friendship.status === 'request_received' && friendship.request ? (
@@ -846,10 +846,10 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                           <button
                             onClick={() => handleSendFriendRequest(member)}
                             disabled={isFriendBusy}
-                            className="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 hover:border-emerald-200 transition-all cursor-pointer"
+                            className="inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-slate-700 dark:text-slate-300 hover:text-emerald-800 dark:hover:text-emerald-300 border border-slate-200 dark:border-slate-700 hover:border-emerald-200 dark:hover:border-emerald-800 transition-all cursor-pointer"
                             title="Send Friend Request"
                           >
-                            <UserPlus className="w-3 h-3 text-slate-500" />
+                            <UserPlus className="w-3 h-3 text-slate-500 dark:text-slate-400" />
                             <span>Add Friend</span>
                           </button>
                         )}
@@ -858,9 +858,9 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                       {/* Send Direct Message Action */}
                       <button
                         onClick={() => onStartChatWithUser(member)}
-                        className="w-full inline-flex items-center justify-center gap-2 py-2 px-3 bg-slate-50 hover:bg-emerald-700 text-slate-700 hover:text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer group border border-slate-200 hover:border-emerald-700 shadow-2xs"
+                        className="w-full inline-flex items-center justify-center gap-2 py-2 px-3 bg-slate-50 dark:bg-slate-800 hover:bg-emerald-700 dark:hover:bg-emerald-600 text-slate-700 dark:text-slate-200 hover:text-white dark:hover:text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer group border border-slate-200 dark:border-slate-700 hover:border-emerald-700 shadow-2xs"
                       >
-                        <MessageSquare className="w-3.5 h-3.5 text-slate-500 group-hover:text-white transition-colors" />
+                        <MessageSquare className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 group-hover:text-white transition-colors" />
                         <span>Send Direct Message</span>
                       </button>
                     </div>
@@ -875,23 +875,23 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
       {/* In-App Confirmation Modal (Never window.confirm) */}
       {confirmModal && confirmModal.isOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/75 backdrop-blur-xs animate-in fade-in"
           onClick={() => setConfirmModal(null)}
         >
           <div
-            className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"
+            className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
                   <AlertCircle className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base">
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base">
                     {confirmModal.title}
                   </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                     {confirmModal.description}
                   </p>
                 </div>
@@ -902,7 +902,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                   e.stopPropagation();
                   setConfirmModal(null);
                 }}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
                 aria-label="Close"
                 title="Close (Esc)"
               >
@@ -910,11 +910,11 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
               </button>
             </div>
 
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setConfirmModal(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
               >
                 Dismiss
               </button>

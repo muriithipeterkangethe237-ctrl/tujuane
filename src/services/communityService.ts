@@ -73,6 +73,10 @@ export async function createCommunityPost(
     postData.mediaCaption = params.mediaCaption.trim().slice(0, 200);
   }
 
+  if (params.backgroundColor && params.backgroundColor !== 'default') {
+    postData.backgroundColor = params.backgroundColor;
+  }
+
   try {
     await setDoc(postRef, postData);
     return postId;
@@ -112,8 +116,11 @@ export function subscribeToCommunityPosts(
           speedMbps: d.speedMbps !== undefined ? Number(d.speedMbps) : undefined,
           mediaUrl: d.mediaUrl || undefined,
           mediaCaption: d.mediaCaption || undefined,
+          backgroundColor: d.backgroundColor || undefined,
           upvotes: typeof d.upvotes === 'number' ? d.upvotes : (d.upvoters?.length || 0),
           upvoters: Array.isArray(d.upvoters) ? d.upvoters : [],
+          reactions: d.reactions && typeof d.reactions === 'object' ? d.reactions : {},
+          reactionsCount: d.reactionsCount && typeof d.reactionsCount === 'object' ? d.reactionsCount : {},
           commentsCount: typeof d.commentsCount === 'number' ? d.commentsCount : 0,
           isFlagged: !!d.isFlagged,
           safetyCategory: d.safetyCategory,
@@ -262,6 +269,8 @@ export function subscribeToPostComments(
           mediaUrl: d.mediaUrl || undefined,
           replyToCommentId: d.replyToCommentId || undefined,
           replyToAuthorName: d.replyToAuthorName || undefined,
+          reactions: d.reactions && typeof d.reactions === 'object' ? d.reactions : {},
+          reactionsCount: d.reactionsCount && typeof d.reactionsCount === 'object' ? d.reactionsCount : {},
           createdAt: d.createdAt?.toDate ? d.createdAt.toDate().toISOString() : new Date().toISOString(),
         };
       });
@@ -271,6 +280,124 @@ export function subscribeToPostComments(
       handleFirestoreError(error, OperationType.GET, path);
     }
   );
+}
+
+/**
+ * Toggle or set a reaction on a community post (strictly one reaction per user)
+ */
+export async function reactToCommunityPost(
+  postId: string,
+  userId: string,
+  reactionKey: string
+): Promise<{ reaction: string | null; reactionsCount: Record<string, number> }> {
+  const postRef = doc(db, POSTS_COLLECTION, postId);
+  try {
+    const postSnap = await getDoc(postRef);
+    if (!postSnap.exists()) {
+      throw new Error('Post not found');
+    }
+
+    const data = postSnap.data();
+    const currentReactions: Record<string, string> = { ...(data.reactions || {}) };
+    const currentCounts: Record<string, number> = { ...(data.reactionsCount || {}) };
+    const previousReaction = currentReactions[userId];
+
+    let newReaction: string | null = reactionKey;
+
+    if (previousReaction === reactionKey) {
+      // User tapped the same active reaction -> un-react
+      delete currentReactions[userId];
+      currentCounts[reactionKey] = Math.max(0, (currentCounts[reactionKey] || 1) - 1);
+      if (currentCounts[reactionKey] === 0) {
+        delete currentCounts[reactionKey];
+      }
+      newReaction = null;
+    } else {
+      // User is changing reaction or adding a new one
+      if (previousReaction && currentCounts[previousReaction]) {
+        currentCounts[previousReaction] = Math.max(0, currentCounts[previousReaction] - 1);
+        if (currentCounts[previousReaction] === 0) {
+          delete currentCounts[previousReaction];
+        }
+      }
+      currentReactions[userId] = reactionKey;
+      currentCounts[reactionKey] = (currentCounts[reactionKey] || 0) + 1;
+    }
+
+    // Maintain upvotes & upvoters array for backward compatibility
+    let upvoters: string[] = Array.isArray(data.upvoters) ? [...data.upvoters] : [];
+    if (newReaction) {
+      if (!upvoters.includes(userId)) upvoters.push(userId);
+    } else {
+      upvoters = upvoters.filter((id) => id !== userId);
+    }
+    const totalReactions = Object.values(currentCounts).reduce((acc, c) => acc + c, 0);
+
+    await updateDoc(postRef, {
+      reactions: currentReactions,
+      reactionsCount: currentCounts,
+      upvotes: totalReactions,
+      upvoters
+    });
+
+    return { reaction: newReaction, reactionsCount: currentCounts };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
+  }
+}
+
+/**
+ * Toggle or set a reaction on a comment (strictly one reaction per user)
+ */
+export async function reactToCommunityComment(
+  postId: string,
+  commentId: string,
+  userId: string,
+  reactionKey: string
+): Promise<{ reaction: string | null; reactionsCount: Record<string, number> }> {
+  const commentRef = doc(db, POSTS_COLLECTION, postId, 'comments', commentId);
+  try {
+    const commentSnap = await getDoc(commentRef);
+    if (!commentSnap.exists()) {
+      throw new Error('Comment not found');
+    }
+
+    const data = commentSnap.data();
+    const currentReactions: Record<string, string> = { ...(data.reactions || {}) };
+    const currentCounts: Record<string, number> = { ...(data.reactionsCount || {}) };
+    const previousReaction = currentReactions[userId];
+
+    let newReaction: string | null = reactionKey;
+
+    if (previousReaction === reactionKey) {
+      // User tapped the same active reaction -> un-react
+      delete currentReactions[userId];
+      currentCounts[reactionKey] = Math.max(0, (currentCounts[reactionKey] || 1) - 1);
+      if (currentCounts[reactionKey] === 0) {
+        delete currentCounts[reactionKey];
+      }
+      newReaction = null;
+    } else {
+      // User is changing reaction or adding a new one
+      if (previousReaction && currentCounts[previousReaction]) {
+        currentCounts[previousReaction] = Math.max(0, currentCounts[previousReaction] - 1);
+        if (currentCounts[previousReaction] === 0) {
+          delete currentCounts[previousReaction];
+        }
+      }
+      currentReactions[userId] = reactionKey;
+      currentCounts[reactionKey] = (currentCounts[reactionKey] || 0) + 1;
+    }
+
+    await updateDoc(commentRef, {
+      reactions: currentReactions,
+      reactionsCount: currentCounts
+    });
+
+    return { reaction: newReaction, reactionsCount: currentCounts };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}/comments/${commentId}`);
+  }
 }
 
 /**

@@ -92,18 +92,18 @@ export const ReportModal: React.FC<ReportModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95"
+        className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 transition-colors"
       >
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
-              <Flag className="w-4 h-4 text-amber-700" />
+            <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 flex items-center justify-center font-bold">
+              <Flag className="w-4 h-4 text-amber-700 dark:text-amber-400" />
             </div>
             <div>
-              <h3 className="font-extrabold text-sm text-slate-900">
+              <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
                 {target.type === 'user' ? 'Report Account' : 'Report Content'}
               </h3>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Civic safety moderation for all 47 counties
               </p>
             </div>
@@ -111,7 +111,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             title="Close"
           >
             <X className="w-5 h-5" />
@@ -120,39 +120,39 @@ export const ReportModal: React.FC<ReportModalProps> = ({
 
         {submitted ? (
           <div className="py-6 text-center space-y-2">
-            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto">
+            <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mx-auto">
               <Check className="w-6 h-6 stroke-[3]" />
             </div>
-            <h4 className="font-bold text-sm text-slate-900">Report Submitted</h4>
-            <p className="text-xs text-slate-600 max-w-xs mx-auto">
+            <h4 className="font-bold text-sm text-slate-900 dark:text-white">Report Submitted</h4>
+            <p className="text-xs text-slate-600 dark:text-slate-400 max-w-xs mx-auto">
               Thank you for keeping TUJUANE safe. Community safety moderators have received your report.
             </p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300">
               <span className="font-semibold">{getTargetDescription()}</span>
               {target.snippet && (
-                <p className="text-[11px] text-slate-500 italic mt-1 line-clamp-2">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 italic mt-1 line-clamp-2">
                   "{target.snippet}"
                 </p>
               )}
             </div>
 
             {error && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-medium">
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/50 text-rose-800 dark:text-rose-300 rounded-xl text-xs font-medium">
                 {error}
               </div>
             )}
 
             <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-800">
+              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
                 Reason for Safety Report *
               </label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value as SafetyCategory)}
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 cursor-pointer"
+                className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 dark:text-slate-100 cursor-pointer"
               >
                 <option value="harassment">📢 Harassment / Bullying / Abusive Behavior</option>
                 <option value="incitement">⚡ Ethnic Hate Speech / Tribal Incitement / Calls to Violence</option>
@@ -164,7 +164,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
             </div>
 
             <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-800">
+              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
                 Additional Details (Optional)
               </label>
               <textarea
@@ -173,18 +173,18 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                 onChange={(e) => setDetails(e.target.value)}
                 maxLength={400}
                 placeholder="Describe what occurred to assist civic moderators in taking appropriate action..."
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none text-slate-900 placeholder:text-slate-400"
+                className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               />
-              <div className="text-right text-[10px] text-slate-400">
+              <div className="text-right text-[10px] text-slate-400 dark:text-slate-500">
                 {details.length}/400
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 Cancel
               </button>

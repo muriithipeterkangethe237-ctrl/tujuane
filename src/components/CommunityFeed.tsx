@@ -4,7 +4,11 @@ import {
   CommunityPost,
   CommunityComment,
   PostCategory,
-  CreatePostParams
+  CreatePostParams,
+  PostBackgroundColor,
+  SOLID_POST_BACKGROUNDS,
+  REACTION_TYPES,
+  ReactionKey
 } from '../types/community';
 import {
   createCommunityPost,
@@ -12,7 +16,9 @@ import {
   toggleUpvotePost,
   addCommunityComment,
   subscribeToPostComments,
-  deleteCommunityPost
+  deleteCommunityPost,
+  reactToCommunityPost,
+  reactToCommunityComment
 } from '../services/communityService';
 import { DailyCommunityPoll } from './DailyCommunityPoll';
 import { compressImage, formatFileSize } from '../utils/imageCompressor';
@@ -66,7 +72,9 @@ import {
   VolumeX,
   Volume2,
   MoreVertical,
-  CornerUpLeft
+  CornerUpLeft,
+  Palette,
+  Smile
 } from 'lucide-react';
 
 interface CommunityFeedProps {
@@ -110,6 +118,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [modalBgColor, setModalBgColor] = useState<PostBackgroundColor>('default');
 
   // Active expanded comments
   const [expandedCommentsPostId, setExpandedCommentsPostId] = useState<string | null>(null);
@@ -122,6 +131,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     authorName: string;
     authorId: string;
   } | null>(null);
+
+  // Reaction pickers state
+  const [activeReactionPickerPostId, setActiveReactionPickerPostId] = useState<string | null>(null);
+  const [activeReactionPickerCommentId, setActiveReactionPickerCommentId] = useState<string | null>(null);
 
   // Lightbox Modal state
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string; author: string } | null>(null);
@@ -138,6 +151,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [quickShowLocation, setQuickShowLocation] = useState(false);
   const [quickCounty, setQuickCounty] = useState('Nairobi');
   const [quickConstituency, setQuickConstituency] = useState('');
+  const [quickBgColor, setQuickBgColor] = useState<PostBackgroundColor>('default');
   const quickFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Full Modal optional location toggle
@@ -346,6 +360,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         mediaUrl: quickImage || undefined
       };
 
+      if (quickBgColor && quickBgColor !== 'default' && !quickImage) {
+        params.backgroundColor = quickBgColor;
+      }
+
       if (safetyScan.severity === 'medium' || safetyScan.triggeredCategories.length > 0) {
         params.isFlagged = true;
         params.safetyCategory = safetyScan.triggeredCategories[0] || 'misleading';
@@ -359,6 +377,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       setQuickImageMeta(null);
       setQuickShowLocation(false);
       setQuickConstituency('');
+      setQuickBgColor('default');
       if (quickFileInputRef.current) quickFileInputRef.current.value = '';
       triggerToast('✓ Post published to TUJUANE Feed!');
     } catch (err: any) {
@@ -440,6 +459,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       mediaCaption: mediaCaption.trim() || undefined
     };
 
+    if (modalBgColor && modalBgColor !== 'default' && !compressedImage) {
+      params.backgroundColor = modalBgColor;
+    }
+
     if (safetyScan.severity === 'medium' || safetyScan.triggeredCategories.length > 0) {
       params.isFlagged = true;
       params.safetyCategory = safetyScan.triggeredCategories[0] || 'misleading';
@@ -458,6 +481,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       setImageMeta(null);
       setMediaCaption('');
       setModalIncludeLocation(false);
+      setModalBgColor('default');
       triggerToast('✓ Post published to TUJUANE community!');
     } catch (err: any) {
       setFormError(err.message || 'Failed to create post. Please try again.');
@@ -466,23 +490,24 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
   };
 
-  // Toggle upvote
-  const handleUpvote = async (post: CommunityPost) => {
+  // React to post (strictly one reaction per user)
+  const handleReactToPost = async (post: CommunityPost, reactionKey: string) => {
     if (!currentUser) {
       openAuthModal();
       return;
     }
-
     try {
-      const didUpvote = await toggleUpvotePost(post.id, currentUser.uid);
-      if (didUpvote && post.authorId && post.authorId !== currentUser.uid) {
-        // Send real-time notification to post author
+      const res = await reactToCommunityPost(post.id, currentUser.uid, reactionKey);
+      setActiveReactionPickerPostId(null);
+
+      if (res?.reaction && post.authorId && post.authorId !== currentUser.uid) {
+        const reactionMeta = REACTION_TYPES.find((r) => r.key === res.reaction);
         sendUserNotification({
           userId: post.authorId,
           category: 'post_interaction',
           type: 'post_like',
-          title: 'New Like on your Discussion',
-          message: `${userProfile?.displayName || 'A citizen'} liked your post "${post.title.slice(0, 45)}"`,
+          title: `${reactionMeta?.emoji || '👍'} New reaction on your discussion`,
+          message: `${userProfile?.displayName || 'A citizen'} reacted with ${reactionMeta?.label || 'reaction'} on "${post.title.slice(0, 45)}"`,
           postId: post.id,
           postTitle: post.title,
           actorId: currentUser.uid,
@@ -492,9 +517,45 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         });
       }
     } catch (err) {
-      console.error('Error toggling upvote:', err);
-      triggerToast('Could not record your like. Please check your connection.');
+      console.error('Error reacting to post:', err);
+      triggerToast('Could not record reaction.');
     }
+  };
+
+  // React to comment (strictly one reaction per user)
+  const handleReactToComment = async (postId: string, comment: CommunityComment, reactionKey: string) => {
+    if (!currentUser) {
+      openAuthModal();
+      return;
+    }
+    try {
+      const res = await reactToCommunityComment(postId, comment.id, currentUser.uid, reactionKey);
+      setActiveReactionPickerCommentId(null);
+
+      if (res?.reaction && comment.authorId && comment.authorId !== currentUser.uid) {
+        const reactionMeta = REACTION_TYPES.find((r) => r.key === res.reaction);
+        sendUserNotification({
+          userId: comment.authorId,
+          category: 'post_interaction',
+          type: 'post_like',
+          title: `${reactionMeta?.emoji || '👍'} Reaction on your reply`,
+          message: `${userProfile?.displayName || 'A citizen'} reacted with ${reactionMeta?.label || 'reaction'} to your reply`,
+          postId,
+          actorId: currentUser.uid,
+          actorName: userProfile?.displayName,
+          actorPhoto: userProfile?.photoURL,
+          actorCounty: userProfile?.county
+        });
+      }
+    } catch (err) {
+      console.error('Error reacting to comment:', err);
+      triggerToast('Could not record comment reaction.');
+    }
+  };
+
+  // Toggle upvote (delegates to 'like' reaction)
+  const handleUpvote = async (post: CommunityPost) => {
+    handleReactToPost(post, 'like');
   };
 
   // Expand / collapse comments
@@ -921,16 +982,16 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       </section>
 
       {/* Filter and Search Controls */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 transition-colors">
         {/* Audience Toggle: All Kenya vs Following & Friends */}
-        <div className="flex items-center justify-between pb-2 border-b border-slate-100 flex-wrap gap-2">
-          <div className="inline-flex rounded-xl p-0.5 bg-slate-100 text-xs font-semibold border border-slate-200">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 flex-wrap gap-2">
+          <div className="inline-flex rounded-xl p-0.5 bg-slate-100 dark:bg-slate-800 text-xs font-semibold border border-slate-200 dark:border-slate-700">
             <button
               onClick={() => setFeedAudience('all')}
               className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
                 feedAudience === 'all'
-                  ? 'bg-white shadow-xs text-slate-900 font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-700 shadow-xs text-slate-900 dark:text-white font-bold'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <span>All Kenya (47 Counties)</span>
@@ -939,22 +1000,22 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               onClick={() => setFeedAudience('following')}
               className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
                 feedAudience === 'following'
-                  ? 'bg-white shadow-xs text-slate-900 font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-700 shadow-xs text-slate-900 dark:text-white font-bold'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Users className="w-3.5 h-3.5 text-emerald-600" />
+              <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>Following</span>
               {followingIds.length > 0 && (
-                <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold">
+                <span className="px-1.5 py-0.2 bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 rounded-full text-[10px] font-bold">
                   {followingIds.length}
                 </span>
               )}
             </button>
           </div>
 
-          <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             <span>Community Safety Filter Active</span>
           </div>
         </div>
@@ -966,8 +1027,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               onClick={() => setSelectedCategory('all')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
                 selectedCategory === 'all'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  ? 'bg-slate-900 dark:bg-emerald-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               All Topics
@@ -977,7 +1038,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors cursor-pointer ${
                 selectedCategory === 'general'
                   ? 'bg-sky-600 text-white'
-                  : 'bg-sky-50 text-sky-800 hover:bg-sky-100'
+                  : 'bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/50'
               }`}
             >
               <MessageSquare className="w-3.5 h-3.5" />
@@ -988,7 +1049,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors cursor-pointer ${
                 selectedCategory === 'hustle'
                   ? 'bg-emerald-600 text-white'
-                  : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
               }`}
             >
               <Briefcase className="w-3.5 h-3.5" />
@@ -999,7 +1060,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors cursor-pointer ${
                 selectedCategory === 'local_news'
                   ? 'bg-amber-600 text-white'
-                  : 'bg-amber-50 text-amber-900 hover:bg-amber-100'
+                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50'
               }`}
             >
               <Compass className="w-3.5 h-3.5" />
@@ -1010,7 +1071,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors cursor-pointer ${
                 selectedCategory === 'meetup'
                   ? 'bg-purple-600 text-white'
-                  : 'bg-purple-50 text-purple-800 hover:bg-purple-100'
+                  : 'bg-purple-50 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50'
               }`}
             >
               <Users className="w-3.5 h-3.5" />
@@ -1021,7 +1082,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors cursor-pointer ${
                 selectedCategory === 'campus'
                   ? 'bg-indigo-600 text-white'
-                  : 'bg-indigo-50 text-indigo-800 hover:bg-indigo-100'
+                  : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50'
               }`}
             >
               <GraduationCap className="w-3.5 h-3.5" />
@@ -1032,7 +1093,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors cursor-pointer ${
                 selectedCategory === 'question'
                   ? 'bg-teal-600 text-white'
-                  : 'bg-teal-50 text-teal-800 hover:bg-teal-100'
+                  : 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/50'
               }`}
             >
               <HelpCircle className="w-3.5 h-3.5" />
@@ -1042,12 +1103,12 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
           {/* Sort Control */}
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs text-slate-500 font-medium">Sort:</span>
-            <div className="inline-flex rounded-xl p-0.5 bg-slate-100 text-xs font-medium border border-slate-200">
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Sort:</span>
+            <div className="inline-flex rounded-xl p-0.5 bg-slate-100 dark:bg-slate-800 text-xs font-medium border border-slate-200 dark:border-slate-700">
               <button
                 onClick={() => setSortBy('latest')}
                 className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                  sortBy === 'latest' ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-600'
+                  sortBy === 'latest' ? 'bg-white dark:bg-slate-700 shadow-xs text-slate-900 dark:text-white font-bold' : 'text-slate-600 dark:text-slate-300'
                 }`}
               >
                 Latest
@@ -1055,7 +1116,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               <button
                 onClick={() => setSortBy('popular')}
                 className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                  sortBy === 'popular' ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-600'
+                  sortBy === 'popular' ? 'bg-white dark:bg-slate-700 shadow-xs text-slate-900 dark:text-white font-bold' : 'text-slate-600 dark:text-slate-300'
                 }`}
               >
                 Most Upvoted
@@ -1065,27 +1126,27 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         </div>
 
         {/* Search bar & County / Constituency dropdowns */}
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-2 border-t border-slate-100">
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
           <div className="sm:col-span-5 relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-2.5" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search conversations, authors, or topics..."
-              className="w-full pl-9 pr-3.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+              className="w-full pl-9 pr-3.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
             />
           </div>
 
           <div className="sm:col-span-4 flex items-center gap-1.5">
-            <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
+            <MapPin className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <select
               value={selectedCounty}
               onChange={(e) => {
                 setSelectedCounty(e.target.value);
                 setSelectedConstituency('All');
               }}
-              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 cursor-pointer font-medium"
+              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer font-medium"
             >
               <option value="All">All 47 Kenya Counties</option>
               {ALL_47_COUNTIES.map((c) => (
@@ -1101,7 +1162,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               value={selectedConstituency}
               onChange={(e) => setSelectedConstituency(e.target.value)}
               disabled={selectedCounty === 'All' || availableFilterConstituencies.length === 0}
-              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 cursor-pointer font-medium disabled:opacity-50"
+              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer font-medium disabled:opacity-50"
             >
               <option value="All">
                 {selectedCounty === 'All' ? 'All Constituencies' : `All ${selectedCounty} Constituencies`}
@@ -1117,7 +1178,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       </div>
 
       {/* DIRECT QUICK POST COMPOSER - Post directly without tagging location, caption only */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-4 sm:p-5 space-y-3.5">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs p-4 sm:p-5 space-y-3.5 transition-colors">
         {/* Hidden file input for quick image */}
         <input
           ref={quickFileInputRef}
@@ -1134,14 +1195,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               <img
                 src={userProfile.photoURL}
                 alt={userProfile.displayName}
-                className="w-10 h-10 rounded-2xl object-cover border border-slate-200"
+                className="w-10 h-10 rounded-2xl object-cover border border-slate-200 dark:border-slate-700"
               />
             ) : currentUser ? (
-              <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 font-extrabold flex items-center justify-center text-sm border border-slate-200">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-extrabold flex items-center justify-center text-sm border border-slate-200 dark:border-slate-700">
                 {(userProfile?.displayName || currentUser.displayName || 'C').charAt(0).toUpperCase()}
               </div>
             ) : (
-              <div className="w-10 h-10 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 flex items-center justify-center">
                 <Users className="w-5 h-5" />
               </div>
             )}
@@ -1150,24 +1211,57 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           {/* Caption Input */}
           <div className="flex-1">
             <textarea
-              rows={2}
+              rows={quickBgColor !== 'default' && !quickImage ? 3 : 2}
               value={quickCaption}
               onChange={(e) => setQuickCaption(e.target.value)}
               placeholder={
                 currentUser
-                  ? "What's on your mind, Citizen? Share a caption, update, or thought (no location required)..."
+                  ? "What's on your mind, Citizen? Share a caption, update, or thought..."
                   : "Sign in to post quick captions and updates..."
               }
               disabled={!currentUser}
               maxLength={2000}
-              className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white text-slate-900 resize-none leading-relaxed transition-all placeholder:text-slate-400 disabled:opacity-60"
+              className={`w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-2xl focus:outline-none transition-all resize-none leading-relaxed disabled:opacity-60 ${
+                quickBgColor !== 'default' && !quickImage
+                  ? `${SOLID_POST_BACKGROUNDS.find((c) => c.id === quickBgColor)?.bgClass || 'bg-emerald-600 text-white'} text-center font-bold text-sm sm:text-base p-4 placeholder:text-white/70 shadow-inner`
+                  : 'bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 focus:bg-white dark:focus:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500'
+              }`}
             />
           </div>
         </div>
 
+        {/* Solid Background Color Palette Selector (when no image attached) */}
+        {!quickImage && currentUser && (
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs font-semibold">
+              <Palette className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Background Color:</span>
+            </div>
+            <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none">
+              {SOLID_POST_BACKGROUNDS.map((col) => (
+                <button
+                  key={col.id}
+                  type="button"
+                  onClick={() => setQuickBgColor(col.id)}
+                  title={col.name}
+                  className={`w-6 h-6 rounded-full shrink-0 transition-transform cursor-pointer relative flex items-center justify-center border ${
+                    quickBgColor === col.id
+                      ? 'ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-slate-900 scale-110 border-white dark:border-slate-900 shadow-xs'
+                      : 'border-slate-300 dark:border-slate-600 hover:scale-105'
+                  } ${col.previewBg}`}
+                >
+                  {quickBgColor === col.id && (
+                    <Check className={`w-3 h-3 ${col.id === 'default' ? 'text-slate-900 dark:text-slate-100' : 'text-white'}`} />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Attached Photo Preview (if any) */}
         {quickImage && (
-          <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 max-h-64 flex items-center justify-center">
+          <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 max-h-64 flex items-center justify-center">
             <img src={quickImage} alt="Attachment" className="max-h-64 object-contain w-full" />
             <button
               type="button"
@@ -1187,16 +1281,16 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
         {/* Optional Location Selector (Collapsed by default, only shown if toggled) */}
         {quickShowLocation && (
-          <div className="p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-2xl space-y-2 animate-in fade-in">
+          <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800 rounded-2xl space-y-2 animate-in fade-in">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-emerald-900 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-emerald-700" />
+              <span className="text-[11px] font-bold text-emerald-900 dark:text-emerald-300 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
                 <span>Tag Location (Optional)</span>
               </span>
               <button
                 type="button"
                 onClick={() => setQuickShowLocation(false)}
-                className="text-[10px] font-semibold text-slate-500 hover:text-slate-700 cursor-pointer"
+                className="text-[10px] font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 cursor-pointer"
               >
                 Clear Location
               </button>
@@ -1208,7 +1302,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   setQuickCounty(e.target.value);
                   setQuickConstituency('');
                 }}
-                className="px-2.5 py-1.5 text-xs bg-white border border-emerald-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 font-medium"
+                className="px-2.5 py-1.5 text-xs bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 font-medium"
               >
                 {ALL_47_COUNTIES.map((c) => (
                   <option key={c} value={c}>
@@ -1219,7 +1313,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               <select
                 value={quickConstituency}
                 onChange={(e) => setQuickConstituency(e.target.value)}
-                className="px-2.5 py-1.5 text-xs bg-white border border-emerald-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 font-medium"
+                className="px-2.5 py-1.5 text-xs bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 font-medium"
               >
                 <option value="">All Constituencies</option>
                 {getConstituenciesByCounty(quickCounty).map((con) => (
@@ -1233,7 +1327,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         )}
 
         {/* Composer Actions Bottom Row */}
-        <div className="flex items-center justify-between pt-1 border-t border-slate-100 gap-2 flex-wrap">
+        <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800 gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             {/* Add Photo Button */}
             <button
@@ -1243,10 +1337,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 else quickFileInputRef.current?.click();
               }}
               disabled={isQuickCompressing}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-emerald-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               title="Attach a photo to this caption"
             >
-              <ImageIcon className="w-4 h-4 text-emerald-600" />
+              <ImageIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               <span>{isQuickCompressing ? 'Compressing...' : 'Photo'}</span>
             </button>
 
@@ -1256,8 +1350,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               onClick={() => setQuickShowLocation(!quickShowLocation)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                 quickShowLocation
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
               title="Optionally tag county location"
             >
@@ -1337,7 +1431,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             return (
               <article
                 key={post.id}
-                className="bg-white rounded-2xl border border-slate-200 shadow-xs hover:border-slate-300 transition-all overflow-hidden"
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-all overflow-hidden"
               >
                 <div className="p-4 sm:p-6 space-y-4">
                   {/* Top: Author, Category Badge, County & Date */}
@@ -1364,10 +1458,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           <img
                             src={post.authorPhotoUrl}
                             alt={post.authorName}
-                            className="w-10 h-10 rounded-full object-cover border border-slate-200 group-hover:ring-2 group-hover:ring-emerald-500 transition-all"
+                            className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700 group-hover:ring-2 group-hover:ring-emerald-500 transition-all"
                           />
                         ) : (
-                          <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-sm group-hover:bg-emerald-200 transition-colors">
+                          <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-sm group-hover:bg-emerald-200 transition-colors">
                             {post.authorName.charAt(0).toUpperCase()}
                           </div>
                         )}
@@ -1389,7 +1483,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                 });
                               }
                             }}
-                            className="font-bold text-sm text-slate-900 truncate hover:text-emerald-700 hover:underline cursor-pointer text-left"
+                            className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline cursor-pointer text-left"
                             title={`View ${post.authorName}'s Profile`}
                           >
                             {post.authorName}
@@ -1408,16 +1502,16 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                               }
                               className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
                                 followingIds.includes(post.authorId)
-                                  ? 'bg-slate-100 text-slate-700 hover:bg-rose-50 hover:text-rose-600 border border-slate-200'
+                                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 dark:border-slate-700'
                                   : followerIds.includes(post.authorId)
                                   ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                                  : 'bg-slate-900 text-white hover:bg-slate-800'
+                                  : 'bg-slate-900 dark:bg-slate-800 text-white hover:bg-slate-800 dark:hover:bg-slate-700'
                               }`}
                               title={followingIds.includes(post.authorId) ? 'Click to unfollow' : 'Follow this citizen'}
                             >
                               {followingIds.includes(post.authorId) ? (
                                 <>
-                                  <UserCheck className="w-3 h-3 text-emerald-600" />
+                                  <UserCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                                   <span>Following</span>
                                 </>
                               ) : followerIds.includes(post.authorId) ? (
@@ -1438,32 +1532,32 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           {currentUser && !isAuthor && onOpenDirectChatWithUser && (
                             <button
                               onClick={() => onOpenDirectChatWithUser(post.authorId, post.authorName)}
-                              className="text-[11px] text-emerald-700 hover:text-emerald-900 font-semibold inline-flex items-center gap-1 hover:underline cursor-pointer"
+                              className="text-[11px] text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300 font-semibold inline-flex items-center gap-1 hover:underline cursor-pointer"
                               title={`Start 1-on-1 chat with ${post.authorName}`}
                             >
-                              <MessageSquare className="w-3 h-3 text-emerald-600" />
+                              <MessageSquare className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                               <span>Chat</span>
                             </button>
                           )}
                         </div>
 
-                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                           {post.county ? (
                             <>
-                              <span className="inline-flex items-center gap-1 font-medium text-slate-600">
-                                <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span className="inline-flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300">
+                                <MapPin className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                                 <span>{post.county}</span>
                               </span>
                               {post.constituency && (
                                 <>
                                   <span>·</span>
-                                  <span className="text-slate-500">{post.constituency}</span>
+                                  <span className="text-slate-500 dark:text-slate-400">{post.constituency}</span>
                                 </>
                               )}
                               <span>·</span>
                             </>
                           ) : null}
-                          <span className="text-[11px] text-slate-400">
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500">
                             {post.createdAt ? new Date(post.createdAt).toLocaleDateString([], {
                               month: 'short',
                               day: 'numeric',
@@ -1488,7 +1582,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       {currentUser && !isAuthor && (
                         <button
                           onClick={() => handleOpenReportModal(post)}
-                          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors cursor-pointer"
                           title="Report discussion to civic moderators"
                         >
                           <Flag className="w-3.5 h-3.5" />
@@ -1504,7 +1598,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                               e.stopPropagation();
                               setOpenPostMenuId(openPostMenuId === post.id ? null : post.id);
                             }}
-                            className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            className="p-1.5 text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                             title="More options"
                           >
                             <MoreVertical className="w-4 h-4" />
@@ -1513,14 +1607,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           {openPostMenuId === post.id && (
                             <div
                               onClick={(e) => e.stopPropagation()}
-                              className="absolute right-0 top-full mt-1 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95 text-xs text-slate-700 space-y-0.5"
+                              className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 py-1.5 z-30 animate-in fade-in zoom-in-95 text-xs text-slate-700 dark:text-slate-200 space-y-0.5"
                             >
                               {!isAuthor && (
                                 <>
                                   <button
                                     type="button"
                                     onClick={() => handleToggleMuteAuthor(post.authorId, post.authorName)}
-                                    className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 font-medium cursor-pointer"
+                                    className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 font-medium cursor-pointer"
                                   >
                                     {mutedUserIds.includes(post.authorId) ? (
                                       <>
@@ -1529,7 +1623,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                       </>
                                     ) : (
                                       <>
-                                        <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                                        <VolumeX className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                                         <span>Mute @{post.authorName}</span>
                                       </>
                                     )}
@@ -1541,7 +1635,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                       setOpenPostMenuId(null);
                                       setUserToBlock({ id: post.authorId, name: post.authorName });
                                     }}
-                                    className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2 font-medium cursor-pointer"
+                                    className="w-full px-3 py-2 text-left hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-700 dark:text-rose-400 flex items-center gap-2 font-medium cursor-pointer"
                                   >
                                     <Ban className="w-3.5 h-3.5 text-rose-600" />
                                     <span>Block @{post.authorName}</span>
@@ -1553,7 +1647,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                       setOpenPostMenuId(null);
                                       handleOpenReportModal(post);
                                     }}
-                                    className="w-full px-3 py-2 text-left hover:bg-amber-50 text-amber-800 flex items-center gap-2 font-medium cursor-pointer"
+                                    className="w-full px-3 py-2 text-left hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium cursor-pointer"
                                   >
                                     <Flag className="w-3.5 h-3.5 text-amber-600" />
                                     <span>Report Post</span>
@@ -1568,7 +1662,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                     setOpenPostMenuId(null);
                                     handleOpenDeleteModal(post);
                                   }}
-                                  className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2 font-medium cursor-pointer border-t border-slate-100"
+                                  className="w-full px-3 py-2 text-left hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-700 dark:text-rose-400 flex items-center gap-2 font-medium cursor-pointer border-t border-slate-100 dark:border-slate-700"
                                 >
                                   <Trash2 className="w-3.5 h-3.5 text-rose-600" />
                                   <span>{isDeveloper && !isAuthor ? 'Dev: Delete Post' : 'Delete My Post'}</span>
@@ -1583,10 +1677,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
                   {/* Safety Advisory Banner if attached by developer/moderators */}
                   {post.safetyAdvisory && (
-                    <div className="p-3 bg-amber-50 border-l-4 border-amber-500 rounded-r-xl text-xs text-amber-900 flex items-start gap-2 shadow-2xs">
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border-l-4 border-amber-500 rounded-r-xl text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2 shadow-2xs">
                       <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                       <div>
-                        <div className="font-bold text-[11px] uppercase tracking-wider text-amber-800">
+                        <div className="font-bold text-[11px] uppercase tracking-wider text-amber-800 dark:text-amber-300">
                           Community Safety Advisory
                         </div>
                         <p className="mt-0.5 leading-relaxed">{post.safetyAdvisory}</p>
@@ -1596,31 +1690,52 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
                   {/* Under review notice if flagged */}
                   {!post.safetyAdvisory && post.isFlagged && (
-                    <div className="px-2.5 py-1 bg-rose-50 border border-rose-200 rounded-lg text-[11px] text-rose-700 flex items-center gap-1.5 w-fit">
+                    <div className="px-2.5 py-1 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg text-[11px] text-rose-700 dark:text-rose-300 flex items-center gap-1.5 w-fit">
                       <ShieldAlert className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                       <span>This discussion is currently under civic safety review.</span>
                     </div>
                   )}
 
-                  {/* Post Content */}
-                  <div className="space-y-1.5">
-                    {post.title &&
-                      post.title !== post.content &&
-                      !post.content.startsWith(post.title) &&
-                      post.title !== 'Citizen Post' &&
-                      post.title !== 'Citizen Photo Update' && (
-                        <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-                          {post.title}
-                        </h2>
-                      )}
-                    <p className="text-xs sm:text-sm text-slate-800 leading-relaxed whitespace-pre-line font-normal">
-                      {post.content}
-                    </p>
-                  </div>
+                  {/* Post Content - Solid Background Color Card (for text posts) or standard text */}
+                  {post.backgroundColor && post.backgroundColor !== 'default' && !post.mediaUrl ? (
+                    <div
+                      className={`p-6 sm:p-8 rounded-2xl min-h-[140px] sm:min-h-[170px] flex flex-col items-center justify-center text-center shadow-inner ${
+                        SOLID_POST_BACKGROUNDS.find((c) => c.id === post.backgroundColor)?.bgClass || 'bg-emerald-600 text-white'
+                      }`}
+                    >
+                      {post.title &&
+                        post.title !== post.content &&
+                        !post.content.startsWith(post.title) &&
+                        post.title !== 'Citizen Post' &&
+                        post.title !== 'Citizen Photo Update' && (
+                          <h2 className="text-base sm:text-xl font-black leading-snug drop-shadow-xs mb-2">
+                            {post.title}
+                          </h2>
+                        )}
+                      <p className="text-base sm:text-xl font-bold leading-relaxed whitespace-pre-line drop-shadow-xs">
+                        {post.content}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {post.title &&
+                        post.title !== post.content &&
+                        !post.content.startsWith(post.title) &&
+                        post.title !== 'Citizen Post' &&
+                        post.title !== 'Citizen Photo Update' && (
+                          <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-snug">
+                            {post.title}
+                          </h2>
+                        )}
+                      <p className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line font-normal">
+                        {post.content}
+                      </p>
+                    </div>
+                  )}
 
                   {/* Media Photo Attachment (If present) */}
                   {post.mediaUrl && (
-                    <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-900 relative group max-h-96">
+                    <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 relative group max-h-96">
                       <img
                         src={post.mediaUrl}
                         alt={post.mediaCaption || post.title}
@@ -1658,31 +1773,98 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     </div>
                   )}
 
-                  {/* Bottom Action Bar */}
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
-                    <div className="flex items-center gap-4">
-                      {/* Upvote Button */}
-                      <button
-                        onClick={() => handleUpvote(post)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${
-                          hasUpvoted
-                            ? 'bg-rose-50 text-rose-600 border border-rose-200'
-                            : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                        }`}
-                      >
-                        <Heart
-                          className={`w-3.5 h-3.5 ${hasUpvoted ? 'fill-rose-500 text-rose-500' : 'text-slate-500'}`}
-                        />
-                        <span>{post.upvotes || 0}</span>
-                        <span className="hidden sm:inline">Likes</span>
-                      </button>
+                  {/* Bottom Action Bar: Reactions & Replies (strictly one reaction per user) */}
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                      {/* Interactive Reactions Button & Popover */}
+                      {(() => {
+                        const userPostReaction = currentUser ? post.reactions?.[currentUser.uid] : null;
+                        const userReactionMeta = REACTION_TYPES.find((r) => r.key === userPostReaction);
+                        const isPickerOpen = activeReactionPickerPostId === post.id;
+
+                        return (
+                          <div className="relative inline-flex items-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!currentUser) {
+                                  openAuthModal();
+                                  return;
+                                }
+                                setActiveReactionPickerPostId(isPickerOpen ? null : post.id);
+                              }}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
+                                userPostReaction
+                                  ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 shadow-2xs'
+                                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                              }`}
+                              title={userPostReaction ? `Your reaction: ${userReactionMeta?.label} (click to change or remove)` : 'Add a reaction'}
+                            >
+                              <span>{userReactionMeta ? userReactionMeta.emoji : '👍'}</span>
+                              <span>{userReactionMeta ? userReactionMeta.label : 'React'}</span>
+                            </button>
+
+                            {/* Floating Reaction Bar (Animated) */}
+                            {isPickerOpen && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute left-0 bottom-full mb-2 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-1.5 flex items-center gap-1.5 z-40 animate-in fade-in zoom-in-95"
+                              >
+                                {REACTION_TYPES.map((r) => (
+                                  <button
+                                    key={r.key}
+                                    type="button"
+                                    onClick={() => handleReactToPost(post, r.key)}
+                                    className={`w-9 h-9 flex items-center justify-center text-lg rounded-xl hover:scale-130 transition-transform cursor-pointer ${
+                                      userPostReaction === r.key
+                                        ? 'bg-emerald-100 dark:bg-emerald-900/60 ring-2 ring-emerald-500'
+                                        : 'hover:bg-slate-100 dark:hover:bg-slate-700'
+                                    }`}
+                                    title={`${r.label} - ${userPostReaction === r.key ? 'Click to remove' : 'React'}`}
+                                  >
+                                    {r.emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Reaction Count Summary Chips */}
+                            {post.reactionsCount && (
+                              <div className="flex items-center gap-1 ml-1.5">
+                                {Object.entries(post.reactionsCount).map(([rKey, count]) => {
+                                  if (!count || count <= 0) return null;
+                                  const rMeta = REACTION_TYPES.find((r) => r.key === rKey);
+                                  if (!rMeta) return null;
+                                  const isMine = userPostReaction === rKey;
+                                  return (
+                                    <button
+                                      key={rKey}
+                                      type="button"
+                                      onClick={() => handleReactToPost(post, rKey)}
+                                      className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${
+                                        isMine
+                                          ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300'
+                                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+                                      }`}
+                                      title={`${rMeta.label} (${count}) - Click to toggle reaction`}
+                                    >
+                                      <span>{rMeta.emoji}</span>
+                                      <span>{count}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* Comments Toggle Button */}
                       <button
                         onClick={() => handleToggleComments(post.id)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-semibold bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-semibold bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
                       >
-                        <MessageSquare className="w-3.5 h-3.5 text-slate-500" />
+                        <MessageSquare className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                         <span>{post.commentsCount || 0}</span>
                         <span className="hidden sm:inline">Replies</span>
                         {isExpanded ? (
@@ -1709,7 +1891,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           triggerToast('Post copied to clipboard!');
                         }
                       }}
-                      className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                      className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                       title="Share post"
                     >
                       <Share2 className="w-4 h-4" />
@@ -1717,120 +1899,203 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   </div>
                 </div>
 
-                {/* Expanded Comments Thread */}
+                {/* Expanded Comments Thread - No bubbles, clean flat modern thread items */}
                 {isExpanded && (
-                  <div className="bg-slate-50/70 p-4 sm:p-6 border-t border-slate-100 space-y-4">
-                    <h3 className="font-bold text-xs uppercase tracking-wider text-slate-500">
+                  <div className="bg-slate-50/70 dark:bg-slate-950/60 p-4 sm:p-6 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                    <h3 className="font-bold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
                       Replies ({comments.length})
                     </h3>
 
-                    {/* Comment list */}
-                    <div className="space-y-3">
+                    {/* Comment list - flat, border-b clean divider without bubbles */}
+                    <div className="space-y-0 divide-y divide-slate-100 dark:divide-slate-800">
                       {comments.length === 0 ? (
-                        <div className="text-xs text-slate-500 py-3 text-center">
+                        <div className="text-xs text-slate-500 dark:text-slate-400 py-3 text-center">
                           No replies yet. Be the first to share your thoughts!
                         </div>
                       ) : (
-                        comments.map((comment) => (
-                          <div
-                            key={comment.id}
-                            className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2"
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              {/* Comment Author - Click to view profile */}
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  onViewUserProfile?.({
-                                    uid: comment.authorId,
-                                    displayName: comment.authorName,
-                                    photoURL: comment.authorPhotoUrl,
-                                    email: '',
-                                    county: 'Kenya Citizen',
-                                    createdAt: ''
-                                  })
-                                }
-                                className="flex items-center gap-2 hover:opacity-85 transition-opacity text-left cursor-pointer group"
-                                title={`View ${comment.authorName}'s citizen profile`}
-                              >
-                                {comment.authorPhotoUrl ? (
-                                  <img
-                                    src={comment.authorPhotoUrl}
-                                    alt={comment.authorName}
-                                    className="w-6 h-6 rounded-full object-cover ring-1 ring-slate-200"
-                                  />
-                                ) : (
-                                  <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-[10px]">
-                                    {comment.authorName.charAt(0)}
-                                  </div>
-                                )}
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-bold text-xs text-slate-900 group-hover:text-emerald-700 transition-colors">
-                                    {comment.authorName}
-                                  </span>
-                                  {comment.replyToAuthorName && (
-                                    <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded-md font-medium">
-                                      <CornerUpLeft className="w-2.5 h-2.5" />
-                                      <span>@{comment.replyToAuthorName}</span>
+                        comments.map((comment) => {
+                          const userCommentReaction = currentUser ? comment.reactions?.[currentUser.uid] : null;
+                          const userCommentReactionMeta = REACTION_TYPES.find((r) => r.key === userCommentReaction);
+                          const isCommentPickerOpen = activeReactionPickerCommentId === comment.id;
+
+                          return (
+                            <div
+                              key={comment.id}
+                              className="py-3 px-1 space-y-2 transition-colors first:pt-0 last:pb-0"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                {/* Comment Author - Click to view profile */}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onViewUserProfile?.({
+                                      uid: comment.authorId,
+                                      displayName: comment.authorName,
+                                      photoURL: comment.authorPhotoUrl,
+                                      email: '',
+                                      county: 'Kenya Citizen',
+                                      createdAt: ''
+                                    })
+                                  }
+                                  className="flex items-center gap-2 hover:opacity-85 transition-opacity text-left cursor-pointer group"
+                                  title={`View ${comment.authorName}'s citizen profile`}
+                                >
+                                  {comment.authorPhotoUrl ? (
+                                    <img
+                                      src={comment.authorPhotoUrl}
+                                      alt={comment.authorName}
+                                      className="w-6 h-6 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"
+                                    />
+                                  ) : (
+                                    <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-[10px]">
+                                      {comment.authorName.charAt(0)}
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-xs text-slate-900 dark:text-slate-100 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
+                                      {comment.authorName}
                                     </span>
+                                    {comment.replyToAuthorName && (
+                                      <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded-md font-medium">
+                                        <CornerUpLeft className="w-2.5 h-2.5" />
+                                        <span>@{comment.replyToAuthorName}</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                </button>
+
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                                    {comment.createdAt
+                                      ? new Date(comment.createdAt).toLocaleTimeString([], {
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })
+                                      : ''}
+                                  </span>
+
+                                  {/* Reply to this specific comment */}
+                                  {currentUser && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setReplyingToComment({
+                                          commentId: comment.id,
+                                          authorName: comment.authorName,
+                                          authorId: comment.authorId
+                                        });
+                                        setCommentInput(`@${comment.authorName} `);
+                                      }}
+                                      className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300 hover:underline cursor-pointer flex items-center gap-0.5"
+                                      title={`Reply to ${comment.authorName}`}
+                                    >
+                                      <CornerUpLeft className="w-3 h-3" />
+                                      <span>Reply</span>
+                                    </button>
                                   )}
                                 </div>
-                              </button>
+                              </div>
 
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-slate-400">
-                                  {comment.createdAt
-                                    ? new Date(comment.createdAt).toLocaleTimeString([], {
-                                        hour: '2-digit',
-                                        minute: '2-digit'
+                              <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed pl-8">
+                                {comment.content}
+                              </p>
+
+                              {comment.mediaUrl && (
+                                <div className="pl-8 pt-1">
+                                  <img
+                                    src={comment.mediaUrl}
+                                    alt="Comment attachment"
+                                    className="max-h-48 rounded-lg border border-slate-200 dark:border-slate-700 object-cover cursor-pointer"
+                                    onClick={() =>
+                                      setLightboxImage({
+                                        url: comment.mediaUrl!,
+                                        title: 'Reply Photo',
+                                        author: comment.authorName
                                       })
-                                    : ''}
-                                </span>
+                                    }
+                                  />
+                                </div>
+                              )}
 
-                                {/* Reply to this specific comment */}
-                                {currentUser && (
+                              {/* Comment Reactions Row (strictly one reaction per user) */}
+                              <div className="flex items-center gap-1.5 pl-8 pt-1 relative">
+                                <div className="relative inline-flex items-center">
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setReplyingToComment({
-                                        commentId: comment.id,
-                                        authorName: comment.authorName,
-                                        authorId: comment.authorId
-                                      });
-                                      setCommentInput(`@${comment.authorName} `);
+                                      if (!currentUser) {
+                                        openAuthModal();
+                                        return;
+                                      }
+                                      setActiveReactionPickerCommentId(isCommentPickerOpen ? null : comment.id);
                                     }}
-                                    className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer flex items-center gap-0.5"
-                                    title={`Reply to ${comment.authorName}`}
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-colors cursor-pointer ${
+                                      userCommentReaction
+                                        ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
+                                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                    }`}
+                                    title="React to comment"
                                   >
-                                    <CornerUpLeft className="w-3 h-3" />
-                                    <span>Reply</span>
+                                    <span>{userCommentReactionMeta ? userCommentReactionMeta.emoji : '👍'}</span>
+                                    <span>{userCommentReactionMeta ? userCommentReactionMeta.label : 'React'}</span>
                                   </button>
+
+                                  {/* Floating Comment Reaction Picker */}
+                                  {isCommentPickerOpen && (
+                                    <div
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="absolute left-0 bottom-full mb-1 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-1 flex items-center gap-1 z-30 animate-in fade-in zoom-in-95"
+                                    >
+                                      {REACTION_TYPES.map((r) => (
+                                        <button
+                                          key={r.key}
+                                          type="button"
+                                          onClick={() => handleReactToComment(post.id, comment, r.key)}
+                                          className={`w-7 h-7 flex items-center justify-center text-sm rounded-xl hover:scale-125 transition-transform cursor-pointer ${
+                                            userCommentReaction === r.key
+                                              ? 'bg-emerald-100 dark:bg-emerald-900/60 ring-1 ring-emerald-500'
+                                              : 'hover:bg-slate-100 dark:hover:bg-slate-700'
+                                          }`}
+                                          title={r.label}
+                                        >
+                                          {r.emoji}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Comment Reaction Tally Chips */}
+                                {comment.reactionsCount && (
+                                  <div className="flex items-center gap-1">
+                                    {Object.entries(comment.reactionsCount).map(([rKey, count]) => {
+                                      if (!count || count <= 0) return null;
+                                      const rMeta = REACTION_TYPES.find((r) => r.key === rKey);
+                                      if (!rMeta) return null;
+                                      const isMine = userCommentReaction === rKey;
+                                      return (
+                                        <button
+                                          key={rKey}
+                                          type="button"
+                                          onClick={() => handleReactToComment(post.id, comment, rKey)}
+                                          className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold border transition-colors cursor-pointer ${
+                                            isMine
+                                              ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300'
+                                              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+                                          }`}
+                                          title={`${rMeta.label} (${count}) - Click to toggle`}
+                                        >
+                                          <span>{rMeta.emoji}</span>
+                                          <span>{count}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
                                 )}
                               </div>
                             </div>
-
-                            <p className="text-xs text-slate-700 leading-relaxed pl-8">
-                              {comment.content}
-                            </p>
-
-                            {comment.mediaUrl && (
-                              <div className="pl-8 pt-1">
-                                <img
-                                  src={comment.mediaUrl}
-                                  alt="Comment attachment"
-                                  className="max-h-48 rounded-lg border border-slate-200 object-cover cursor-pointer"
-                                  onClick={() =>
-                                    setLightboxImage({
-                                      url: comment.mediaUrl!,
-                                      title: 'Reply Photo',
-                                      author: comment.authorName
-                                    })
-                                  }
-                                />
-                              </div>
-                            )}
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
 
@@ -1839,9 +2104,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       <div className="pt-2 space-y-1.5">
                         {/* Replying-To Banner */}
                         {replyingToComment && (
-                          <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 animate-in fade-in">
+                          <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-900 dark:text-emerald-300 animate-in fade-in">
                             <div className="flex items-center gap-1.5">
-                              <CornerUpLeft className="w-3.5 h-3.5 text-emerald-700" />
+                              <CornerUpLeft className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
                               <span>Replying to <strong>@{replyingToComment.authorName}</strong></span>
                             </div>
                             <button
@@ -1850,7 +2115,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                 setReplyingToComment(null);
                                 setCommentInput('');
                               }}
-                              className="text-emerald-700 hover:text-emerald-900 p-0.5 rounded cursor-pointer"
+                              className="text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-200 p-0.5 rounded cursor-pointer"
                               title="Cancel reply"
                             >
                               <X className="w-3.5 h-3.5" />
@@ -1874,16 +2139,16 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                 ? `Reply to @${replyingToComment.authorName}...`
                                 : 'Write a reply to the community...'
                             }
-                            className="flex-1 px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                            className="flex-1 px-3 py-2 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           />
 
                           <button
                             type="button"
                             onClick={() => commentFileInputRef.current?.click()}
-                            className="p-2 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl text-slate-600 transition-colors cursor-pointer"
+                            className="p-2 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                             title="Attach photo to reply"
                           >
-                            <ImageIcon className="w-4 h-4" />
+                            <ImageIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                           </button>
 
                           <button
@@ -1957,22 +2222,22 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-6 shadow-2xl space-y-5 my-8"
+            className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 max-w-lg w-full p-6 shadow-2xl space-y-5 my-8 text-slate-900 dark:text-slate-100 transition-colors"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
-                  <Flame className="w-4 h-4 text-emerald-700" />
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 flex items-center justify-center font-bold">
+                  <Flame className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base">Start a Discussion</h3>
-                  <p className="text-[11px] text-slate-500">Share with the Kenyan community</p>
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base">Start a Discussion</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Share with the Kenyan community</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsCreateModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 title="Close dialog (Esc)"
                 aria-label="Close"
               >
@@ -1981,7 +2246,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             </div>
 
             {formError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-medium">
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl text-xs text-rose-800 dark:text-rose-300 font-medium">
                 {formError}
               </div>
             )}
@@ -1989,7 +2254,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             <form onSubmit={handleCreatePost} className="space-y-4">
               {/* Category Picker */}
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
                   Category
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -1998,8 +2263,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     onClick={() => setPostCategory('general')}
                     className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition-all cursor-pointer ${
                       postCategory === 'general'
-                        ? 'bg-sky-50 border-sky-500 text-sky-900 ring-2 ring-sky-500/20'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        ? 'bg-sky-50 dark:bg-sky-950/60 border-sky-500 text-sky-900 dark:text-sky-300 ring-2 ring-sky-500/20'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     <MessageSquare className="w-4 h-4 text-sky-600" />
@@ -2011,8 +2276,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     onClick={() => setPostCategory('hustle')}
                     className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition-all cursor-pointer ${
                       postCategory === 'hustle'
-                        ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-500/20'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-900 dark:text-emerald-300 ring-2 ring-emerald-500/20'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     <Briefcase className="w-4 h-4 text-emerald-600" />
@@ -2024,8 +2289,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     onClick={() => setPostCategory('local_news')}
                     className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition-all cursor-pointer ${
                       postCategory === 'local_news'
-                        ? 'bg-amber-50 border-amber-500 text-amber-900 ring-2 ring-amber-500/20'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-500 text-amber-900 dark:text-amber-300 ring-2 ring-amber-500/20'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     <Compass className="w-4 h-4 text-amber-600" />
@@ -2037,8 +2302,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     onClick={() => setPostCategory('meetup')}
                     className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition-all cursor-pointer ${
                       postCategory === 'meetup'
-                        ? 'bg-purple-50 border-purple-500 text-purple-900 ring-2 ring-purple-500/20'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-500 text-purple-900 dark:text-purple-300 ring-2 ring-purple-500/20'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     <Users className="w-4 h-4 text-purple-600" />
@@ -2050,8 +2315,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     onClick={() => setPostCategory('campus')}
                     className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition-all cursor-pointer ${
                       postCategory === 'campus'
-                        ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-500/20'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 text-indigo-900 dark:text-indigo-300 ring-2 ring-indigo-500/20'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     <GraduationCap className="w-4 h-4 text-indigo-600" />
@@ -2063,8 +2328,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     onClick={() => setPostCategory('question')}
                     className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition-all cursor-pointer ${
                       postCategory === 'question'
-                        ? 'bg-teal-50 border-teal-500 text-teal-900 ring-2 ring-teal-500/20'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        ? 'bg-teal-50 dark:bg-teal-950/60 border-teal-500 text-teal-900 dark:text-teal-300 ring-2 ring-teal-500/20'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     <HelpCircle className="w-4 h-4 text-teal-600" />
@@ -2076,10 +2341,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               {/* Title Input (Optional) */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-800">
-                    Title <span className="text-slate-400 font-normal">(Optional)</span>
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Title <span className="text-slate-400 dark:text-slate-500 font-normal">(Optional)</span>
                   </label>
-                  <span className="text-[11px] text-slate-400">Leave blank to post caption-only</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500">Leave blank to post caption-only</span>
                 </div>
                 <input
                   type="text"
@@ -2087,18 +2352,18 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   onChange={(e) => setPostTitle(e.target.value)}
                   placeholder="Optional title or headline..."
                   maxLength={150}
-                  className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                  className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>
 
               {/* Optional Location Tagging */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-emerald-600" />
+                    <MapPin className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     <div>
-                      <div className="text-xs font-bold text-slate-800">Tag Location (Optional)</div>
-                      <div className="text-[11px] text-slate-500">Untagged by default — post directly or specify your county</div>
+                      <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Tag Location (Optional)</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">Untagged by default — post directly or specify your county</div>
                     </div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
@@ -2108,14 +2373,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       onChange={(e) => setModalIncludeLocation(e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                    <div className="w-9 h-5 bg-slate-300 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
                   </label>
                 </div>
 
                 {modalIncludeLocation && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200 animate-in fade-in">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200 dark:border-slate-700 animate-in fade-in">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                         County Location
                       </label>
                       <select
@@ -2124,7 +2389,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           setPostCounty(e.target.value);
                           setPostConstituency('');
                         }}
-                        className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 cursor-pointer font-medium"
+                        className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer font-medium"
                       >
                         {ALL_47_COUNTIES.map((c) => (
                           <option key={c} value={c}>
@@ -2135,13 +2400,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                         Constituency (Optional)
                       </label>
                       <select
                         value={postConstituency}
                         onChange={(e) => setPostConstituency(e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 cursor-pointer font-medium"
+                        className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer font-medium"
                       >
                         <option value="">Select Constituency</option>
                         {availablePostConstituencies.map((con) => (
@@ -2155,9 +2420,49 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 )}
               </div>
 
+              {/* Solid Background Color Palette for text posts */}
+              {!compressedImage && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <Palette className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Solid Background Color:</span>
+                    </label>
+                    {modalBgColor !== 'default' && (
+                      <button
+                        type="button"
+                        onClick={() => setModalBgColor('default')}
+                        className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
+                    {SOLID_POST_BACKGROUNDS.map((col) => (
+                      <button
+                        key={col.id}
+                        type="button"
+                        onClick={() => setModalBgColor(col.id)}
+                        title={col.name}
+                        className={`w-7 h-7 rounded-full shrink-0 transition-transform cursor-pointer relative flex items-center justify-center border ${
+                          modalBgColor === col.id
+                            ? 'ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-slate-900 scale-110 border-white dark:border-slate-900 shadow-xs'
+                            : 'border-slate-300 dark:border-slate-600 hover:scale-105'
+                        } ${col.previewBg}`}
+                      >
+                        {modalBgColor === col.id && (
+                          <Check className={`w-3.5 h-3.5 ${col.id === 'default' ? 'text-slate-900 dark:text-slate-100' : 'text-white'}`} />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Content Body */}
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                   Caption & Discussion Details <span className="text-rose-500">*</span>
                 </label>
                 <textarea
@@ -2166,10 +2471,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   onChange={(e) => setPostContent(e.target.value)}
                   placeholder="Share your thoughts, caption, questions, or opportunities..."
                   maxLength={2000}
-                  className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 resize-none"
+                  className={`w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl focus:outline-none resize-none leading-relaxed transition-all ${
+                    modalBgColor !== 'default' && !compressedImage
+                      ? `${SOLID_POST_BACKGROUNDS.find((c) => c.id === modalBgColor)?.bgClass || 'bg-emerald-600 text-white'} text-center font-bold text-sm sm:text-base p-4 placeholder:text-white/70 shadow-inner`
+                      : 'bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500'
+                  }`}
                   required
                 />
-                <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1">
+                <div className="flex justify-between items-center text-[10px] text-slate-400 dark:text-slate-500 mt-1">
                   <span>Be respectful and adhere to community guidelines.</span>
                   <span>{postContent.length}/2000</span>
                 </div>
@@ -2177,14 +2486,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
               {/* Media Photo Upload */}
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                   Photo / Image Attachment (Optional)
                 </label>
 
                 {!compressedImage ? (
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-4 text-center cursor-pointer transition-colors bg-slate-50/50 hover:bg-emerald-50/20"
+                    className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 rounded-2xl p-4 text-center cursor-pointer transition-colors bg-slate-50/50 dark:bg-slate-800/40 hover:bg-emerald-50/20"
                   >
                     <input
                       type="file"
@@ -2194,16 +2503,16 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       className="hidden"
                     />
                     <ImageIcon className="w-8 h-8 text-slate-400 mx-auto mb-1.5" />
-                    <p className="text-xs font-semibold text-slate-700">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                       {isCompressing ? 'Compressing image...' : 'Click to upload a photo'}
                     </p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
                       Auto-compressed to under 600KB for rapid loading across Kenya
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-900 max-h-48 flex items-center justify-center">
+                    <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-900 max-h-48 flex items-center justify-center">
                       <img
                         src={compressedImage}
                         alt="Preview"
@@ -2220,13 +2529,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     </div>
 
                     {imageMeta && (
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1">
                         <span>
                           Compressed: <strong>{formatFileSize(imageMeta.compSize)}</strong> (saved{' '}
                           {Math.round(((imageMeta.origSize - imageMeta.compSize) / imageMeta.origSize) * 100)}
                           %)
                         </span>
-                        <span className="text-emerald-600 font-semibold">✓ Optimized for 3G/4G</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Optimized for 3G/4G</span>
                       </div>
                     )}
 
@@ -2236,18 +2545,18 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       onChange={(e) => setMediaCaption(e.target.value)}
                       placeholder="Add a photo caption (optional)..."
                       maxLength={200}
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100"
                     />
                   </div>
                 )}
               </div>
 
               {/* Form Actions */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -2321,10 +2630,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 text-slate-900 dark:text-slate-100"
           >
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-sm text-slate-900 text-rose-600 flex items-center gap-1.5">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-sm text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
                 <Trash2 className="w-4 h-4" />
                 <span>Delete Discussion Post?</span>
               </h3>
@@ -2334,7 +2643,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   e.stopPropagation();
                   setPostToDelete(null);
                 }}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 title="Close"
                 aria-label="Close"
               >
@@ -2342,7 +2651,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               Are you sure you want to permanently delete <strong>"{postToDelete.title}"</strong>?
               This will remove the discussion and all its community replies from TUJUANE.
             </p>
@@ -2355,7 +2664,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   e.stopPropagation();
                   setPostToDelete(null);
                 }}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -2390,18 +2699,18 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-rose-200 animate-in zoom-in-95"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-rose-200 dark:border-rose-900 animate-in zoom-in-95 text-slate-900 dark:text-slate-100"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-rose-100">
+            <div className="flex items-center justify-between pb-3 border-b border-rose-100 dark:border-rose-950">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 flex items-center justify-center font-bold">
                   <ShieldAlert className="w-5 h-5 text-rose-600" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-sm text-slate-900">
+                  <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
                     Community Safety Notice
                   </h3>
-                  <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider">
+                  <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
                     Content Blocked by Safety Filter
                   </span>
                 </div>
@@ -2412,7 +2721,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   e.stopPropagation();
                   setBlockedSafetyResult(null);
                 }}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 title="Close"
                 aria-label="Close"
               >
@@ -2421,26 +2730,26 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             </div>
 
             <div className="space-y-3">
-              <div className="p-3.5 bg-rose-50 rounded-2xl border border-rose-200 text-xs text-rose-900 space-y-1">
+              <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 rounded-2xl border border-rose-200 dark:border-rose-800 text-xs text-rose-900 dark:text-rose-200 space-y-1">
                 <div className="font-bold flex items-center gap-1.5">
                   <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                   <span>Violation: {blockedSafetyResult.flagReason}</span>
                 </div>
-                <p className="text-[11px] text-rose-800 leading-relaxed">
+                <p className="text-[11px] text-rose-800 dark:text-rose-300 leading-relaxed">
                   Your message or discussion title matched restricted content rules for:{' '}
                   <strong>{blockedSafetyResult.triggeredCategories.join(', ')}</strong>.
                 </p>
               </div>
 
               {blockedSafetyResult.triggeredCategories.length > 0 && (
-                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-700 space-y-1.5">
-                  <div className="font-bold text-slate-900">
+                <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 space-y-1.5">
+                  <div className="font-bold text-slate-900 dark:text-slate-100">
                     {getSafetyExplanation(blockedSafetyResult.triggeredCategories[0]).title}
                   </div>
                   <p className="text-[11px] leading-relaxed">
                     {getSafetyExplanation(blockedSafetyResult.triggeredCategories[0]).desc}
                   </p>
-                  <div className="text-[11px] font-semibold text-emerald-800 pt-1">
+                  <div className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-400 pt-1">
                     Guideline:{' '}
                     {getSafetyExplanation(blockedSafetyResult.triggeredCategories[0]).advice}
                   </div>
@@ -2448,14 +2757,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               )}
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setBlockedSafetyResult(null);
                 }}
-                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
+                className="px-5 py-2 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
               >
                 Close Notice
               </button>
@@ -2472,16 +2781,16 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 text-slate-900 dark:text-slate-100"
           >
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 flex items-center justify-center font-bold">
                   <Flag className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-slate-900">Report to Safety Moderators</h3>
-                  <span className="text-[10px] text-slate-500">
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">Report to Safety Moderators</h3>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
                     Help keep TUJUANE safe for all 47 counties
                   </span>
                 </div>
@@ -2492,7 +2801,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   e.stopPropagation();
                   setReportModalPost(null);
                 }}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 title="Close"
                 aria-label="Close"
               >
@@ -2500,19 +2809,19 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               </button>
             </div>
 
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
               Reporting: <strong>"{reportModalPost.title}"</strong> by {reportModalPost.authorName}
             </p>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Reason for Safety Report *
                 </label>
                 <select
                   value={reportCategory}
                   onChange={(e) => setReportCategory(e.target.value as SafetyCategory)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 dark:text-slate-100"
                 >
                   <option value="incitement">⚡ Ethnic Hate Speech / Tribal Incitement / Calls to Violence</option>
                   <option value="misleading">⚠️ Misleading Information / M-Pesa Fraud / Fake Job Scam</option>
@@ -2524,7 +2833,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Additional Context (Optional)
                 </label>
                 <textarea
@@ -2533,12 +2842,12 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   onChange={(e) => setReportDetails(e.target.value)}
                   maxLength={300}
                   placeholder="Provide any specific details to assist civic safety moderators..."
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 disabled={isSubmittingReport}
@@ -2546,7 +2855,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   e.stopPropagation();
                   setReportModalPost(null);
                 }}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -2571,32 +2880,32 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-rose-200 animate-in zoom-in-95"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-rose-200 dark:border-rose-900 animate-in zoom-in-95 text-slate-900 dark:text-slate-100"
           >
-            <div className="flex items-center justify-between pb-2 border-b border-rose-100">
-              <h3 className="font-bold text-sm text-rose-600 flex items-center gap-1.5">
+            <div className="flex items-center justify-between pb-2 border-b border-rose-100 dark:border-rose-950">
+              <h3 className="font-bold text-sm text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
                 <Ban className="w-4 h-4" />
                 <span>Block @{userToBlock.name}?</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setUserToBlock(null)}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               Are you sure you want to block <strong>@{userToBlock.name}</strong>? Their discussions, comments, and messages will no longer appear on your feed or in your inbox.
             </p>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 disabled={isBlockingInProgress}
                 onClick={() => setUserToBlock(null)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 Cancel
               </button>

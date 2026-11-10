@@ -1051,7 +1051,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   }
 
   return (
-    <div className="bg-white border-0 sm:border border-slate-200 shadow-none sm:shadow-xs overflow-hidden flex flex-col md:flex-row h-full w-full flex-1 min-h-0 relative">
+    <div className="bg-white dark:bg-slate-900 border-0 sm:border border-slate-200 dark:border-slate-800 shadow-none sm:shadow-xs overflow-hidden flex flex-col md:flex-row h-full w-full flex-1 min-h-0 relative transition-colors">
       {/* Top Floating Push Notification Prompt Banner */}
       {showPermissionPromptBanner && desktopPermission === 'default' && (
         <div className="absolute top-0 inset-x-0 z-40 bg-gradient-to-r from-emerald-600 to-teal-700 text-white px-4 py-2 flex items-center justify-between text-xs shadow-md animate-in slide-in-from-top duration-300">
@@ -1080,27 +1080,27 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
       {/* LEFT COLUMN: Navigation Tabs & List Feed */}
       <div
-        className={`w-full md:w-80 lg:w-96 border-r border-slate-200 flex flex-col bg-slate-50/50 h-full min-h-0 overflow-hidden ${
+        className={`w-full md:w-80 lg:w-96 border-r border-slate-200 dark:border-slate-800 flex flex-col bg-slate-50/50 dark:bg-slate-950/50 h-full min-h-0 overflow-hidden ${
           isThreadOpen ? 'hidden md:flex' : 'flex'
         }`}
       >
 
         {/* User Profile Mini Header & Notification Bell */}
-        <div className="p-4 bg-white border-b border-slate-200 flex items-center justify-between gap-3">
+        <div className="p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 transition-colors">
           <div className="flex items-center gap-2.5 min-w-0">
             {userProfile?.photoURL ? (
               <img
                 src={userProfile.photoURL}
                 alt={userProfile.displayName}
-                className="w-9 h-9 rounded-full object-cover border border-slate-200"
+                className="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700"
               />
             ) : (
-              <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs">
+              <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-xs">
                 {userProfile?.displayName.charAt(0)}
               </div>
             )}
             <div className="min-w-0">
-              <div className="font-bold text-xs text-slate-900 truncate flex items-center gap-1.5">
+              <div className="font-bold text-xs text-slate-900 dark:text-white truncate flex items-center gap-1.5">
                 <span className="truncate">{userProfile?.displayName}</span>
                 <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Online" />
               </div>
@@ -1110,13 +1110,13 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   setSelectedConstituency(userProfile?.constituency || '');
                   setIsCountyPickerOpen(true);
                 }}
-                className="text-[11px] text-slate-500 hover:text-emerald-700 flex items-center gap-1 cursor-pointer font-medium"
+                className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 flex items-center gap-1 cursor-pointer font-medium"
               >
-                <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
+                <MapPin className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span className="truncate max-w-[130px]">
                   {userProfile?.constituency ? `${userProfile.constituency}, ` : ''}{userProfile?.county || 'Nairobi'}
                 </span>
-                <span className="text-[10px] text-emerald-600 underline shrink-0">Change</span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 underline shrink-0">Change</span>
               </button>
             </div>
           </div>
@@ -1125,7 +1125,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
             {/* Notification Bell with Badge */}
             <button
               onClick={() => setIsNotificationsMenuOpen(!isNotificationsMenuOpen)}
-              className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer relative"
+              className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer relative"
               title="Notifications"
             >
               <Bell className="w-4 h-4" />
@@ -1140,7 +1140,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
             <button
               onClick={handleToggleSound}
               className={`p-2 rounded-lg transition-colors cursor-pointer ${
-                isSoundMuted ? 'text-slate-400 hover:text-slate-700' : 'text-emerald-600 hover:bg-emerald-50'
+                isSoundMuted ? 'text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300' : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/60'
               }`}
               title={isSoundMuted ? 'Sound muted (click to unmute)' : 'Sound enabled (click to mute)'}
             >
@@ -1150,7 +1150,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
             {/* Sign Out */}
             <button
               onClick={logout}
-              className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              className="p-2 text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               title="Sign out of chat"
             >
               <LogOut className="w-4 h-4" />
@@ -1160,25 +1160,25 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
             {isNotificationsMenuOpen && (
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="absolute right-0 top-10 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 z-50 p-3 space-y-2.5 animate-in fade-in-50 zoom-in-95 text-left"
+                className="absolute right-0 top-10 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 z-50 p-3 space-y-2.5 animate-in fade-in-50 zoom-in-95 text-left"
               >
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <div className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
-                    <Bell className="w-3.5 h-3.5 text-emerald-600" />
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                  <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Bell className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     <span>Notifications & Alerts</span>
                   </div>
                   <div className="flex items-center gap-2">
                     {notifications.length > 0 && (
                       <button
                         onClick={() => notificationService.clearAll()}
-                        className="text-[10px] text-slate-400 hover:text-slate-700"
+                        className="text-[10px] text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
                       >
                         Clear
                       </button>
                     )}
                     <button
                       onClick={() => setIsNotificationsMenuOpen(false)}
-                      className="text-slate-400 hover:text-slate-700"
+                      className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -1186,10 +1186,10 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 </div>
 
                 {/* Push Notification Permission Action */}
-                <div className="p-2.5 bg-slate-50 rounded-xl flex items-center justify-between text-[11px]">
+                <div className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-between text-[11px]">
                   <div>
-                    <div className="font-semibold text-slate-800">Desktop Push Notifications</div>
-                    <div className="text-[10px] text-slate-500">
+                    <div className="font-semibold text-slate-800 dark:text-slate-200">Desktop Push Notifications</div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400">
                       {desktopPermission === 'granted'
                         ? '✅ Active & receiving alerts'
                         : desktopPermission === 'denied'
@@ -1208,19 +1208,19 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 </div>
 
                 {/* Notifications List */}
-                <div className="max-h-60 overflow-y-auto space-y-1.5 divide-y divide-slate-50">
+                <div className="max-h-60 overflow-y-auto space-y-1.5 divide-y divide-slate-50 dark:divide-slate-800">
                   {notifications.length === 0 ? (
-                    <div className="py-6 text-center text-slate-400 text-xs">
+                    <div className="py-6 text-center text-slate-400 dark:text-slate-500 text-xs">
                       No recent notifications
                     </div>
                   ) : (
                     notifications.map((notif) => (
                       <div key={notif.id} className="pt-1.5 first:pt-0">
-                        <div className="font-semibold text-xs text-slate-900 truncate">
+                        <div className="font-semibold text-xs text-slate-900 dark:text-white truncate">
                           {notif.title}
                         </div>
-                        <div className="text-[11px] text-slate-500 line-clamp-2">{notif.body}</div>
-                        <div className="text-[9px] text-slate-400 mt-0.5">
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2">{notif.body}</div>
+                        <div className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
                           {new Date(notif.timestamp).toLocaleTimeString([], {
                             hour: '2-digit',
                             minute: '2-digit'
@@ -1237,13 +1237,13 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
         {/* 4 Primary Navigation Tabs */}
         <div className="px-3 pt-3">
-          <div className="grid grid-cols-4 p-1 bg-slate-200/80 rounded-xl text-[11px] font-semibold text-center">
+          <div className="grid grid-cols-4 p-1 bg-slate-200/80 dark:bg-slate-800 rounded-xl text-[11px] font-semibold text-center">
             <button
               onClick={() => setActiveTab('direct')}
               className={`py-1.5 rounded-lg transition-all cursor-pointer truncate ${
                 activeTab === 'direct'
-                  ? 'bg-white text-slate-900 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               Direct
@@ -1252,8 +1252,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               onClick={() => setActiveTab('channels')}
               className={`py-1.5 rounded-lg transition-all cursor-pointer truncate flex items-center justify-center gap-1 ${
                 activeTab === 'channels'
-                  ? 'bg-white text-slate-900 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Hash className="w-3 h-3" />
@@ -1263,8 +1263,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               onClick={() => setActiveTab('groups')}
               className={`py-1.5 rounded-lg transition-all cursor-pointer truncate flex items-center justify-center gap-1 ${
                 activeTab === 'groups'
-                  ? 'bg-white text-slate-900 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Users className="w-3 h-3" />
@@ -1274,8 +1274,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               onClick={() => setActiveTab('members')}
               className={`py-1.5 rounded-lg transition-all cursor-pointer truncate ${
                 activeTab === 'members'
-                  ? 'bg-white text-slate-900 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               Citizens
@@ -1286,7 +1286,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
         {/* Search Bar & Action Buttons */}
         <div className="p-3 flex items-center gap-2">
           <div className="relative flex-1">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
               value={searchQuery}
@@ -1300,7 +1300,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   ? 'Search community groups...'
                   : 'Search by member or county...'
               }
-              className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 placeholder-slate-400"
+              className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500"
             />
           </div>
 
@@ -1361,8 +1361,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
                     className={`w-full p-2.5 rounded-2xl text-left transition-all flex items-center gap-3 cursor-pointer ${
                       isSelected
-                        ? 'bg-emerald-50/80 border border-emerald-200 shadow-2xs'
-                        : 'hover:bg-slate-100/80 border border-transparent'
+                        ? 'bg-emerald-50/80 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 shadow-2xs'
+                        : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/80 border border-transparent'
                     }`}
                   >
                     <div className="relative shrink-0">
@@ -1370,21 +1370,21 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                         <img
                           src={partner.photoURL}
                           alt={partner.displayName}
-                          className="w-10 h-10 rounded-full object-cover border border-slate-200"
+                          className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700"
                         />
                       ) : (
-                        <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs">
+                        <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-xs">
                           {partner?.displayName?.charAt(0) || 'U'}
                         </div>
                       )}
                       {isOnline ? (
                         <span
-                          className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white ring-1 ring-emerald-400"
+                          className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900 ring-1 ring-emerald-400"
                           title="Online now"
                         />
                       ) : (
                         <span
-                          className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-slate-400 rounded-full border-2 border-white"
+                          className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-slate-400 rounded-full border-2 border-white dark:border-slate-900"
                           title={lastSeenText}
                         />
                       )}
@@ -1392,21 +1392,21 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1">
-                        <div className="font-bold text-xs text-slate-900 truncate flex items-center gap-1.5">
+                        <div className="font-bold text-xs text-slate-900 dark:text-white truncate flex items-center gap-1.5">
                           <span>{partner?.displayName || 'Community Member'}</span>
                           {isOnline && (
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0" title="Online" />
                           )}
                         </div>
                         {conv.lastMessageTimestamp ? (
-                          <div className="text-[10px] text-slate-400 shrink-0">
+                          <div className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
                             {new Date(conv.lastMessageTimestamp).toLocaleTimeString([], {
                               hour: '2-digit',
                               minute: '2-digit'
                             })}
                           </div>
                         ) : !isOnline && partnerUser?.lastSeen ? (
-                          <div className="text-[9px] text-slate-400 shrink-0 font-medium">
+                          <div className="text-[9px] text-slate-400 dark:text-slate-500 shrink-0 font-medium">
                             {lastSeenText.replace('Last seen ', '')}
                           </div>
                         ) : null}
@@ -1414,14 +1414,14 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {isTyping ? (
-                          <span className="text-[11px] font-semibold text-emerald-600 truncate animate-pulse flex items-center gap-1">
+                          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 truncate animate-pulse flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                             typing...
                           </span>
                         ) : (
-                          <div className="text-[11px] text-slate-500 truncate flex-1 flex items-center gap-1">
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate flex-1 flex items-center gap-1">
                             {conv.lastMessageSenderId === currentUser.uid && (
-                              <CheckCheck className="w-3 h-3 text-slate-400 shrink-0 inline" />
+                              <CheckCheck className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0 inline" />
                             )}
                             <span className="truncate">{conv.lastMessage || 'Say hello...'}</span>
                           </div>
@@ -1437,7 +1437,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
           {/* TAB 2: Channels (County & Topic) */}
           {activeTab === 'channels' && (
             <div className="space-y-1">
-              <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              <div className="px-2 py-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                 Official Kenya Channels
               </div>
               {filteredChannels.map((ch) => {
@@ -1448,25 +1448,25 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     onClick={() => handleSelectChannel(ch)}
                     className={`w-full p-2.5 rounded-2xl text-left transition-all flex items-center gap-3 cursor-pointer ${
                       isSelected
-                        ? 'bg-emerald-50/90 border border-emerald-300 shadow-2xs'
-                        : 'hover:bg-slate-100/80 border border-transparent'
+                        ? 'bg-emerald-50/90 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 shadow-2xs'
+                        : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/80 border border-transparent'
                     }`}
                   >
-                    <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center text-lg shrink-0 border border-slate-200 shadow-2xs">
+                    <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-lg shrink-0 border border-slate-200 dark:border-slate-700 shadow-2xs">
                       {ch.icon}
                     </div>
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1">
-                        <div className="font-bold text-xs text-slate-900 flex items-center gap-1 truncate">
-                          <Hash className="w-3 h-3 text-emerald-600 shrink-0" />
+                        <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1 truncate">
+                          <Hash className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                           <span className="truncate">{ch.name}</span>
                         </div>
-                        <span className="text-[10px] text-slate-400 shrink-0 font-medium">
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 font-medium">
                           {ch.memberCount} members
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
                         {ch.lastMessage || ch.description}
                       </div>
                     </div>
@@ -1479,11 +1479,11 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
           {/* TAB 3: Community Groups */}
           {activeTab === 'groups' && (
             <div className="space-y-1">
-              <div className="flex items-center justify-between px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              <div className="flex items-center justify-between px-2 py-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                 <span>Community Groups ({filteredGroups.length})</span>
                 <button
                   onClick={() => setIsCreateGroupModalOpen(true)}
-                  className="text-emerald-700 hover:underline cursor-pointer lowercase font-medium flex items-center gap-0.5"
+                  className="text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer lowercase font-medium flex items-center gap-0.5"
                 >
                   <Plus className="w-3 h-3" />
                   new group
@@ -1491,10 +1491,10 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               </div>
 
               {filteredGroups.length === 0 ? (
-                <div className="p-6 text-center text-slate-400 space-y-3">
-                  <Users className="w-8 h-8 mx-auto text-slate-300" />
-                  <div className="text-xs font-semibold text-slate-700">No groups created yet</div>
-                  <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
+                <div className="p-6 text-center text-slate-400 dark:text-slate-500 space-y-3">
+                  <Users className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+                  <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">No groups created yet</div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
                     Start a community group for your estate, campus, hustle, or sports team!
                   </p>
                   <button
@@ -1516,30 +1516,30 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                       onClick={() => handleSelectGroup(grp)}
                       className={`w-full p-2.5 rounded-2xl text-left transition-all flex items-center gap-3 cursor-pointer ${
                         isSelected
-                          ? 'bg-emerald-50/90 border border-emerald-300 shadow-2xs'
-                          : 'hover:bg-slate-100/80 border border-transparent'
+                          ? 'bg-emerald-50/90 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 shadow-2xs'
+                          : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/80 border border-transparent'
                       }`}
                     >
-                      <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center text-lg shrink-0 border border-emerald-200 shadow-2xs">
+                      <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 flex items-center justify-center text-lg shrink-0 border border-emerald-200 dark:border-emerald-800 shadow-2xs">
                         {grp.icon || '👥'}
                       </div>
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1">
-                          <div className="font-bold text-xs text-slate-900 truncate">
+                          <div className="font-bold text-xs text-slate-900 dark:text-white truncate">
                             {grp.name}
                           </div>
-                          <span className="text-[10px] text-slate-400 shrink-0">
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
                             {grp.members.length} members
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
                           {grp.lastMessage || grp.description || 'Join the group chat'}
                         </div>
                       </div>
 
                       {!isMember && (
-                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold shrink-0">
+                        <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 rounded-md text-[10px] font-bold shrink-0">
                           Join
                         </span>
                       )}
@@ -1553,9 +1553,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
           {/* TAB 4: Citizens / Members Directory */}
           {activeTab === 'members' && (
             filteredMembers.length === 0 ? (
-              <div className="p-6 text-center text-slate-400 space-y-2">
-                <Users className="w-8 h-8 mx-auto text-slate-300" />
-                <div className="text-xs font-semibold text-slate-600">No citizens found</div>
+              <div className="p-6 text-center text-slate-400 dark:text-slate-500 space-y-2">
+                <Users className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+                <div className="text-xs font-semibold text-slate-600 dark:text-slate-300">No citizens found</div>
               </div>
             ) : (
               filteredMembers.map((member) => {
@@ -1565,7 +1565,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 return (
                   <div
                     key={member.uid}
-                    className="p-2.5 rounded-xl hover:bg-slate-100 transition-colors flex items-center justify-between gap-3"
+                    className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center justify-between gap-3"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="relative shrink-0">
@@ -1576,38 +1576,38 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                             className="w-9 h-9 rounded-full object-cover"
                           />
                         ) : (
-                          <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs">
+                          <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-xs">
                             {member.displayName.charAt(0)}
                           </div>
                         )}
                         {isOnline ? (
                           <span
-                            className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-white ring-1 ring-emerald-400"
+                            className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-white dark:border-slate-900 ring-1 ring-emerald-400"
                             title="Online now"
                           />
                         ) : (
                           <span
-                            className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-slate-400 rounded-full border border-white"
+                            className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-slate-400 rounded-full border border-white dark:border-slate-900"
                             title={lastSeenText}
                           />
                         )}
                       </div>
 
                       <div className="min-w-0">
-                        <div className="font-bold text-xs text-slate-900 truncate flex items-center gap-1.5">
+                        <div className="font-bold text-xs text-slate-900 dark:text-white truncate flex items-center gap-1.5">
                           <span>{member.displayName}</span>
                           {isOnline && (
-                            <span className="text-[10px] text-emerald-600 font-bold">Online</span>
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">Online</span>
                           )}
                         </div>
-                        <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5 truncate">
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5 truncate">
                           {!isOnline && (
-                            <span className="text-slate-400 truncate flex items-center gap-0.5">
+                            <span className="text-slate-400 dark:text-slate-500 truncate flex items-center gap-0.5">
                               <Clock className="w-2.5 h-2.5 shrink-0" />
                               {lastSeenText}
                             </span>
                           )}
-                          {!isOnline && <span className="text-slate-300">•</span>}
+                          {!isOnline && <span className="text-slate-300 dark:text-slate-600">•</span>}
                           <span className="truncate">
                             {member.constituency ? `${member.constituency}, ` : ''}{member.county || 'Nairobi'}
                           </span>
@@ -1631,14 +1631,14 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
       {/* RIGHT COLUMN: Active Conversation Window (Direct, Channel, or Group) */}
       <div
-        className={`flex-1 flex flex-col bg-white h-full min-h-0 overflow-hidden ${
+        className={`flex-1 flex flex-col bg-white dark:bg-slate-900 h-full min-h-0 overflow-hidden ${
           isThreadOpen ? 'flex' : 'hidden md:flex'
         }`}
       >
         {isThreadOpen ? (
           <>
             {/* Header: Displays info based on active chat mode */}
-            <div className="p-3.5 bg-white border-b border-slate-200 flex items-center justify-between gap-3 shadow-2xs shrink-0">
+            <div className="p-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shadow-2xs shrink-0">
               <div className="flex items-center gap-3 min-w-0">
                 <button
                   onClick={() => {
@@ -1649,7 +1649,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     if (onClearDirectChatTargetUser) onClearDirectChatTargetUser();
                   }}
 
-                  className="p-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer flex items-center gap-1 font-bold text-xs md:hidden"
+                  className="p-1.5 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg cursor-pointer flex items-center gap-1 font-bold text-xs md:hidden"
                   title="Back to list"
                 >
                   <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
@@ -1670,21 +1670,21 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                         <img
                           src={activePartner.photoURL}
                           alt={activePartner.displayName}
-                          className="w-10 h-10 rounded-full object-cover border border-slate-200 group-hover:ring-2 group-hover:ring-emerald-500 transition-all"
+                          className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700 group-hover:ring-2 group-hover:ring-emerald-500 transition-all"
                         />
                       ) : (
-                        <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-sm group-hover:bg-emerald-200 transition-colors">
+                        <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-sm group-hover:bg-emerald-200 dark:group-hover:bg-emerald-900/60 transition-colors">
                           {activePartner.displayName.charAt(0)}
                         </div>
                       )}
                       {partnerPresence.isOnline ? (
                         <span
-                          className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white ring-2 ring-emerald-400/40 animate-pulse"
+                          className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900 ring-2 ring-emerald-400/40 animate-pulse"
                           title="Online now"
                         />
                       ) : (
                         <span
-                          className="absolute bottom-0 right-0 w-3 h-3 bg-slate-400 rounded-full border-2 border-white"
+                          className="absolute bottom-0 right-0 w-3 h-3 bg-slate-400 dark:bg-slate-600 rounded-full border-2 border-white dark:border-slate-900"
                           title={partnerPresence.lastSeenText}
                         />
                       )}
@@ -1696,27 +1696,27 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           onClick={() => {
                             if (onViewUserProfile) onViewUserProfile(activePartner);
                           }}
-                          className="font-bold text-sm text-slate-900 truncate hover:text-emerald-700 hover:underline cursor-pointer text-left"
+                          className="font-bold text-sm text-slate-900 dark:text-white truncate hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline cursor-pointer text-left"
                           title={`View ${activePartner.displayName}'s Profile`}
                         >
                           {activePartner.displayName}
                         </button>
                         {mutedUserIds.includes(activePartner.uid) && (
-                          <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded-md border border-amber-200" title="Notifications muted">
-                            <VolumeX className="w-3 h-3 text-amber-600" />
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded-md border border-amber-200 dark:border-amber-800" title="Notifications muted">
+                            <VolumeX className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                             <span className="hidden sm:inline">Muted</span>
                           </span>
                         )}
                         {blockedUserIds.includes(activePartner.uid) && (
-                          <span className="inline-flex items-center gap-1 text-[10px] bg-rose-50 text-rose-700 px-1.5 py-0.5 rounded-md border border-rose-200" title="Account blocked">
-                            <Ban className="w-3 h-3 text-rose-600" />
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 rounded-md border border-rose-200 dark:border-rose-800" title="Account blocked">
+                            <Ban className="w-3 h-3 text-rose-600 dark:text-rose-400" />
                             <span className="hidden sm:inline">Blocked</span>
                           </span>
                         )}
                         {onViewUserProfile && (
                           <button
                             onClick={() => onViewUserProfile(activePartner)}
-                            className="hidden sm:inline text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200 transition-colors cursor-pointer"
+                            className="hidden sm:inline text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800 transition-colors cursor-pointer"
                           >
                             Profile
                           </button>
@@ -1724,23 +1724,23 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                       </div>
                       <div className="flex items-center gap-2 text-xs flex-wrap">
                         {isPartnerTyping ? (
-                          <span className="text-emerald-600 font-semibold flex items-center gap-1.5 animate-pulse">
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5 animate-pulse">
                             <span className="w-2 h-2 rounded-full bg-emerald-500" />
                             typing...
                           </span>
                         ) : partnerPresence.isOnline ? (
-                          <span className="text-emerald-700 font-bold flex items-center gap-1.5">
+                          <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1.5">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
                             Online now
                           </span>
                         ) : (
-                          <span className="text-slate-500 font-medium flex items-center gap-1" title={partnerPresence.lastSeenText}>
-                            <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1" title={partnerPresence.lastSeenText}>
+                            <Clock className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0" />
                             <span>{partnerPresence.lastSeenText}</span>
                           </span>
                         )}
-                        <span className="text-slate-300">·</span>
-                        <span className="text-slate-500 truncate">
+                        <span className="text-slate-300 dark:text-slate-600">·</span>
+                        <span className="text-slate-500 dark:text-slate-400 truncate">
                           {activePartner.constituency ? `${activePartner.constituency}, ` : ''}{activePartner.county || 'Nairobi'} County
                         </span>
                       </div>
@@ -1751,18 +1751,18 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 {/* Channel Header */}
                 {activeChatMode === 'channel' && activeChannel && (
                   <>
-                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-xl shrink-0">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-center text-xl shrink-0">
                       {activeChannel.icon}
                     </div>
                     <div className="min-w-0">
-                      <div className="font-bold text-sm text-slate-900 flex items-center gap-1.5 truncate">
-                        <Hash className="w-4 h-4 text-emerald-600" />
+                      <div className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5 truncate">
+                        <Hash className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                         <span>{activeChannel.name}</span>
-                        <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">
+                        <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full font-semibold border border-slate-200 dark:border-slate-700">
                           Public Channel
                         </span>
                       </div>
-                      <div className="text-xs text-slate-500 truncate">
+                      <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
                         {activeChannel.description}
                       </div>
                     </div>
@@ -1772,17 +1772,17 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 {/* Group Header */}
                 {activeChatMode === 'group' && activeGroup && (
                   <>
-                    <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center justify-center text-xl shrink-0">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-center text-xl shrink-0">
                       {activeGroup.icon || '👥'}
                     </div>
                     <div className="min-w-0">
-                      <div className="font-bold text-sm text-slate-900 flex items-center gap-2 truncate">
+                      <div className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2 truncate">
                         <span>{activeGroup.name}</span>
-                        <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-semibold border border-emerald-200">
+                        <span className="text-[10px] bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full font-semibold border border-emerald-200 dark:border-emerald-800">
                           {activeGroup.members.length} members
                         </span>
                       </div>
-                      <div className="text-xs text-slate-500 truncate">
+                      <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
                         {activeGroup.description || `${activeGroup.county || 'Kenya'} Group`}
                       </div>
                     </div>
@@ -1810,7 +1810,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsDirectActionMenuOpen(!isDirectActionMenuOpen)}
-                      className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                      className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
                       title="Chat options & safety"
                     >
                       <MoreVertical className="w-4 h-4" />
@@ -1819,7 +1819,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     {isDirectActionMenuOpen && (
                       <div
                         onClick={(e) => e.stopPropagation()}
-                        className="absolute right-0 top-full mt-1 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95 text-xs text-slate-700 space-y-0.5"
+                        className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 z-30 animate-in fade-in zoom-in-95 text-xs text-slate-700 dark:text-slate-200 space-y-0.5"
                       >
                         {/* Mute/Unmute */}
                         <button
@@ -1832,16 +1832,16 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                               await muteUser(activePartner.uid);
                             }
                           }}
-                          className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 font-medium cursor-pointer"
+                          className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 font-medium cursor-pointer"
                         >
                           {mutedUserIds.includes(activePartner.uid) ? (
                             <>
-                              <Volume2 className="w-3.5 h-3.5 text-amber-600" />
+                              <Volume2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                               <span>Unmute Notifications</span>
                             </>
                           ) : (
                             <>
-                              <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                              <VolumeX className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                               <span>Mute Notifications</span>
                             </>
                           )}
@@ -1858,9 +1858,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                               setDirectUserToBlock({ id: activePartner.uid, name: activePartner.displayName });
                             }
                           }}
-                          className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2 font-medium cursor-pointer"
+                          className="w-full px-3 py-2 text-left hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-700 dark:text-rose-400 flex items-center gap-2 font-medium cursor-pointer"
                         >
-                          <Ban className="w-3.5 h-3.5 text-rose-600" />
+                          <Ban className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
                           <span>{blockedUserIds.includes(activePartner.uid) ? 'Unblock Account' : 'Block Account'}</span>
                         </button>
 
@@ -1871,9 +1871,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                             setIsDirectActionMenuOpen(false);
                             setIsDirectReportModalOpen(true);
                           }}
-                          className="w-full px-3 py-2 text-left hover:bg-amber-50 text-amber-800 flex items-center gap-2 font-medium cursor-pointer border-t border-slate-100"
+                          className="w-full px-3 py-2 text-left hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium cursor-pointer border-t border-slate-100 dark:border-slate-800"
                         >
-                          <Flag className="w-3.5 h-3.5 text-amber-600" />
+                          <Flag className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                           <span>Report Account</span>
                         </button>
                       </div>
@@ -1884,15 +1884,15 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
             </div>
 
             {/* Message Feed Area */}
-            <div className="flex-1 min-h-0 p-3 sm:p-4 overflow-y-auto space-y-3.5 bg-slate-50/50">
+            <div className="flex-1 min-h-0 p-3 sm:p-4 overflow-y-auto space-y-3.5 bg-slate-50/50 dark:bg-slate-950/40">
               {/* Blocked Partner Warning Banner */}
               {activeChatMode === 'direct' && activePartner && blockedUserIds.includes(activePartner.uid) && (
-                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-center justify-between shadow-2xs">
+                <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-2xl text-xs text-rose-800 dark:text-rose-200 flex items-center justify-between shadow-2xs">
                   <div className="flex items-center gap-2.5">
-                    <Ban className="w-4 h-4 text-rose-600 shrink-0" />
+                    <Ban className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
                     <div>
                       <span className="font-bold">You have blocked {activePartner.displayName}.</span>
-                      <span className="text-[11px] text-rose-700 block">
+                      <span className="text-[11px] text-rose-700 dark:text-rose-300 block">
                         You will not receive new messages or notifications from this user.
                       </span>
                     </div>
@@ -1900,7 +1900,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   <button
                     type="button"
                     onClick={() => unblockUser(activePartner.uid)}
-                    className="px-3 py-1 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold rounded-xl text-xs transition-colors cursor-pointer shrink-0"
+                    className="px-3 py-1 bg-white dark:bg-slate-900 hover:bg-emerald-50 dark:hover:bg-slate-800 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 font-bold rounded-xl text-xs transition-colors cursor-pointer shrink-0"
                   >
                     Unblock
                   </button>
@@ -1910,21 +1910,21 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               {/* DIRECT MESSAGES STREAM */}
               {activeChatMode === 'direct' &&
                 (visibleDirectMessages.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400 space-y-2">
-                    <MessageSquare className="w-8 h-8 mx-auto text-slate-300" />
-                    <div className="text-xs font-semibold text-slate-700">No messages yet</div>
-                    <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
+                  <div className="p-8 text-center text-slate-400 dark:text-slate-500 space-y-2">
+                    <MessageSquare className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+                    <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">No messages yet</div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
                       Send a message to start a direct 1-on-1 chat with {activePartner?.displayName}.
                     </p>
                     <div className="pt-2 flex items-center justify-center gap-1.5 text-xs">
                       {partnerPresence.isOnline ? (
-                        <span className="inline-flex items-center gap-1.5 text-emerald-700 font-bold bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                        <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1 rounded-full border border-emerald-200 dark:border-emerald-800">
                           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981] animate-pulse" />
                           Online now — ready to chat
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 text-slate-600 font-medium bg-white px-3 py-1 rounded-full border border-slate-200 shadow-2xs">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-medium bg-white dark:bg-slate-900 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-800 shadow-2xs">
+                          <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
                           {partnerPresence.lastSeenText}
                         </span>
                       )}
@@ -1943,8 +1943,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           key={msg.id}
                           className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} transition-all`}
                         >
-                          <div className="px-3.5 py-2 rounded-2xl bg-slate-100 border border-slate-200 text-slate-400 text-xs italic flex items-center gap-1.5">
-                            <Ban className="w-3.5 h-3.5 text-slate-400" />
+                          <div className="px-3.5 py-2 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 text-xs italic flex items-center gap-1.5">
+                            <Ban className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
                             <span>This message was deleted</span>
                           </div>
                         </div>
@@ -1977,8 +1977,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                             onContextMenu={(e) => handleMessageContextMenu(e, msg)}
                             className={`rounded-2xl p-3.5 shadow-2xs space-y-2 transition-all active:scale-[0.99] select-text cursor-pointer ${
                               isMe
-                                ? 'bg-slate-900 text-white rounded-br-xs'
-                                : 'bg-white border border-slate-200 text-slate-900 rounded-bl-xs'
+                                ? 'bg-slate-900 dark:bg-emerald-700 text-white rounded-br-xs'
+                                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-bl-xs'
                             }`}
                             title="Long press or right-click to edit, delete, or forward"
                           >
@@ -1987,7 +1987,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                               <div
                                 onClick={() => scrollToMessage(msg.replyTo!.messageId)}
                                 className={`p-2 rounded-lg border-l-4 border-emerald-500 text-xs cursor-pointer transition-opacity hover:opacity-90 ${
-                                  isMe ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-700'
+                                  isMe ? 'bg-slate-800 dark:bg-emerald-800/80 text-slate-200' : 'bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200'
                                 }`}
                                 title="Click to jump to quoted message"
                               >
@@ -2010,7 +2010,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                                   className="w-full max-h-60 object-contain cursor-pointer"
                                   onClick={() => setLightboxImage(msg.mediaUrl!)}
                                 />
-                                <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity">
+                                <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group/img:opacity-100 transition-opacity">
                                   <a
                                     href={msg.mediaUrl}
                                     download="chat-image.jpg"
@@ -2029,8 +2029,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                               <div
                                 className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 ${
                                   isMe
-                                    ? 'bg-slate-800/80 border-slate-700 text-white'
-                                    : 'bg-slate-50 border-slate-200 text-slate-900'
+                                    ? 'bg-slate-800/80 dark:bg-emerald-800/80 border-slate-700 dark:border-emerald-600 text-white'
+                                    : 'bg-slate-50 dark:bg-slate-700/60 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-white'
                                 }`}
                               >
                                 <div className="flex items-center gap-2.5 min-w-0">
@@ -2043,7 +2043,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                                     </div>
                                     <div
                                       className={`text-[10px] ${
-                                        isMe ? 'text-slate-400' : 'text-slate-500'
+                                        isMe ? 'text-slate-400 dark:text-emerald-200' : 'text-slate-500 dark:text-slate-400'
                                       }`}
                                     >
                                       {formatBytes(msg.attachment.size)}
@@ -2055,8 +2055,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                                   onClick={() => handleDownloadFile(msg.attachment!)}
                                   className={`p-1.5 rounded-lg shrink-0 cursor-pointer transition-colors ${
                                     isMe
-                                      ? 'bg-slate-700 hover:bg-slate-600 text-white'
-                                      : 'bg-slate-200 hover:bg-slate-300 text-slate-800'
+                                      ? 'bg-slate-700 dark:bg-emerald-600 hover:bg-slate-600 dark:hover:bg-emerald-500 text-white'
+                                      : 'bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-800 dark:text-white'
                                   }`}
                                   title="Download File"
                                 >
@@ -2075,7 +2075,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                             {/* Meta & Status Indicator */}
                             <div
                               className={`text-[10px] flex items-center justify-end gap-1.5 pt-0.5 ${
-                                isMe ? 'text-slate-400' : 'text-slate-400'
+                                isMe ? 'text-slate-400 dark:text-emerald-200' : 'text-slate-400 dark:text-slate-400'
                               }`}
                             >
                               {msg.isEdited && (
@@ -2098,9 +2098,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                                   {isRead ? (
                                     <CheckCheck className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
                                   ) : isDelivered ? (
-                                    <CheckCheck className="w-3.5 h-3.5 text-slate-400 stroke-[2]" />
+                                    <CheckCheck className="w-3.5 h-3.5 text-slate-400 dark:text-emerald-200 stroke-[2]" />
                                   ) : (
-                                    <Check className="w-3.5 h-3.5 text-slate-400 stroke-[2]" />
+                                    <Check className="w-3.5 h-3.5 text-slate-400 dark:text-emerald-200 stroke-[2]" />
                                   )}
                                 </span>
                               )}
@@ -2118,7 +2118,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                                 e.stopPropagation();
                                 setOpenMenuMessageId(isMenuOpen ? null : msg.id);
                               }}
-                              className="p-1 bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-full border border-slate-200 shadow-2xs cursor-pointer"
+                              className="p-1 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white rounded-full border border-slate-200 dark:border-slate-700 shadow-2xs cursor-pointer"
                               title="Message actions"
                             >
                               <MoreVertical className="w-3.5 h-3.5" />
@@ -2131,13 +2131,13 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                               onClick={(e) => e.stopPropagation()}
                               className={`absolute z-30 top-6 ${
                                 isMe ? 'right-0' : 'left-0'
-                              } w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 text-xs text-slate-700 animate-in fade-in-50 zoom-in-95`}
+                              } w-44 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 py-1 text-xs text-slate-700 dark:text-slate-200 animate-in fade-in-50 zoom-in-95`}
                             >
                               <button
                                 onClick={() => handleStartReply(msg)}
-                                className="w-full px-3 py-1.5 text-left hover:bg-slate-100 flex items-center gap-2 cursor-pointer"
+                                className="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
                               >
-                                <CornerUpLeft className="w-3.5 h-3.5 text-slate-500" />
+                                <CornerUpLeft className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                                 <span>Reply</span>
                               </button>
 
@@ -2146,18 +2146,18 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                                   setForwardingMessage(msg);
                                   setOpenMenuMessageId(null);
                                 }}
-                                className="w-full px-3 py-1.5 text-left hover:bg-slate-100 flex items-center gap-2 cursor-pointer text-emerald-700 font-medium"
+                                className="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer text-emerald-700 dark:text-emerald-400 font-medium"
                               >
-                                <CornerUpRight className="w-3.5 h-3.5 text-emerald-600" />
+                                <CornerUpRight className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                                 <span>Forward</span>
                               </button>
 
                               {msg.text && (
                                 <button
                                   onClick={() => handleCopyText(msg.text)}
-                                  className="w-full px-3 py-1.5 text-left hover:bg-slate-100 flex items-center gap-2 cursor-pointer"
+                                  className="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
                                 >
-                                  <Copy className="w-3.5 h-3.5 text-slate-500" />
+                                  <Copy className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                                   <span>Copy Text</span>
                                 </button>
                               )}
@@ -2165,21 +2165,21 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                               {isMe && (
                                 <button
                                   onClick={() => handleStartEdit(msg)}
-                                  className="w-full px-3 py-1.5 text-left hover:bg-slate-100 flex items-center gap-2 cursor-pointer"
+                                  className="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
                                 >
-                                  <Edit2 className="w-3.5 h-3.5 text-amber-600" />
+                                  <Edit2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                                   <span>Edit Message</span>
                                 </button>
                               )}
 
-                              <div className="border-t border-slate-100 my-1" />
+                              <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
 
                               {isMe && (
                                 <button
                                   onClick={() =>
                                     setDeleteConfirmation({ message: msg, type: 'forEveryone' })
                                   }
-                                  className="w-full px-3 py-1.5 text-left hover:bg-rose-50 text-rose-600 flex items-center gap-2 cursor-pointer font-medium"
+                                  className="w-full px-3 py-1.5 text-left hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2 cursor-pointer font-medium"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                   <span>Delete for Everyone</span>
@@ -2190,9 +2190,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                                 onClick={() =>
                                   setDeleteConfirmation({ message: msg, type: 'forMe' })
                                 }
-                                className="w-full px-3 py-1.5 text-left hover:bg-slate-100 text-slate-600 flex items-center gap-2 cursor-pointer"
+                                className="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center gap-2 cursor-pointer"
                               >
-                                <Trash2 className="w-3.5 h-3.5 text-slate-400" />
+                                <Trash2 className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
                                 <span>Delete for Me</span>
                               </button>
                             </div>
@@ -2206,12 +2206,12 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               {/* CHANNEL MESSAGES STREAM */}
               {activeChatMode === 'channel' &&
                 (channelMessages.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400 space-y-2">
-                    <Hash className="w-8 h-8 mx-auto text-slate-300" />
-                    <div className="text-xs font-semibold text-slate-700">
+                  <div className="p-8 text-center text-slate-400 dark:text-slate-500 space-y-2">
+                    <Hash className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+                    <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                       Welcome to #{activeChannel?.name}!
                     </div>
-                    <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
                       This is the beginning of the #{activeChannel?.name} channel. Be the first to
                       say hello to fellow community members!
                     </p>
@@ -2230,10 +2230,10 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           <img
                             src={msg.senderPhoto}
                             alt={msg.senderName}
-                            className="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5"
+                            className="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5 border border-slate-200 dark:border-slate-700"
                           />
                         ) : (
-                          <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
+                          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
                             {msg.senderName?.charAt(0) || 'M'}
                           </div>
                         )}
@@ -2245,11 +2245,11 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                               isMe ? 'justify-end' : 'justify-start'
                             }`}
                           >
-                            <span className="font-bold text-slate-900">{msg.senderName}</span>
-                            <span className="px-1.5 py-0.2 bg-slate-100 text-slate-500 rounded text-[9px] font-medium">
+                            <span className="font-bold text-slate-900 dark:text-white">{msg.senderName}</span>
+                            <span className="px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded text-[9px] font-medium border border-slate-200 dark:border-slate-700">
                               {msg.senderCounty || 'Nairobi'}
                             </span>
-                            <span className="text-[10px] text-slate-400">
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500">
                               {new Date(msg.createdAt).toLocaleTimeString([], {
                                 hour: '2-digit',
                                 minute: '2-digit'
@@ -2260,8 +2260,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           <div
                             className={`p-3 rounded-2xl shadow-2xs space-y-1.5 ${
                               isMe
-                                ? 'bg-slate-900 text-white rounded-tr-xs'
-                                : 'bg-white border border-slate-200 text-slate-900 rounded-tl-xs'
+                                ? 'bg-slate-900 dark:bg-emerald-700 text-white rounded-tr-xs'
+                                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-tl-xs'
                             }`}
                           >
                             {msg.mediaUrl && (
@@ -2276,10 +2276,10 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                             {msg.attachment && (
                               <div
                                 onClick={() => handleDownloadFile(msg.attachment!)}
-                                className="p-2 bg-slate-100 text-slate-800 rounded-xl flex items-center justify-between gap-2 text-xs cursor-pointer hover:bg-slate-200"
+                                className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl flex items-center justify-between gap-2 text-xs cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                               >
                                 <div className="flex items-center gap-1.5 truncate">
-                                  <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                                  <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                                   <span className="truncate font-semibold">
                                     {msg.attachment.name}
                                   </span>
@@ -2299,12 +2299,12 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               {/* GROUP MESSAGES STREAM */}
               {activeChatMode === 'group' &&
                 (groupMessages.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400 space-y-2">
-                    <Users className="w-8 h-8 mx-auto text-slate-300" />
-                    <div className="text-xs font-semibold text-slate-700">
+                  <div className="p-8 text-center text-slate-400 dark:text-slate-500 space-y-2">
+                    <Users className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+                    <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                       Welcome to {activeGroup?.name}!
                     </div>
-                    <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
                       Send a message, share photos, or post files to start the group conversation.
                     </p>
                   </div>
@@ -2321,10 +2321,10 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           <img
                             src={msg.senderPhoto}
                             alt={msg.senderName}
-                            className="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5"
+                            className="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5 border border-slate-200 dark:border-slate-700"
                           />
                         ) : (
-                          <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
+                          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
                             {msg.senderName?.charAt(0) || 'M'}
                           </div>
                         )}
@@ -2335,11 +2335,11 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                               isMe ? 'justify-end' : 'justify-start'
                             }`}
                           >
-                            <span className="font-bold text-slate-900">{msg.senderName}</span>
-                            <span className="px-1.5 py-0.2 bg-slate-100 text-slate-500 rounded text-[9px] font-medium">
+                            <span className="font-bold text-slate-900 dark:text-white">{msg.senderName}</span>
+                            <span className="px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded text-[9px] font-medium border border-slate-200 dark:border-slate-700">
                               {msg.senderCounty || 'Nairobi'}
                             </span>
-                            <span className="text-[10px] text-slate-400">
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500">
                               {new Date(msg.createdAt).toLocaleTimeString([], {
                                 hour: '2-digit',
                                 minute: '2-digit'
@@ -2350,8 +2350,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           <div
                             className={`p-3 rounded-2xl shadow-2xs space-y-1.5 ${
                               isMe
-                                ? 'bg-slate-900 text-white rounded-tr-xs'
-                                : 'bg-white border border-slate-200 text-slate-900 rounded-tl-xs'
+                                ? 'bg-slate-900 dark:bg-emerald-700 text-white rounded-tr-xs'
+                                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-tl-xs'
                             }`}
                           >
                             {msg.mediaUrl && (
@@ -2366,10 +2366,10 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                             {msg.attachment && (
                               <div
                                 onClick={() => handleDownloadFile(msg.attachment!)}
-                                className="p-2 bg-slate-100 text-slate-800 rounded-xl flex items-center justify-between gap-2 text-xs cursor-pointer hover:bg-slate-200"
+                                className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl flex items-center justify-between gap-2 text-xs cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                               >
                                 <div className="flex items-center gap-1.5 truncate">
-                                  <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                                  <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                                   <span className="truncate font-semibold">
                                     {msg.attachment.name}
                                   </span>
@@ -2388,8 +2388,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
               {/* Partner typing indicator animated bubble for direct chat */}
               {activeChatMode === 'direct' && isPartnerTyping && activePartner && (
-                <div className="flex items-center gap-2 text-slate-500 text-xs py-1.5 px-3.5 bg-white border border-slate-200 rounded-2xl w-fit shadow-2xs animate-pulse">
-                  <span className="font-semibold text-slate-700">
+                <div className="flex items-center gap-2 text-slate-500 dark:text-slate-300 text-xs py-1.5 px-3.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl w-fit shadow-2xs animate-pulse">
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
                     {activePartner.displayName} is typing
                   </span>
                   <div className="flex gap-1 items-center pl-1">
@@ -2405,12 +2405,12 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
             {/* File Error Notification */}
             {fileError && (
-              <div className="mx-4 mt-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between text-xs text-rose-700">
+              <div className="mx-4 mt-2 p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex items-center justify-between text-xs text-rose-700 dark:text-rose-300">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{fileError}</span>
                 </div>
-                <button onClick={() => setFileError(null)} className="p-1 hover:text-rose-900 cursor-pointer">
+                <button onClick={() => setFileError(null)} className="p-1 hover:text-rose-900 dark:hover:text-rose-100 cursor-pointer">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -2418,9 +2418,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
             {/* Reply Preview Banner */}
             {replyingToMessage && (
-              <div className="mx-4 mt-2 p-2.5 rounded-xl bg-emerald-50/80 border-l-4 border-emerald-600 flex items-center justify-between text-xs animate-in fade-in-50">
+              <div className="mx-4 mt-2 p-2.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border-l-4 border-emerald-600 flex items-center justify-between text-xs animate-in fade-in-50">
                 <div className="min-w-0 pr-2">
-                  <div className="font-bold text-[11px] text-emerald-800 flex items-center gap-1">
+                  <div className="font-bold text-[11px] text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
                     <CornerUpLeft className="w-3 h-3" />
                     <span>
                       Replying to{' '}
@@ -2429,14 +2429,14 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                         : replyingToMessage.senderName || 'Member'}
                     </span>
                   </div>
-                  <p className="text-slate-600 truncate mt-0.5">
+                  <p className="text-slate-600 dark:text-slate-300 truncate mt-0.5">
                     {replyingToMessage.text ||
                       (replyingToMessage.mediaUrl ? '📷 Photo' : '📎 Attachment')}
                   </p>
                 </div>
                 <button
                   onClick={() => setReplyingToMessage(null)}
-                  className="p-1 text-slate-400 hover:text-slate-700 rounded cursor-pointer"
+                  className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded cursor-pointer"
                   title="Cancel reply"
                 >
                   <X className="w-4 h-4" />
@@ -2446,7 +2446,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
             {/* Attached Image Preview */}
             {attachedImage && (
-              <div className="mx-4 mt-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs">
+              <div className="mx-4 mt-2 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <img
                     src={attachedImage}
@@ -2454,13 +2454,13 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     className="w-10 h-10 object-cover rounded-lg border border-emerald-400"
                   />
                   <div>
-                    <div className="text-xs text-slate-800 font-semibold">Photo attached</div>
-                    <div className="text-[10px] text-emerald-700 font-medium">Ready to send</div>
+                    <div className="text-xs text-slate-800 dark:text-slate-200 font-semibold">Photo attached</div>
+                    <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">Ready to send</div>
                   </div>
                 </div>
                 <button
                   onClick={() => setAttachedImage(null)}
-                  className="p-1 text-slate-500 hover:text-slate-800 rounded cursor-pointer"
+                  className="p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 rounded cursor-pointer"
                   title="Remove image attachment"
                 >
                   <X className="w-4 h-4" />
@@ -2470,23 +2470,23 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
             {/* Attached Generic Document / File Preview */}
             {attachedFile && (
-              <div className="mx-4 mt-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs">
+              <div className="mx-4 mt-2 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700 shrink-0">
+                  <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 shrink-0">
                     <FileText className="w-5 h-5" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-xs text-slate-900 font-semibold truncate">
+                    <div className="text-xs text-slate-900 dark:text-white font-semibold truncate">
                       {attachedFile.name}
                     </div>
-                    <div className="text-[10px] text-emerald-700 font-medium">
+                    <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
                       {formatBytes(attachedFile.size)} · Document
                     </div>
                   </div>
                 </div>
                 <button
                   onClick={() => setAttachedFile(null)}
-                  className="p-1 text-slate-500 hover:text-slate-800 rounded cursor-pointer shrink-0"
+                  className="p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 rounded cursor-pointer shrink-0"
                   title="Remove file attachment"
                 >
                   <X className="w-4 h-4" />
@@ -2496,29 +2496,29 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
             {/* Blocked Account Composer Notice OR Account Restriction Notice OR Message Input Form */}
             {userProfile?.accountStatus === 'banned' ? (
-              <div className="shrink-0 p-4 bg-rose-50 border-t border-rose-200 text-center text-xs text-rose-800 flex items-center justify-center gap-2 font-semibold pb-[max(1rem,env(safe-area-inset-bottom))]">
-                <Ban className="w-4 h-4 text-rose-600 shrink-0" />
+              <div className="shrink-0 p-4 bg-rose-50 dark:bg-rose-950/40 border-t border-rose-200 dark:border-rose-800 text-center text-xs text-rose-800 dark:text-rose-200 flex items-center justify-center gap-2 font-semibold pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <Ban className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
                 <span>Account permanently banned ({userProfile.banReason || 'Policy violations'}). Messaging disabled.</span>
               </div>
             ) : userProfile?.accountStatus === 'suspended' && (!userProfile.suspendedUntil || new Date(userProfile.suspendedUntil).getTime() > Date.now()) ? (
-              <div className="shrink-0 p-4 bg-amber-50 border-t border-amber-200 text-center text-xs text-amber-800 flex items-center justify-center gap-2 font-semibold pb-[max(1rem,env(safe-area-inset-bottom))]">
-                <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+              <div className="shrink-0 p-4 bg-amber-50 dark:bg-amber-950/40 border-t border-amber-200 dark:border-amber-800 text-center text-xs text-amber-800 dark:text-amber-200 flex items-center justify-center gap-2 font-semibold pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                 <span>Account suspended until {userProfile.suspendedUntil ? new Date(userProfile.suspendedUntil).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'temporary duration'} ({userProfile.banReason || 'Policy violation'}). Messaging disabled.</span>
               </div>
             ) : activeChatMode === 'direct' && activePartner && blockedUserIds.includes(activePartner.uid) ? (
-              <div className="shrink-0 p-4 bg-slate-100 border-t border-slate-200 text-center text-xs text-slate-600 flex items-center justify-center gap-2 font-medium pb-[max(1rem,env(safe-area-inset-bottom))]">
+              <div className="shrink-0 p-4 bg-slate-100 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 text-center text-xs text-slate-600 dark:text-slate-300 flex items-center justify-center gap-2 font-medium pb-[max(1rem,env(safe-area-inset-bottom))]">
                 <Ban className="w-4 h-4 text-rose-500 shrink-0" />
                 <span>You have blocked this account. Unblock to send messages.</span>
                 <button
                   type="button"
                   onClick={() => unblockUser(activePartner.uid)}
-                  className="font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer ml-1"
+                  className="font-bold text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300 underline cursor-pointer ml-1"
                 >
                   Unblock Citizen
                 </button>
               </div>
             ) : (
-              <form onSubmit={handleSendMessage} className="shrink-0 p-2.5 sm:p-3.5 border-t border-slate-200 bg-white sticky bottom-0 z-20 shadow-xs pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+              <form onSubmit={handleSendMessage} className="shrink-0 p-2.5 sm:p-3.5 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky bottom-0 z-20 shadow-xs pb-[max(0.625rem,env(safe-area-inset-bottom))]">
 
                 <input
                   type="file"
@@ -2540,20 +2540,20 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     type="button"
                     disabled={isCompressingImage || !!editingMessage}
                     onClick={() => imageInputRef.current?.click()}
-                    className="p-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 rounded-xl transition-colors cursor-pointer shrink-0"
+                    className="p-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-700 dark:text-slate-200 rounded-xl transition-colors cursor-pointer shrink-0"
                     title="Attach photo / image"
                   >
-                    <ImageIcon className="w-4 h-4 text-emerald-600" />
+                    <ImageIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   </button>
 
                   <button
                     type="button"
                     disabled={isCompressingImage || !!editingMessage}
                     onClick={() => fileInputRef.current?.click()}
-                    className="p-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 rounded-xl transition-colors cursor-pointer shrink-0"
+                    className="p-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 text-slate-700 dark:text-slate-200 rounded-xl transition-colors cursor-pointer shrink-0"
                     title="Attach document / file (up to 400KB)"
                   >
-                    <Paperclip className="w-4 h-4 text-slate-600" />
+                    <Paperclip className="w-4 h-4 text-slate-600 dark:text-slate-400" />
                   </button>
 
                   <input
@@ -2571,7 +2571,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                         : `Message ${activePartner?.displayName || 'member'}...`
                     }
                     maxLength={1000}
-                    className="flex-1 px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                    className="flex-1 px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500"
                   />
 
                   <button
@@ -2581,7 +2581,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                       isCompressingImage ||
                       (!messageInput.trim() && !attachedImage && !attachedFile)
                     }
-                    className="p-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-xl transition-colors cursor-pointer shrink-0 flex items-center justify-center min-w-10 shadow-sm"
+                    className="p-2.5 bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl transition-colors cursor-pointer shrink-0 flex items-center justify-center min-w-10 shadow-sm"
                     title={editingMessage ? 'Save changes' : 'Send message'}
                   >
                     {editingMessage ? (
@@ -2595,13 +2595,13 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
             )}
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 space-y-4">
-            <div className="w-16 h-16 rounded-3xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-sm">
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 dark:text-slate-500 space-y-4">
+            <div className="w-16 h-16 rounded-3xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-100 dark:border-emerald-800 shadow-sm">
               <Globe className="w-8 h-8" />
             </div>
             <div className="space-y-1">
-              <h3 className="font-bold text-slate-800 text-base">Select a Channel or Conversation</h3>
-              <p className="text-xs text-slate-500 max-w-xs">
+              <h3 className="font-bold text-slate-800 dark:text-slate-200 text-base">Select a Channel or Conversation</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs">
                 Pick a County Channel like <strong>#Nairobi Central</strong>, join a <strong>Community Group</strong>,
                 or start a private <strong>1-on-1 Direct Chat</strong>.
               </p>
@@ -2617,15 +2617,15 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
           onClick={() => setIsCreateGroupModalOpen(false)}
         >
           <div
-            className="bg-white rounded-3xl border border-slate-200 max-w-md w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95"
+            className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 max-w-md w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 flex items-center justify-center font-bold">
                   <Users className="w-4 h-4" />
                 </div>
-                <h3 className="font-bold text-base text-slate-900">Create Community Group</h3>
+                <h3 className="font-bold text-base text-slate-900 dark:text-white">Create Community Group</h3>
               </div>
               <button
                 type="button"
@@ -2633,7 +2633,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   e.stopPropagation();
                   setIsCreateGroupModalOpen(false);
                 }}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 aria-label="Close"
                 title="Close (Esc)"
               >
@@ -2643,7 +2643,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
             <form onSubmit={handleCreateGroupSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Group Name *</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Group Name *</label>
                 <input
                   type="text"
                   required
@@ -2651,12 +2651,12 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   onChange={(e) => setNewGroupName(e.target.value)}
                   placeholder="e.g. Westlands Tech Hustlers, Kilifi Surfers"
                   maxLength={80}
-                  className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                  className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Description / Group Purpose
                 </label>
                 <textarea
@@ -2665,17 +2665,17 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   placeholder="What is this group about? Who should join?"
                   rows={2}
                   maxLength={300}
-                  className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                  className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">County</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">County</label>
                   <select
                     value={newGroupCounty}
                     onChange={(e) => setNewGroupCounty(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
                   >
                     {ALL_47_COUNTIES.map((c) => (
                       <option key={c} value={c}>
@@ -2686,7 +2686,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Group Icon</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Group Icon</label>
                   <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none">
                     {groupIcons.map((ic) => (
                       <button
@@ -2696,7 +2696,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                         className={`w-8 h-8 rounded-lg text-base flex items-center justify-center shrink-0 transition-transform ${
                           newGroupIcon === ic
                             ? 'bg-emerald-500 text-white scale-110 shadow-sm'
-                            : 'bg-slate-100 hover:bg-slate-200'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                         }`}
                       >
                         {ic}
@@ -2706,11 +2706,11 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsCreateGroupModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                 >
                   Cancel
                 </button>
@@ -2734,11 +2734,11 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
           onClick={() => setDeleteConfirmation(null)}
         >
           <div
-            className="bg-white rounded-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4 shadow-xl"
+            className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 max-w-sm w-full p-5 space-y-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-sm text-slate-900">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white">
                 {deleteConfirmation.type === 'forEveryone'
                   ? 'Delete message for everyone?'
                   : 'Delete message for me?'}
@@ -2749,7 +2749,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   e.stopPropagation();
                   setDeleteConfirmation(null);
                 }}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 aria-label="Close"
                 title="Close (Esc)"
               >
@@ -2757,17 +2757,17 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               </button>
             </div>
 
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
               {deleteConfirmation.type === 'forEveryone'
                 ? 'This will remove the message for all participants in this chat and replace it with a deleted indicator.'
                 : 'This message will be removed from your chat history.'}
             </p>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setDeleteConfirmation(null)}
-                className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 font-medium cursor-pointer"
+                className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-medium cursor-pointer"
               >
                 Cancel
               </button>
@@ -2790,18 +2790,18 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
           onClick={() => setIsCountyPickerOpen(false)}
         >
           <div
-            className="bg-white rounded-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4 shadow-xl"
+            className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 max-w-sm w-full p-5 space-y-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-sm text-slate-900">Select County & Constituency</h3>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white">Select County & Constituency</h3>
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsCountyPickerOpen(false);
                 }}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 aria-label="Close"
                 title="Close (Esc)"
               >
@@ -2809,13 +2809,13 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               </button>
             </div>
 
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Your location badge lets fellow citizens find you for grassroots discussions and local county connections.
             </p>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                   County (47 Counties)
                 </label>
                 <select
@@ -2824,7 +2824,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     setSelectedCounty(e.target.value);
                     setSelectedConstituency('');
                   }}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
                 >
                   {ALL_47_COUNTIES.map((c) => (
                     <option key={c} value={c}>
@@ -2835,13 +2835,13 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Constituency ({availableConstituencies.length} in {selectedCounty})
                 </label>
                 <select
                   value={selectedConstituency}
                   onChange={(e) => setSelectedConstituency(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
                 >
                   <option value="">Select Constituency (Optional)</option>
                   {availableConstituencies.map((cons) => (
@@ -2853,11 +2853,11 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setIsCountyPickerOpen(false)}
-                className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
+                className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
               >
                 Cancel
               </button>
@@ -2917,32 +2917,32 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-rose-200 animate-in zoom-in-95"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-rose-200 dark:border-rose-900 animate-in zoom-in-95"
           >
-            <div className="flex items-center justify-between pb-2 border-b border-rose-100">
-              <h3 className="font-bold text-sm text-rose-600 flex items-center gap-1.5">
+            <div className="flex items-center justify-between pb-2 border-b border-rose-100 dark:border-rose-900/50">
+              <h3 className="font-bold text-sm text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
                 <Ban className="w-4 h-4" />
                 <span>Block {directUserToBlock.name}?</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setDirectUserToBlock(null)}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               Are you sure you want to block <strong>{directUserToBlock.name}</strong>? They will not be able to send you direct messages, and their posts will be hidden from your feed.
             </p>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 disabled={isBlockInProgress}
                 onClick={() => setDirectUserToBlock(null)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -2995,7 +2995,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
       {/* CHAT TOAST ALERT */}
       {chatToast && (
-        <div className="fixed top-20 right-4 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2 border border-slate-700">
+        <div className="fixed top-20 right-4 z-50 bg-slate-900 dark:bg-emerald-800 text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2 border border-slate-700 dark:border-emerald-700">
           <Check className="w-4 h-4 text-emerald-400 stroke-[2.5]" />
           <span>{chatToast}</span>
         </div>
@@ -3009,27 +3009,27 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl sm:max-w-sm w-full p-5 space-y-4 shadow-2xl border border-slate-200 animate-in slide-in-from-bottom-4 sm:zoom-in-95"
+            className="bg-white dark:bg-slate-900 rounded-3xl sm:max-w-sm w-full p-5 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in slide-in-from-bottom-4 sm:zoom-in-95"
           >
             {/* Header / Message Preview */}
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-800">Message Options</span>
-                <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-medium">
+                <span className="text-xs font-bold text-slate-800 dark:text-white">Message Options</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full font-medium border border-slate-200 dark:border-slate-700">
                   {actionModalMessage.senderId === currentUser?.uid ? 'Sent by you' : `From ${actionModalMessage.senderName || 'Member'}`}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setActionModalMessage(null)}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Message snippet preview */}
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 max-h-24 overflow-hidden text-ellipsis line-clamp-3 leading-relaxed">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-300 max-h-24 overflow-hidden text-ellipsis line-clamp-3 leading-relaxed">
               {actionModalMessage.text || (actionModalMessage.mediaUrl ? '📷 Photo attachment' : actionModalMessage.attachment ? `📎 ${actionModalMessage.attachment.name}` : 'Shared content')}
             </div>
 
@@ -3042,9 +3042,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   handleStartReply(actionModalMessage);
                   setActionModalMessage(null);
                 }}
-                className="p-3 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-800 rounded-xl border border-slate-200 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                className="p-3 bg-slate-50 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-slate-800 dark:text-slate-200 hover:text-emerald-800 dark:hover:text-emerald-300 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
               >
-                <CornerUpLeft className="w-4 h-4 text-emerald-600" />
+                <CornerUpLeft className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 <span>Reply</span>
               </button>
 
@@ -3055,9 +3055,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   setForwardingMessage(actionModalMessage);
                   setActionModalMessage(null);
                 }}
-                className="p-3 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-800 rounded-xl border border-slate-200 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                className="p-3 bg-slate-50 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-slate-800 dark:text-slate-200 hover:text-emerald-800 dark:hover:text-emerald-300 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
               >
-                <CornerUpRight className="w-4 h-4 text-emerald-600" />
+                <CornerUpRight className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 <span>Forward</span>
               </button>
 
@@ -3069,9 +3069,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     handleStartEdit(actionModalMessage);
                     setActionModalMessage(null);
                   }}
-                  className="p-3 bg-slate-50 hover:bg-amber-50 hover:text-amber-800 rounded-xl border border-slate-200 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                  className="p-3 bg-slate-50 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-slate-800 dark:text-slate-200 hover:text-amber-800 dark:hover:text-amber-300 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
                 >
-                  <Edit2 className="w-4 h-4 text-amber-600" />
+                  <Edit2 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                   <span>Edit Message</span>
                 </button>
               )}
@@ -3085,9 +3085,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     setActionModalMessage(null);
                     showChatToast('Message copied to clipboard');
                   }}
-                  className="p-3 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl border border-slate-200 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                  className="p-3 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
                 >
-                  <Copy className="w-4 h-4 text-slate-500" />
+                  <Copy className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                   <span>Copy Text</span>
                 </button>
               )}
@@ -3099,9 +3099,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   setDeleteConfirmation({ message: actionModalMessage, type: 'forMe' });
                   setActionModalMessage(null);
                 }}
-                className="p-3 bg-slate-50 hover:bg-rose-50 text-slate-700 hover:text-rose-700 rounded-xl border border-slate-200 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                className="p-3 bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-700 dark:text-slate-300 hover:text-rose-700 dark:hover:text-rose-400 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold flex items-center gap-2 transition-colors cursor-pointer"
               >
-                <Trash2 className="w-4 h-4 text-slate-400" />
+                <Trash2 className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                 <span>Delete for Me</span>
               </button>
 
@@ -3113,9 +3113,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     setDeleteConfirmation({ message: actionModalMessage, type: 'forEveryone' });
                     setActionModalMessage(null);
                   }}
-                  className="p-3 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 font-bold flex items-center gap-2 transition-colors cursor-pointer"
+                  className="p-3 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 text-rose-700 dark:text-rose-300 rounded-xl border border-rose-200 dark:border-rose-800 font-bold flex items-center gap-2 transition-colors cursor-pointer"
                 >
-                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
                   <span>Delete for All</span>
                 </button>
               )}
@@ -3124,7 +3124,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
             <button
               type="button"
               onClick={() => setActionModalMessage(null)}
-              className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+              className="w-full py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
             >
               Cancel
             </button>
@@ -3140,17 +3140,17 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95 max-h-[90vh] flex flex-col"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 max-h-[90vh] flex flex-col"
           >
             {/* Header */}
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 flex items-center justify-center font-bold">
                   <CornerUpRight className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-slate-900">Forward Message</h3>
-                  <span className="text-[10px] text-slate-500">
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">Forward Message</h3>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
                     Select a citizen, channel, or group
                   </span>
                 </div>
@@ -3158,15 +3158,15 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               <button
                 type="button"
                 onClick={() => setForwardingMessage(null)}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Message preview snippet */}
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 space-y-1">
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-600 dark:text-slate-300 space-y-1">
+              <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 Forwarding content:
               </div>
               <div className="italic line-clamp-2">
@@ -3182,17 +3182,17 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 value={forwardSearch}
                 onChange={(e) => setForwardSearch(e.target.value)}
                 placeholder="Search citizen or channel..."
-                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
               />
             </div>
 
             {/* Destination Type Tabs */}
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-semibold">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-semibold">
               <button
                 type="button"
                 onClick={() => setForwardTab('citizens')}
                 className={`flex-1 py-1.5 rounded-lg text-center transition-all cursor-pointer ${
-                  forwardTab === 'citizens' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                  forwardTab === 'citizens' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs font-bold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Citizens ({communityUsers.filter((u) => u.uid !== currentUser?.uid).length})
@@ -3201,7 +3201,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 type="button"
                 onClick={() => setForwardTab('channels')}
                 className={`flex-1 py-1.5 rounded-lg text-center transition-all cursor-pointer ${
-                  forwardTab === 'channels' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                  forwardTab === 'channels' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs font-bold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Channels ({DEFAULT_CHANNELS.length})
@@ -3210,7 +3210,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 type="button"
                 onClick={() => setForwardTab('groups')}
                 className={`flex-1 py-1.5 rounded-lg text-center transition-all cursor-pointer ${
-                  forwardTab === 'groups' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                  forwardTab === 'groups' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs font-bold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Groups ({communityGroups.length})
@@ -3218,7 +3218,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
             </div>
 
             {/* List of targets */}
-            <div className="flex-1 overflow-y-auto space-y-2 min-h-[200px] max-h-[300px] pr-1 divide-y divide-slate-100">
+            <div className="flex-1 overflow-y-auto space-y-2 min-h-[200px] max-h-[300px] pr-1 divide-y divide-slate-100 dark:divide-slate-800">
               {/* Citizens */}
               {forwardTab === 'citizens' && (
                 communityUsers
@@ -3228,15 +3228,15 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     <div key={citizen.uid} className="pt-2 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 min-w-0">
                         {citizen.photoURL ? (
-                          <img src={citizen.photoURL} alt={citizen.displayName} className="w-8 h-8 rounded-full object-cover shrink-0" />
+                          <img src={citizen.photoURL} alt={citizen.displayName} className="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700" />
                         ) : (
-                          <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-xs shrink-0">
                             {citizen.displayName.charAt(0)}
                           </div>
                         )}
                         <div className="min-w-0">
-                          <div className="text-xs font-bold text-slate-900 truncate">{citizen.displayName}</div>
-                          <div className="text-[10px] text-slate-400 truncate">{citizen.county || 'Nairobi'} County</div>
+                          <div className="text-xs font-bold text-slate-900 dark:text-white truncate">{citizen.displayName}</div>
+                          <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{citizen.county || 'Nairobi'} County</div>
                         </div>
                       </div>
                       <button
@@ -3259,12 +3259,12 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   .map((ch) => (
                     <div key={ch.id} className="pt-2 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-xl bg-slate-900 text-emerald-400 font-mono font-bold flex items-center justify-center text-xs shrink-0">
+                        <div className="w-8 h-8 rounded-xl bg-slate-900 dark:bg-slate-800 text-emerald-400 font-mono font-bold flex items-center justify-center text-xs shrink-0 border border-slate-800 dark:border-slate-700">
                           #
                         </div>
                         <div className="min-w-0">
-                          <div className="text-xs font-bold text-slate-900 truncate">#{ch.name}</div>
-                          <div className="text-[10px] text-slate-400 truncate">{ch.description}</div>
+                          <div className="text-xs font-bold text-slate-900 dark:text-white truncate">#{ch.name}</div>
+                          <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{ch.description}</div>
                         </div>
                       </div>
                       <button
@@ -3283,7 +3283,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               {/* Groups */}
               {forwardTab === 'groups' && (
                 communityGroups.length === 0 ? (
-                  <div className="text-center py-8 text-xs text-slate-400">
+                  <div className="text-center py-8 text-xs text-slate-400 dark:text-slate-500">
                     You haven't joined any groups yet.
                   </div>
                 ) : (
@@ -3292,12 +3292,12 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     .map((grp: GroupChat) => (
                       <div key={grp.id} className="pt-2 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-800 font-bold flex items-center justify-center text-sm shrink-0">
+                          <div className="w-8 h-8 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 font-bold flex items-center justify-center text-sm shrink-0 border border-purple-200 dark:border-purple-800">
                             {grp.icon || '👥'}
                           </div>
                           <div className="min-w-0">
-                            <div className="text-xs font-bold text-slate-900 truncate">{grp.name}</div>
-                            <div className="text-[10px] text-slate-400 truncate">{grp.members.length} members</div>
+                            <div className="text-xs font-bold text-slate-900 dark:text-white truncate">{grp.name}</div>
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{grp.members.length} members</div>
                           </div>
                         </div>
                         <button
@@ -3315,11 +3315,11 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               )}
             </div>
 
-            <div className="pt-2 border-t border-slate-100 flex justify-end">
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
               <button
                 type="button"
                 onClick={() => setForwardingMessage(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
               >
                 Close
               </button>

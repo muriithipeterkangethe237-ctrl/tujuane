@@ -608,55 +608,55 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
       {/* Safety Threat Vector Status Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center font-bold">
+        <div className="p-3.5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 flex items-center justify-center font-bold">
             ⚡
           </div>
           <div className="min-w-0">
-            <div className="text-[11px] text-slate-500 font-semibold">Incitement & Hate</div>
-            <div className="text-sm font-extrabold text-slate-900">{categoryBreakdown.incitement} Reports</div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">Incitement & Hate</div>
+            <div className="text-sm font-extrabold text-slate-900 dark:text-white">{categoryBreakdown.incitement} Reports</div>
           </div>
         </div>
 
-        <div className="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
+        <div className="p-3.5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 flex items-center justify-center font-bold">
             ⚠️
           </div>
           <div className="min-w-0">
-            <div className="text-[11px] text-slate-500 font-semibold">Misleading & Scams</div>
-            <div className="text-sm font-extrabold text-slate-900">{categoryBreakdown.misleading} Reports</div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">Misleading & Scams</div>
+            <div className="text-sm font-extrabold text-slate-900 dark:text-white">{categoryBreakdown.misleading} Reports</div>
           </div>
         </div>
 
-        <div className="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+        <div className="p-3.5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-400 flex items-center justify-center font-bold">
             🔞
           </div>
           <div className="min-w-0">
-            <div className="text-[11px] text-slate-500 font-semibold">Nudity & Adult Content</div>
-            <div className="text-sm font-extrabold text-slate-900">{categoryBreakdown.nudity} Reports</div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">Nudity & Adult Content</div>
+            <div className="text-sm font-extrabold text-slate-900 dark:text-white">{categoryBreakdown.nudity} Reports</div>
           </div>
         </div>
 
-        <div className="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-2xs flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-red-50 text-red-700 flex items-center justify-center font-bold">
+        <div className="p-3.5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-400 flex items-center justify-center font-bold">
             🛑
           </div>
           <div className="min-w-0">
-            <div className="text-[11px] text-slate-500 font-semibold">Dangerous Threats</div>
-            <div className="text-sm font-extrabold text-slate-900">{categoryBreakdown.dangerous} Reports</div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">Dangerous Threats</div>
+            <div className="text-sm font-extrabold text-slate-900 dark:text-white">{categoryBreakdown.dangerous} Reports</div>
           </div>
         </div>
       </div>
 
       {/* Navigation Tabs */}
-      <div className="bg-white rounded-2xl p-1.5 border border-slate-200 shadow-xs flex flex-wrap gap-1 text-xs font-semibold">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-1.5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-wrap gap-1 text-xs font-semibold">
         <button
           onClick={() => setActiveTab('reports')}
           className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'reports'
-              ? 'bg-slate-900 text-white font-bold shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              ? 'bg-slate-900 dark:bg-emerald-600 text-white font-bold shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
           <Flag className="w-4 h-4 text-rose-500" />
@@ -672,11 +672,11 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
           onClick={() => setActiveTab('posts')}
           className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'posts'
-              ? 'bg-slate-900 text-white font-bold shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              ? 'bg-slate-900 dark:bg-emerald-600 text-white font-bold shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
-          <FileText className="w-4 h-4 text-emerald-600" />
+          <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
           <span>All Posts Monitor</span>
           <span className="text-[11px] text-slate-400">({posts.length})</span>
         </button>
@@ -685,11 +685,11 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
           onClick={() => setActiveTab('users')}
           className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'users'
-              ? 'bg-slate-900 text-white font-bold shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              ? 'bg-slate-900 dark:bg-emerald-600 text-white font-bold shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
-          <Users className="w-4 h-4 text-sky-600" />
+          <Users className="w-4 h-4 text-sky-600 dark:text-sky-400" />
           <span>Citizen Activity</span>
           <span className="text-[11px] text-slate-400">({users.length})</span>
         </button>
@@ -698,8 +698,8 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
           onClick={() => setActiveTab('tester')}
           className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'tester'
-              ? 'bg-slate-900 text-white font-bold shadow-xs'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              ? 'bg-slate-900 dark:bg-emerald-600 text-white font-bold shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
         >
           <Sparkles className="w-4 h-4 text-amber-500" />
@@ -709,14 +709,14 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
       {/* TAB 1: SAFETY REPORTS QUEUE */}
       {activeTab === 'reports' && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
             <div>
-              <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                <ShieldAlert className="w-5 h-5 text-rose-600" />
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-rose-600 dark:text-rose-400" />
                 <span>Citizen Reports & Content Flags</span>
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Action user-filed reports or automated threat trigger reviews.
               </p>
             </div>
@@ -728,8 +728,8 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   onClick={() => setReportFilter(st)}
                   className={`px-3 py-1 rounded-lg capitalize font-semibold transition-all cursor-pointer ${
                     reportFilter === st
-                      ? 'bg-slate-900 text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      ? 'bg-slate-900 dark:bg-emerald-600 text-white shadow-2xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
                   {st}
@@ -739,10 +739,10 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
           </div>
 
           {filteredReports.length === 0 ? (
-            <div className="py-12 text-center text-slate-400 space-y-2">
+            <div className="py-12 text-center text-slate-400 dark:text-slate-500 space-y-2">
               <ShieldCheck className="w-10 h-10 mx-auto text-emerald-500 stroke-[1.5]" />
-              <div className="text-sm font-bold text-slate-800">Safety Queue Clear</div>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-200">Safety Queue Clear</div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
                 No reports matching filter "{reportFilter}". The community is currently operating cleanly.
               </p>
             </div>
@@ -756,8 +756,8 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                     key={report.id}
                     className={`p-4 rounded-2xl border transition-all space-y-3 ${
                       report.status === 'pending'
-                        ? 'bg-rose-50/40 border-rose-200 shadow-2xs'
-                        : 'bg-slate-50 border-slate-200 opacity-80'
+                        ? 'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900 shadow-2xs'
+                        : 'bg-slate-50 dark:bg-slate-850/60 border-slate-200 dark:border-slate-800 opacity-80'
                     }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -766,15 +766,15 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                           {report.category}
                         </span>
 
-                        <span className="font-bold text-xs text-slate-900">
+                        <span className="font-bold text-xs text-slate-900 dark:text-white">
                           Report #{report.id.slice(0, 10)}
                         </span>
 
-                        <span className="text-[11px] text-slate-500">
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
                           Filed by <strong>{report.reporterName}</strong>
                         </span>
 
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500">
                           {new Date(report.createdAt).toLocaleString()}
                         </span>
                       </div>
@@ -782,10 +782,10 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-md self-start sm:self-auto ${
                           report.status === 'pending'
-                            ? 'bg-amber-100 text-amber-800'
+                            ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
                             : report.status === 'actioned'
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-slate-200 text-slate-700'
+                            ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300'
+                            : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                         }`}
                       >
                         Status: {report.status}
@@ -793,24 +793,24 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                     </div>
 
                     {/* Reported Target Summary */}
-                    <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
-                      <div className="text-xs font-bold text-slate-900 flex items-center justify-between">
+                    <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+                      <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center justify-between">
                         <span>
                           {report.postTitle
                             ? `Target Post: "${report.postTitle}"`
                             : `Target ${report.targetType === 'user' ? 'Account' : 'Citizen'}: "${report.targetUserName || report.targetUserId || 'Profile'}"`}
                         </span>
-                        <span className="text-[11px] font-normal text-slate-500">
+                        <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
                           {report.authorName ? `Author: ${report.authorName}` : `Reported User: ${report.targetUserName || 'Citizen'}`}
                         </span>
                       </div>
                       {report.details && (
-                        <div className="text-xs text-rose-700 italic">
+                        <div className="text-xs text-rose-700 dark:text-rose-400 italic">
                           Reporter Note: "{report.details}"
                         </div>
                       )}
                       {targetPost && (
-                        <div className="text-xs text-slate-600 pt-1 line-clamp-2 bg-slate-50 p-2 rounded-lg font-mono text-[11px]">
+                        <div className="text-xs text-slate-600 dark:text-slate-300 pt-1 line-clamp-2 bg-slate-50 dark:bg-slate-800 p-2 rounded-lg font-mono text-[11px]">
                           {targetPost.content}
                         </div>
                       )}
@@ -822,7 +822,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                         <>
                           <button
                             onClick={() => handleDismissReport(report.id)}
-                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
+                            className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
                           >
                             Dismiss (False Alarm)
                           </button>
@@ -830,7 +830,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                           {targetPost && (
                             <button
                               onClick={() => handleOpenAdvisoryModal(targetPost)}
-                              className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1"
+                              className="px-3 py-1.5 bg-amber-100 dark:bg-amber-950/60 hover:bg-amber-200 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1"
                             >
                               <AlertTriangle className="w-3.5 h-3.5" />
                               <span>Attach Warning</span>
@@ -857,14 +857,14 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
       {/* TAB 2: ALL POSTS MONITOR */}
       {activeTab === 'posts' && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-emerald-600" />
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                <FileText className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 <span>Live Community Posts Monitor</span>
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Inspect, review, edit advisories, or delete posts across all 47 counties.
               </p>
             </div>
@@ -878,14 +878,14 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   value={postSearch}
                   onChange={(e) => setPostSearch(e.target.value)}
                   placeholder="Search posts..."
-                  className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  className="pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 dark:text-white"
                 />
               </div>
 
               <select
                 value={postFilter}
                 onChange={(e) => setPostFilter(e.target.value as any)}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500"
+                className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
               >
                 <option value="all">All Posts ({posts.length})</option>
                 <option value="flagged">Flagged ({flaggedPosts.length})</option>
@@ -894,46 +894,46 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
             </div>
           </div>
 
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {filteredPosts.map((post) => (
               <div key={post.id} className="py-4 space-y-2.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-extrabold text-sm text-slate-900 truncate">
+                      <span className="font-extrabold text-sm text-slate-900 dark:text-white truncate">
                         {post.title}
                       </span>
 
-                      <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[10px] font-bold">
+                      <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-md text-[10px] font-bold border border-slate-200 dark:border-slate-700">
                         {post.county} County
                       </span>
 
                       {post.constituency && (
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md text-[10px]">
+                        <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-md text-[10px] border border-slate-200 dark:border-slate-700">
                           {post.constituency}
                         </span>
                       )}
 
                       {post.isFlagged && (
-                        <span className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded-md text-[10px] font-bold flex items-center gap-1">
+                        <span className="px-2 py-0.5 bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 rounded-md text-[10px] font-bold flex items-center gap-1 border border-rose-200 dark:border-rose-900">
                           <AlertTriangle className="w-3 h-3" />
                           <span>Flagged: {post.safetyCategory || 'Under Review'}</span>
                         </span>
                       )}
                     </div>
 
-                    <div className="text-xs text-slate-600 line-clamp-2">
+                    <div className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
                       {post.content}
                     </div>
 
                     {post.safetyAdvisory && (
-                      <div className="p-2 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 font-semibold flex items-center gap-1.5">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <div className="p-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-900 dark:text-amber-200 font-semibold flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                         <span>Advisory: {post.safetyAdvisory}</span>
                       </div>
                     )}
 
-                    <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                    <div className="flex items-center gap-3 text-[11px] text-slate-400 dark:text-slate-500">
                       <span>By <strong>{post.authorName}</strong></span>
                       <span>·</span>
                       <span>{new Date(post.createdAt).toLocaleDateString()}</span>
@@ -949,7 +949,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                     {post.isFlagged && (
                       <button
                         onClick={() => handleApprovePost(post)}
-                        className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg cursor-pointer transition-colors"
+                        className="p-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-400 rounded-lg cursor-pointer transition-colors"
                         title="Mark post as safe"
                       >
                         <ShieldCheck className="w-4 h-4" />
@@ -958,7 +958,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
                     <button
                       onClick={() => handleOpenAdvisoryModal(post)}
-                      className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg cursor-pointer transition-colors"
+                      className="p-1.5 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-400 rounded-lg cursor-pointer transition-colors"
                       title="Attach or edit safety advisory"
                     >
                       <AlertTriangle className="w-4 h-4" />
@@ -966,7 +966,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
                     <button
                       onClick={() => setSelectedPostForDelete(post)}
-                      className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg cursor-pointer transition-colors"
+                      className="p-1.5 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 rounded-lg cursor-pointer transition-colors"
                       title="Delete post permanently"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -981,14 +981,14 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
       {/* TAB 3: CITIZEN ACTIVITY & ACCOUNT MODERATION */}
       {activeTab === 'users' && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-5">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                <Users className="w-5 h-5 text-sky-600" />
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                <Users className="w-5 h-5 text-sky-600 dark:text-sky-400" />
                 <span>Citizen Account Moderation & Standing Directory</span>
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Manage registered citizen access, suspend accounts with preset durations, permanently ban offenders, or restore standing.
               </p>
             </div>
@@ -1000,7 +1000,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                 value={userSearch}
                 onChange={(e) => setUserSearch(e.target.value)}
                 placeholder="Search by name, email, county, or ban reason..."
-                className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none w-full sm:w-64"
+                className="pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none w-full sm:w-64 text-slate-900 dark:text-white"
               />
             </div>
           </div>
@@ -1011,75 +1011,75 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
               onClick={() => setUserStatusFilter('all')}
               className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                 userStatusFilter === 'all'
-                  ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-400/30'
-                  : 'border-slate-200 bg-slate-50 hover:bg-slate-100/70'
+                  ? 'border-sky-500 bg-sky-50/60 dark:bg-sky-950/40 ring-2 ring-sky-400/30'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100/70 dark:hover:bg-slate-800'
               }`}
             >
-              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Citizens</div>
-              <div className="text-xl font-black text-slate-900 mt-1">{userMetrics.total}</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">All registered</div>
+              <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Citizens</div>
+              <div className="text-xl font-black text-slate-900 dark:text-white mt-1">{userMetrics.total}</div>
+              <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">All registered</div>
             </button>
 
             <button
               onClick={() => setUserStatusFilter('active')}
               className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                 userStatusFilter === 'active'
-                  ? 'border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-400/30'
-                  : 'border-slate-200 bg-slate-50 hover:bg-slate-100/70'
+                  ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/40 ring-2 ring-emerald-400/30'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100/70 dark:hover:bg-slate-800'
               }`}
             >
-              <div className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+              <div className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 Active
               </div>
-              <div className="text-xl font-black text-emerald-900 mt-1">{userMetrics.active}</div>
-              <div className="text-[10px] text-emerald-600 mt-0.5">Full platform access</div>
+              <div className="text-xl font-black text-emerald-900 dark:text-emerald-200 mt-1">{userMetrics.active}</div>
+              <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">Full platform access</div>
             </button>
 
             <button
               onClick={() => setUserStatusFilter('suspended')}
               className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                 userStatusFilter === 'suspended'
-                  ? 'border-amber-500 bg-amber-50/60 ring-2 ring-amber-400/30'
-                  : 'border-slate-200 bg-slate-50 hover:bg-slate-100/70'
+                  ? 'border-amber-500 bg-amber-50/60 dark:bg-amber-950/40 ring-2 ring-amber-400/30'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100/70 dark:hover:bg-slate-800'
               }`}
             >
-              <div className="text-[11px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
+              <div className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Clock className="w-3 h-3 text-amber-500" />
                 Suspended
               </div>
-              <div className="text-xl font-black text-amber-900 mt-1">{userMetrics.suspended}</div>
-              <div className="text-[10px] text-amber-600 mt-0.5">Timed restrictions</div>
+              <div className="text-xl font-black text-amber-900 dark:text-amber-200 mt-1">{userMetrics.suspended}</div>
+              <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Timed restrictions</div>
             </button>
 
             <button
               onClick={() => setUserStatusFilter('banned')}
               className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                 userStatusFilter === 'banned'
-                  ? 'border-rose-500 bg-rose-50/60 ring-2 ring-rose-400/30'
-                  : 'border-slate-200 bg-slate-50 hover:bg-slate-100/70'
+                  ? 'border-rose-500 bg-rose-50/60 dark:bg-rose-950/40 ring-2 ring-rose-400/30'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100/70 dark:hover:bg-slate-800'
               }`}
             >
-              <div className="text-[11px] font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
+              <div className="text-[11px] font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Ban className="w-3 h-3 text-rose-500" />
                 Permanently Banned
               </div>
-              <div className="text-xl font-black text-rose-900 mt-1">{userMetrics.banned}</div>
-              <div className="text-[10px] text-rose-600 mt-0.5">Barred indefinitely</div>
+              <div className="text-xl font-black text-rose-900 dark:text-rose-200 mt-1">{userMetrics.banned}</div>
+              <div className="text-[10px] text-rose-600 dark:text-rose-400 mt-0.5">Barred indefinitely</div>
             </button>
           </div>
 
           {/* Filter Pills */}
           <div className="flex items-center gap-2 flex-wrap text-xs">
-            <span className="font-bold text-slate-500 text-[11px]">Filter by Status:</span>
+            <span className="font-bold text-slate-500 dark:text-slate-400 text-[11px]">Filter by Status:</span>
             {(['all', 'active', 'suspended', 'banned'] as const).map((st) => (
               <button
                 key={st}
                 onClick={() => setUserStatusFilter(st)}
                 className={`px-3 py-1 rounded-xl font-bold capitalize transition-colors cursor-pointer ${
                   userStatusFilter === st
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'bg-slate-900 dark:bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
               >
                 {st} {st === 'all' ? `(${userMetrics.total})` : `(${userMetrics[st]})`}
@@ -1089,7 +1089,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold border-b border-slate-200">
+              <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 uppercase text-[10px] font-bold border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th className="py-2.5 px-3">Citizen</th>
                   <th className="py-2.5 px-3">Location</th>
@@ -1097,10 +1097,10 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   <th className="py-2.5 px-3 text-right">Moderator Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-10 text-center text-slate-400">
+                    <td colSpan={4} className="py-10 text-center text-slate-400 dark:text-slate-500">
                       No citizens matching current filter or search criteria.
                     </td>
                   </tr>
@@ -1112,78 +1112,78 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                     const isUntilFuture = isSuspended && u.suspendedUntil && new Date(u.suspendedUntil).getTime() > Date.now();
 
                     return (
-                      <tr key={u.uid} className={`hover:bg-slate-50/80 ${isBanned ? 'bg-rose-50/30' : isSuspended ? 'bg-amber-50/30' : ''}`}>
+                      <tr key={u.uid} className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 ${isBanned ? 'bg-rose-50/30 dark:bg-rose-950/20' : isSuspended ? 'bg-amber-50/30 dark:bg-amber-950/20' : ''}`}>
                         <td className="py-3 px-3">
                           <div className="flex items-center gap-2.5">
                             {u.photoURL ? (
-                              <img src={u.photoURL} alt={u.displayName} className="w-8 h-8 rounded-full object-cover shrink-0 ring-1 ring-slate-200" />
+                              <img src={u.photoURL} alt={u.displayName} className="w-8 h-8 rounded-full object-cover shrink-0 ring-1 ring-slate-200 dark:ring-slate-700" />
                             ) : (
-                              <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0">
+                              <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-xs shrink-0">
                                 {u.displayName.charAt(0)}
                               </div>
                             )}
                             <div className="min-w-0">
-                              <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                              <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
                                 <span>{u.displayName}</span>
                                 {isDev && (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200">
-                                    <Shield className="w-2.5 h-2.5 text-purple-600" />
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                    <Shield className="w-2.5 h-2.5 text-purple-600 dark:text-purple-400" />
                                     Developer
                                   </span>
                                 )}
                               </div>
-                              <div className="text-[11px] text-slate-500 font-mono truncate max-w-[200px]">
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate max-w-[200px]">
                                 {u.email || 'Google Auth Citizen'}
                               </div>
-                              <div className="text-[9px] text-slate-400 font-mono">UID: {u.uid.slice(0, 10)}...</div>
+                              <div className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">UID: {u.uid.slice(0, 10)}...</div>
                             </div>
                           </div>
                         </td>
 
                         <td className="py-3 px-3">
-                          <div className="font-semibold text-slate-800">{u.county || 'Nairobi'}</div>
+                          <div className="font-semibold text-slate-800 dark:text-slate-200">{u.county || 'Nairobi'}</div>
                           {u.constituency ? (
-                            <div className="text-[11px] text-slate-500">{u.constituency}</div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400">{u.constituency}</div>
                           ) : (
-                            <div className="text-[10px] text-slate-400">All Constituencies</div>
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500">All Constituencies</div>
                           )}
                         </td>
 
                         <td className="py-3 px-3">
                           {isDev ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">
-                              <Shield className="w-3 h-3 text-purple-600" />
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                              <Shield className="w-3 h-3 text-purple-600 dark:text-purple-400" />
                               Platform Developer (Protected)
                             </span>
                           ) : isBanned ? (
                             <div className="space-y-0.5">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-200">
-                                <Ban className="w-3 h-3 text-rose-600" />
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                                <Ban className="w-3 h-3 text-rose-600 dark:text-rose-400" />
                                 Permanently Banned
                               </span>
                               {u.banReason && (
-                                <div className="text-[10px] text-rose-700 italic max-w-xs truncate" title={u.banReason}>
+                                <div className="text-[10px] text-rose-700 dark:text-rose-400 italic max-w-xs truncate" title={u.banReason}>
                                   Reason: {u.banReason}
                                 </div>
                               )}
                             </div>
                           ) : isSuspended ? (
                             <div className="space-y-0.5">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-200">
-                                <Clock className="w-3 h-3 text-amber-600" />
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                                 Suspended {u.suspendedUntil ? `until ${new Date(u.suspendedUntil).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
                               </span>
                               {u.banReason && (
-                                <div className="text-[10px] text-amber-700 italic max-w-xs truncate" title={u.banReason}>
+                                <div className="text-[10px] text-amber-700 dark:text-amber-300 italic max-w-xs truncate" title={u.banReason}>
                                   Reason: {u.banReason}
                                 </div>
                               )}
                               {!isUntilFuture && u.suspendedUntil && (
-                                <div className="text-[9px] text-slate-400 font-semibold">(Suspension window elapsed)</div>
+                                <div className="text-[9px] text-slate-400 dark:text-slate-500 font-semibold">(Suspension window elapsed)</div>
                               )}
                             </div>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                               Active Citizen
                             </span>
@@ -1192,7 +1192,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
                         <td className="py-3 px-3 text-right">
                           {isDev ? (
-                            <span className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-400 bg-slate-100 select-none">
+                            <span className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 select-none">
                               Super Admin
                             </span>
                           ) : (
@@ -1201,10 +1201,10 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                               {(isBanned || isSuspended) && (
                                 <button
                                   onClick={() => setSelectedUserForReactivate(u)}
-                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer flex items-center gap-1"
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 transition-colors cursor-pointer flex items-center gap-1"
                                   title="Restore citizen to good standing"
                                 >
-                                  <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                  <UserCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                                   <span>Reactivate</span>
                                 </button>
                               )}
@@ -1217,10 +1217,10 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                                     setSuspendDuration('24h');
                                     setSuspendReasonCustom('');
                                   }}
-                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors cursor-pointer flex items-center gap-1"
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 transition-colors cursor-pointer flex items-center gap-1"
                                   title="Temporarily suspend account with custom duration"
                                 >
-                                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                  <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                                   <span>{isSuspended ? 'Extend' : 'Suspend'}</span>
                                 </button>
                               )}
@@ -1232,10 +1232,10 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                                     setSelectedUserForBan(u);
                                     setBanReasonCustom('');
                                   }}
-                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 transition-colors cursor-pointer flex items-center gap-1"
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800 transition-colors cursor-pointer flex items-center gap-1"
                                   title="Permanently ban citizen from TUJUANE"
                                 >
-                                  <Ban className="w-3.5 h-3.5 text-rose-600" />
+                                  <Ban className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
                                   <span>Ban</span>
                                 </button>
                               )}
@@ -1243,7 +1243,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                               {/* Standard status notification */}
                               <button
                                 onClick={() => setSelectedUserForStatus(u)}
-                                className="px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+                                className="px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
                                 title="Send Account Status Notification or Verified Badge"
                               >
                                 Notice
@@ -1263,47 +1263,47 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
       {/* TAB 4: LIVE SAFETY FILTER SANDBOX / TESTER */}
       {activeTab === 'tester' && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
           <div>
-            <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+            <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-amber-500" />
               <span>Multi-Vector Safety Scanner Playground</span>
             </h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Test content in real-time against TUJUANE's Kenyan civic safety rules for Nudity, Incitement/Hate Speech, Misleading/Scams, and Dangerous materials.
             </p>
           </div>
 
           {/* Quick preset buttons */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-bold text-slate-600">Quick Test Presets:</span>
+            <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Quick Test Presets:</span>
             <button
               onClick={() => handleLoadTestPreset('hate')}
-              className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 text-xs font-semibold hover:bg-rose-100 cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-900/60 cursor-pointer"
             >
               Ethnic Incitement
             </button>
             <button
               onClick={() => handleLoadTestPreset('scam')}
-              className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-xs font-semibold hover:bg-amber-100 cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/60 cursor-pointer"
             >
               M-Pesa / Job Scam
             </button>
             <button
               onClick={() => handleLoadTestPreset('nudity')}
-              className="px-2.5 py-1 rounded-lg bg-purple-50 text-purple-800 text-xs font-semibold hover:bg-purple-100 cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 text-xs font-semibold hover:bg-purple-100 dark:hover:bg-purple-900/60 cursor-pointer"
             >
               Adult / Nudity
             </button>
             <button
               onClick={() => handleLoadTestPreset('danger')}
-              className="px-2.5 py-1 rounded-lg bg-red-50 text-red-800 text-xs font-semibold hover:bg-red-100 cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-red-50 dark:bg-red-950/60 text-red-800 dark:text-red-300 text-xs font-semibold hover:bg-red-100 dark:hover:bg-red-900/60 cursor-pointer"
             >
               Dangerous Weapons
             </button>
             <button
               onClick={() => handleLoadTestPreset('clean')}
-              className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 text-xs font-semibold hover:bg-emerald-100 cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-semibold hover:bg-emerald-100 dark:hover:bg-emerald-900/60 cursor-pointer"
             >
               Clean Community Hustle
             </button>
@@ -1313,31 +1313,31 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Test Post Title</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Test Post Title</label>
                 <input
                   type="text"
                   value={testTitle}
                   onChange={(e) => setTestTitle(e.target.value)}
                   placeholder="e.g. Breaking news or discussion topic"
-                  className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 dark:text-white"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Test Body Content</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Test Body Content</label>
                 <textarea
                   rows={4}
                   value={testText}
                   onChange={(e) => setTestText(e.target.value)}
                   placeholder="Paste or write text in English, Swahili, or Sheng..."
-                  className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none"
+                  className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none text-slate-900 dark:text-white"
                 />
               </div>
 
               <button
                 type="button"
                 onClick={handleRunSafetyTest}
-                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer flex items-center gap-2"
+                className="px-5 py-2.5 bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer flex items-center gap-2"
               >
                 <Activity className="w-4 h-4 text-emerald-400" />
                 <span>Evaluate Content Safety</span>
@@ -1345,8 +1345,8 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
             </div>
 
             {/* Test Analysis Result */}
-            <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-              <h3 className="font-bold text-xs text-slate-900 uppercase tracking-wider flex items-center justify-between">
+            <div className="p-5 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+              <h3 className="font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider flex items-center justify-between">
                 <span>Scanner Analysis Result</span>
                 {testResult && (
                   <span
@@ -1368,15 +1368,15 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   <div
                     className={`p-3 rounded-xl border flex items-center justify-between ${
                       testResult.isSafe
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                        : 'bg-rose-50 border-rose-200 text-rose-900'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                        : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       {testResult.isSafe ? (
-                        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                       ) : (
-                        <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+                        <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
                       )}
                       <div>
                         <div className="font-bold text-xs">{testResult.flagReason}</div>
@@ -1389,14 +1389,14 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
                   {testResult.triggeredCategories.length > 0 && (
                     <div>
-                      <div className="text-[11px] font-bold text-slate-700 mb-1">
+                      <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                         Triggered Threat Categories:
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {testResult.triggeredCategories.map((c: SafetyCategory) => (
                           <span
                             key={c}
-                            className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded-md text-[10px] font-bold uppercase"
+                            className="px-2 py-0.5 bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 rounded-md text-[10px] font-bold uppercase border border-rose-200 dark:border-rose-900"
                           >
                             {c}
                           </span>
@@ -1407,14 +1407,14 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
                   {testResult.matchedKeywords.length > 0 && (
                     <div>
-                      <div className="text-[11px] font-bold text-slate-700 mb-1">
+                      <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                         Matched Sensitive Keywords / Tokens:
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {testResult.matchedKeywords.map((kw: string, i: number) => (
                           <span
                             key={i}
-                            className="px-2 py-0.5 bg-slate-200 text-slate-800 rounded font-mono text-[10px]"
+                            className="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded font-mono text-[10px]"
                           >
                             "{kw}"
                           </span>
@@ -1424,8 +1424,8 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   )}
 
                   {testResult.triggeredCategories.length > 0 && (
-                    <div className="p-3 bg-white rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
-                      <div className="font-bold text-slate-800">
+                    <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 space-y-1">
+                      <div className="font-bold text-slate-800 dark:text-white">
                         {getSafetyExplanation(testResult.triggeredCategories[0]).title}
                       </div>
                       <p className="text-[11px]">
@@ -1435,7 +1435,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   )}
                 </div>
               ) : (
-                <div className="py-8 text-center text-slate-400 text-xs">
+                <div className="py-8 text-center text-slate-400 dark:text-slate-500 text-xs">
                   Type text or pick a test preset above and click "Evaluate Content Safety".
                 </div>
               )}
@@ -1451,12 +1451,12 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
           onClick={() => setSelectedPostForAdvisory(null)}
         >
           <div
-            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-amber-600" />
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                 <span>Attach Community Safety Advisory</span>
               </h3>
               <button
@@ -1465,7 +1465,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   e.stopPropagation();
                   setSelectedPostForAdvisory(null);
                 }}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 aria-label="Close"
                 title="Close (Esc)"
               >
@@ -1473,27 +1473,27 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
               </button>
             </div>
 
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
               Target Post: <strong>"{selectedPostForAdvisory.title}"</strong>
             </p>
 
             <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700">Advisory Message</label>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Advisory Message</label>
               <textarea
                 rows={3}
                 value={advisoryText}
                 onChange={(e) => setAdvisoryText(e.target.value)}
                 maxLength={300}
                 placeholder="e.g. ⚠️ Community Advisory: This post mentions an unverified job offer requiring payment. Do not send funds."
-                className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 dark:text-white"
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setSelectedPostForAdvisory(null)}
-                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
+                className="px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
               >
                 Cancel
               </button>
@@ -1516,11 +1516,11 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
           onClick={() => setSelectedPostForDelete(null)}
         >
           <div
-            className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-sm text-slate-900 text-rose-600 flex items-center gap-1.5">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-sm text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
                 <Trash2 className="w-4 h-4" />
                 <span>Delete Post Permanently</span>
               </h3>
@@ -1530,7 +1530,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   e.stopPropagation();
                   setSelectedPostForDelete(null);
                 }}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 aria-label="Close"
                 title="Close (Esc)"
               >
@@ -1538,26 +1538,26 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
               </button>
             </div>
 
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
               Are you sure you want to remove <strong>"{selectedPostForDelete.title}"</strong> by {selectedPostForDelete.authorName}?
               This action cannot be undone.
             </p>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">Reason for removal</label>
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">Reason for removal</label>
               <input
                 type="text"
                 value={deleteReason}
                 onChange={(e) => setDeleteReason(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-xl"
+                className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setSelectedPostForDelete(null)}
-                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
+                className="px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
               >
                 Cancel
               </button>
@@ -1580,12 +1580,12 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
           onClick={() => setSelectedUserForStatus(null)}
         >
           <div
-            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 <span>Send Account Status Notice</span>
               </h3>
               <button
@@ -1594,7 +1594,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   e.stopPropagation();
                   setSelectedUserForStatus(null);
                 }}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 aria-label="Close"
                 title="Close (Esc)"
               >
@@ -1602,7 +1602,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
               </button>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-3">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-3">
               {selectedUserForStatus.photoURL ? (
                 <img
                   src={selectedUserForStatus.photoURL}
@@ -1610,15 +1610,15 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   className="w-9 h-9 rounded-full object-cover"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs">
+                <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-xs">
                   {selectedUserForStatus.displayName.charAt(0)}
                 </div>
               )}
               <div>
-                <div className="font-bold text-xs text-slate-900">
+                <div className="font-bold text-xs text-slate-900 dark:text-white">
                   {selectedUserForStatus.displayName}
                 </div>
-                <div className="text-[11px] text-slate-500">
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">
                   {selectedUserForStatus.county || 'Nairobi'} • {selectedUserForStatus.email || 'Citizen'}
                 </div>
               </div>
@@ -1626,7 +1626,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Notice Type
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -1635,8 +1635,8 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                     onClick={() => setStatusType('account_verified')}
                     className={`p-2 rounded-xl border text-center font-semibold cursor-pointer transition-colors ${
                       statusType === 'account_verified'
-                        ? 'border-purple-600 bg-purple-50 text-purple-900 ring-1 ring-purple-600'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        ? 'border-purple-600 bg-purple-50 dark:bg-purple-950/50 text-purple-900 dark:text-purple-300 ring-1 ring-purple-600'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     🎖️ Award Verified
@@ -1646,8 +1646,8 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                     onClick={() => setStatusType('account_good_standing')}
                     className={`p-2 rounded-xl border text-center font-semibold cursor-pointer transition-colors ${
                       statusType === 'account_good_standing'
-                        ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-1 ring-emerald-600'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-300 ring-1 ring-emerald-600'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     🟢 Good Standing
@@ -1657,8 +1657,8 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                     onClick={() => setStatusType('account_warning')}
                     className={`p-2 rounded-xl border text-center font-semibold cursor-pointer transition-colors ${
                       statusType === 'account_warning'
-                        ? 'border-rose-600 bg-rose-50 text-rose-900 ring-1 ring-rose-600'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        ? 'border-rose-600 bg-rose-50 dark:bg-rose-950/50 text-rose-900 dark:text-rose-300 ring-1 ring-rose-600'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     ⚠️ Caution/Warning
@@ -1667,7 +1667,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Custom Message (Optional)
                 </label>
                 <textarea
@@ -1675,16 +1675,16 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   value={statusMessage}
                   onChange={(e) => setStatusMessage(e.target.value)}
                   placeholder="Leave blank to use default standing text or provide specific details..."
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 dark:text-white"
                 />
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setSelectedUserForStatus(null)}
-                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
+                className="px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
               >
                 Cancel
               </button>
@@ -1708,18 +1708,18 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
           onClick={() => setSelectedUserForSuspend(null)}
         >
           <div
-            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-800"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                <Clock className="w-5 h-5 text-amber-600" />
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                 <span>Suspend Citizen Account</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setSelectedUserForSuspend(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 aria-label="Close"
               >
                 <X className="w-4 h-4" />
@@ -1727,7 +1727,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
             </div>
 
             {/* Target Citizen Header */}
-            <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-200/80 flex items-center gap-3">
+            <div className="p-3 bg-amber-50/60 dark:bg-amber-950/40 rounded-2xl border border-amber-200/80 dark:border-amber-800/80 flex items-center gap-3">
               {selectedUserForSuspend.photoURL ? (
                 <img
                   src={selectedUserForSuspend.photoURL}
@@ -1735,24 +1735,24 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   className="w-10 h-10 rounded-full object-cover shrink-0 ring-1 ring-amber-300"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-amber-200 text-amber-900 font-black flex items-center justify-center text-sm shrink-0">
+                <div className="w-10 h-10 rounded-full bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 font-black flex items-center justify-center text-sm shrink-0">
                   {selectedUserForSuspend.displayName.charAt(0)}
                 </div>
               )}
               <div className="min-w-0">
-                <div className="font-black text-xs text-slate-900 truncate">
+                <div className="font-black text-xs text-slate-900 dark:text-white truncate">
                   {selectedUserForSuspend.displayName}
                 </div>
-                <div className="text-[11px] text-slate-600 truncate">
+                <div className="text-[11px] text-slate-600 dark:text-slate-300 truncate">
                   {selectedUserForSuspend.email || 'Citizen'} • {selectedUserForSuspend.county || 'Nairobi'}
                 </div>
-                <div className="text-[9px] text-slate-400 font-mono">UID: {selectedUserForSuspend.uid}</div>
+                <div className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">UID: {selectedUserForSuspend.uid}</div>
               </div>
             </div>
 
             {/* Duration Selector */}
             <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                 Suspension Duration
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs">
@@ -1764,7 +1764,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                     className={`py-2 px-1 text-center font-bold rounded-xl border transition-all cursor-pointer ${
                       suspendDuration === dur
                         ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                     }`}
                   >
                     {dur === '24h' ? '24 Hours' : dur === '3d' ? '3 Days' : dur === '7d' ? '7 Days' : '30 Days'}
@@ -1778,8 +1778,8 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   onClick={() => setSuspendDuration('custom')}
                   className={`w-full py-1.5 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
                     suspendDuration === 'custom'
-                      ? 'bg-amber-50 text-amber-900 border-amber-500 ring-1 ring-amber-400'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                      ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border-amber-500 ring-1 ring-amber-400'
+                      : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                   }`}
                 >
                   <Calendar className="w-3.5 h-3.5" />
@@ -1793,7 +1793,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                       value={customSuspendDate}
                       onChange={(e) => setCustomSuspendDate(e.target.value)}
                       min={new Date().toISOString().slice(0, 16)}
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none text-slate-900 dark:text-white"
                     />
                   </div>
                 )}
@@ -1802,13 +1802,13 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
 
             {/* Violation Reason */}
             <div className="space-y-2 text-xs">
-              <label className="block font-bold text-slate-700">
+              <label className="block font-bold text-slate-700 dark:text-slate-300">
                 Reason for Suspension
               </label>
               <select
                 value={suspendReasonPreset}
                 onChange={(e) => setSuspendReasonPreset(e.target.value)}
-                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none text-slate-900 dark:text-white"
               >
                 <option value="Violation of community civility & safety guidelines">Civic & Safety Policy Violation</option>
                 <option value="Posting scam offers, fraudulent hustle or false job requests">Fraud / Scam / M-Pesa Request</option>
@@ -1824,20 +1824,20 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                 value={suspendReasonCustom}
                 onChange={(e) => setSuspendReasonCustom(e.target.value)}
                 placeholder="Optional notes or additional context for the citizen..."
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none text-slate-900 dark:text-white"
               />
             </div>
 
-            <div className="p-2.5 bg-slate-50 rounded-xl text-[11px] text-slate-500 flex items-start gap-2">
-              <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="p-2.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-2">
+              <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <span>The citizen will be unable to publish posts, send chats, or leave comments until the suspension duration ends. An account alert will notify them.</span>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setSelectedUserForSuspend(null)}
-                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
+                className="px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
               >
                 Cancel
               </button>
@@ -1862,36 +1862,36 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
           onClick={() => setSelectedUserForBan(null)}
         >
           <div
-            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-rose-200"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-rose-200 dark:border-rose-900"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-2 border-b border-rose-100">
-              <h3 className="font-bold text-sm text-rose-700 flex items-center gap-2">
-                <AlertOctagon className="w-5 h-5 text-rose-600" />
+            <div className="flex items-center justify-between pb-2 border-b border-rose-100 dark:border-rose-900/50">
+              <h3 className="font-bold text-sm text-rose-700 dark:text-rose-400 flex items-center gap-2">
+                <AlertOctagon className="w-5 h-5 text-rose-600 dark:text-rose-400" />
                 <span>Permanently Ban Citizen</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setSelectedUserForBan(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 aria-label="Close"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3 bg-rose-50 rounded-2xl border border-rose-200 text-xs text-rose-900 space-y-1">
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-2xl border border-rose-200 dark:border-rose-900 text-xs text-rose-900 dark:text-rose-200 space-y-1">
               <div className="font-bold flex items-center gap-1.5">
-                <Ban className="w-4 h-4 text-rose-600 shrink-0" />
+                <Ban className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
                 <span>Irrevocable Restriction Warning</span>
               </div>
-              <p className="text-[11px] text-rose-700 leading-relaxed">
+              <p className="text-[11px] text-rose-700 dark:text-rose-300 leading-relaxed">
                 This will permanently bar <strong>{selectedUserForBan.displayName}</strong> from posting in discussions, participating in community chats, and commenting across TUJUANE.
               </p>
             </div>
 
             {/* Target Citizen Info */}
-            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center gap-3">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-3">
               {selectedUserForBan.photoURL ? (
                 <img
                   src={selectedUserForBan.photoURL}
@@ -1899,30 +1899,30 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                   className="w-10 h-10 rounded-full object-cover shrink-0 ring-1 ring-rose-300"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-800 font-black flex items-center justify-center text-sm shrink-0">
+                <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 font-black flex items-center justify-center text-sm shrink-0">
                   {selectedUserForBan.displayName.charAt(0)}
                 </div>
               )}
               <div className="min-w-0">
-                <div className="font-black text-xs text-slate-900 truncate">
+                <div className="font-black text-xs text-slate-900 dark:text-white truncate">
                   {selectedUserForBan.displayName}
                 </div>
-                <div className="text-[11px] text-slate-600 truncate">
+                <div className="text-[11px] text-slate-600 dark:text-slate-300 truncate">
                   {selectedUserForBan.email || 'Citizen'} • {selectedUserForBan.county || 'Nairobi'}
                 </div>
-                <div className="text-[9px] text-slate-400 font-mono">UID: {selectedUserForBan.uid}</div>
+                <div className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">UID: {selectedUserForBan.uid}</div>
               </div>
             </div>
 
             {/* Reason for Ban */}
             <div className="space-y-2 text-xs">
-              <label className="block font-bold text-slate-700">
+              <label className="block font-bold text-slate-700 dark:text-slate-300">
                 Violation Classification
               </label>
               <select
                 value={banReasonPreset}
                 onChange={(e) => setBanReasonPreset(e.target.value)}
-                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-rose-500 focus:outline-none text-slate-900 dark:text-white"
               >
                 <option value="Severe or repeated violations of community safety rules">Severe Civic Safety Violation</option>
                 <option value="Severe fraud, monetary scam, or criminal impersonation">Severe Fraud / Financial Scam</option>
@@ -1938,15 +1938,15 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
                 value={banReasonCustom}
                 onChange={(e) => setBanReasonCustom(e.target.value)}
                 placeholder="Specific justification details for permanently barring this account..."
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-none text-slate-900 dark:text-white"
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setSelectedUserForBan(null)}
-                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
+                className="px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
               >
                 Cancel
               </button>
@@ -1971,34 +1971,34 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
           onClick={() => setSelectedUserForReactivate(null)}
         >
           <div
-            className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-emerald-200"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-emerald-200 dark:border-emerald-800"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
-              <h3 className="font-bold text-sm text-emerald-800 flex items-center gap-2">
-                <UserCheck className="w-5 h-5 text-emerald-600" />
+            <div className="flex items-center justify-between pb-2 border-b border-emerald-100 dark:border-emerald-800/60">
+              <h3 className="font-bold text-sm text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                <UserCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 <span>Restore Citizen Account</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setSelectedUserForReactivate(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 aria-label="Close"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               Are you sure you want to restore <strong>{selectedUserForReactivate.displayName}</strong> to Active Standing?
               This will lift all suspension or ban restrictions and enable them to post, comment, and chat normally again.
             </p>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setSelectedUserForReactivate(null)}
-                className="px-3.5 py-1.5 text-xs text-slate-600 hover:text-slate-800 cursor-pointer"
+                className="px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
               >
                 Cancel
               </button>

@@ -103,6 +103,9 @@ service cloud.firestore {
         && (!('constituency' in data) || (data.constituency is string && data.constituency.size() <= 60))
         && (!('mediaUrl' in data) || (data.mediaUrl is string && data.mediaUrl.size() <= 600000))
         && (!('mediaCaption' in data) || (data.mediaCaption is string && data.mediaCaption.size() <= 200))
+        && (!('backgroundColor' in data) || (data.backgroundColor is string && data.backgroundColor.size() <= 40))
+        && (!('reactions' in data) || data.reactions is map)
+        && (!('reactionsCount' in data) || data.reactionsCount is map)
         && (!('isFlagged' in data) || data.isFlagged is bool)
         && (!('safetyCategory' in data) || (data.safetyCategory is string && data.safetyCategory.size() <= 40))
         && (!('safetyReason' in data) || (data.safetyReason is string && data.safetyReason.size() <= 300))
@@ -123,6 +126,8 @@ service cloud.firestore {
         && (!('mediaUrl' in data) || (data.mediaUrl is string && data.mediaUrl.size() <= 600000))
         && (!('replyToCommentId' in data) || (data.replyToCommentId is string && data.replyToCommentId.size() <= 128))
         && (!('replyToAuthorName' in data) || (data.replyToAuthorName is string && data.replyToAuthorName.size() <= 100))
+        && (!('reactions' in data) || data.reactions is map)
+        && (!('reactionsCount' in data) || data.reactionsCount is map)
         && data.createdAt is timestamp;
     }
 
@@ -227,9 +232,9 @@ service cloud.firestore {
           // Case 2: Developer / Moderator update
           (request.auth.token.email == 'muriithipeterkangethe237@gmail.com')
           ||
-          // Case 3: Community upvoting, commentsCount or moderation/safety flags
+          // Case 3: Community upvoting, reactions, commentsCount or moderation/safety flags
           (
-            incoming().diff(existing()).affectedKeys().hasOnly(['upvotes', 'upvoters', 'commentsCount', 'isFlagged', 'safetyCategory', 'safetyReason', 'safetyAdvisory', 'moderationStatus', 'reportCount'])
+            incoming().diff(existing()).affectedKeys().hasOnly(['upvotes', 'upvoters', 'reactions', 'reactionsCount', 'commentsCount', 'isFlagged', 'safetyCategory', 'safetyReason', 'safetyAdvisory', 'moderationStatus', 'reportCount'])
           )
         );
 
@@ -245,7 +250,13 @@ service cloud.firestore {
           && isValidId(commentId)
           && isValidCommunityComment(incoming(), postId);
 
-        allow update: if false;
+        allow update: if isSignedIn()
+          && isValidId(commentId)
+          && (
+            (existing().authorId == request.auth.uid) ||
+            request.auth.token.email == 'muriithipeterkangethe237@gmail.com' ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['reactions', 'reactionsCount'])
+          );
         allow delete: if isSignedIn()
           && isValidId(commentId)
           && (existing().authorId == request.auth.uid || request.auth.token.email == 'muriithipeterkangethe237@gmail.com');
