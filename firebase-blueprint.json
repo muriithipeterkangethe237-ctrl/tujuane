@@ -171,6 +171,28 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "postId", "reporterId", "category", "status", "createdAt"]
+    },
+    "CitizenStory": {
+      "title": "CitizenStory",
+      "description": "24-hour visual citizen status story supporting photos and short videos",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorPhotoUrl": { "type": "string", "maxLength": 600000 },
+        "authorCounty": { "type": "string", "maxLength": 50 },
+        "type": { "type": "string", "enum": ["image", "video"] },
+        "mediaUrl": { "type": "string", "maxLength": 1500000 },
+        "caption": { "type": "string", "maxLength": 500 },
+        "duration": { "type": "integer" },
+        "viewers": { "type": "array" },
+        "viewsCount": { "type": "integer" },
+        "reactions": { "type": "object" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "authorId", "authorName", "type", "mediaUrl", "createdAt"]
     }
   },
   "firestore": {
@@ -213,6 +235,10 @@
     "/safety_reports/{reportId}": {
       "schema": "SafetyReport",
       "description": "Content safety reports submitted by citizens or flagged by automated filters"
+    },
+    "/stories/{storyId}": {
+      "schema": "CitizenStory",
+      "description": "24-hour citizen visual stories containing pictures and videos"
     }
   }
 }

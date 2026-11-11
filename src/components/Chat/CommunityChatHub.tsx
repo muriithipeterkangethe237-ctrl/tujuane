@@ -85,6 +85,7 @@ interface CommunityChatHubProps {
   onClearDirectChatTargetUser?: () => void;
   onViewUserProfile?: (user: UserProfile) => void;
   onThreadStateChange?: (isOpen: boolean) => void;
+  onGoBack?: () => void;
 }
 
 
@@ -101,7 +102,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   directChatTargetUser = null,
   onClearDirectChatTargetUser,
   onViewUserProfile,
-  onThreadStateChange
+  onThreadStateChange,
+  onGoBack
 }) => {
 
   const {
@@ -1085,39 +1087,66 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
         }`}
       >
 
-        {/* User Profile Mini Header & Notification Bell */}
-        <div className="p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 transition-colors">
-          <div className="flex items-center gap-2.5 min-w-0">
-            {userProfile?.photoURL ? (
-              <img
-                src={userProfile.photoURL}
-                alt={userProfile.displayName}
-                className="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700"
-              />
-            ) : (
-              <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-xs">
-                {userProfile?.displayName.charAt(0)}
-              </div>
-            )}
-            <div className="min-w-0">
-              <div className="font-bold text-xs text-slate-900 dark:text-white truncate flex items-center gap-1.5">
-                <span className="truncate">{userProfile?.displayName}</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Online" />
-              </div>
+        {/* User Profile Mini Header & Notification Bell - Pinned sticky so it never disappears during list scrolling */}
+        <div className="p-3 sm:p-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2.5 transition-colors sticky top-0 z-30 shrink-0 shadow-2xs">
+          <div className="flex items-center gap-2 min-w-0">
+            {/* Back Button to leave inboxes and return to Community Hub */}
+            {onGoBack && (
               <button
-                onClick={() => {
-                  setSelectedCounty(userProfile?.county || 'Nairobi');
-                  setSelectedConstituency(userProfile?.constituency || '');
-                  setIsCountyPickerOpen(true);
-                }}
-                className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 flex items-center gap-1 cursor-pointer font-medium"
+                type="button"
+                onClick={onGoBack}
+                className="p-1.5 sm:px-2.5 sm:py-1.5 text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer flex items-center gap-1 font-bold text-xs shrink-0 border border-slate-200 dark:border-slate-700 shadow-2xs"
+                title="Back to Community Hub"
+                aria-label="Back to Community Hub"
               >
-                <MapPin className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span className="truncate max-w-[130px]">
-                  {userProfile?.constituency ? `${userProfile.constituency}, ` : ''}{userProfile?.county || 'Nairobi'}
-                </span>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 underline shrink-0">Change</span>
+                <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                <span className="hidden sm:inline">Hub</span>
               </button>
+            )}
+
+            {/* User Profile Info */}
+            <div
+              onClick={() => {
+                if (userProfile && onViewUserProfile) {
+                  onViewUserProfile(userProfile);
+                }
+              }}
+              className="flex items-center gap-2 min-w-0 cursor-pointer group"
+              title="View my citizen profile"
+            >
+              {userProfile?.photoURL ? (
+                <img
+                  src={userProfile.photoURL}
+                  alt={userProfile.displayName}
+                  className="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 group-hover:ring-2 group-hover:ring-emerald-500 transition-all shrink-0"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-xs shrink-0 group-hover:bg-emerald-200 transition-colors">
+                  {userProfile?.displayName.charAt(0)}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="font-bold text-xs text-slate-900 dark:text-white truncate flex items-center gap-1.5">
+                  <span className="truncate group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{userProfile?.displayName}</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Online" />
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedCounty(userProfile?.county || 'Nairobi');
+                    setSelectedConstituency(userProfile?.constituency || '');
+                    setIsCountyPickerOpen(true);
+                  }}
+                  className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 flex items-center gap-1 cursor-pointer font-medium"
+                >
+                  <MapPin className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="truncate max-w-[110px]">
+                    {userProfile?.county || 'Kenya'}
+                  </span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 underline shrink-0">Change</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1637,20 +1666,24 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
       >
         {isThreadOpen ? (
           <>
-            {/* Header: Displays info based on active chat mode */}
-            <div className="p-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shadow-2xs shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
+            {/* Header: Displays info based on active chat mode - Pinned sticky so user profile and back button never disappear during scrolling */}
+            <div className="p-3 sm:p-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2.5 sm:gap-3 shadow-2xs shrink-0 sticky top-0 z-30">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                 <button
+                  type="button"
                   onClick={() => {
                     setActiveChatId(null);
                     setActivePartner(null);
                     setActiveChannel(null);
                     setActiveGroup(null);
                     if (onClearDirectChatTargetUser) onClearDirectChatTargetUser();
+                    if (window.innerWidth >= 768 && onGoBack) {
+                      onGoBack();
+                    }
                   }}
-
-                  className="p-1.5 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg cursor-pointer flex items-center gap-1 font-bold text-xs md:hidden"
-                  title="Back to list"
+                  className="p-1.5 sm:px-2.5 sm:py-1.5 text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl cursor-pointer flex items-center gap-1 font-bold text-xs shrink-0 border border-slate-200 dark:border-slate-700 shadow-2xs transition-colors"
+                  title="Back to inbox list"
+                  aria-label="Back to inbox list"
                 >
                   <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
                   <span>Back</span>
@@ -2606,6 +2639,16 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 or start a private <strong>1-on-1 Direct Chat</strong>.
               </p>
             </div>
+            {onGoBack && (
+              <button
+                type="button"
+                onClick={onGoBack}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer transition-colors border border-slate-200 dark:border-slate-700 shadow-2xs"
+              >
+                <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                <span>Return to Community Hub</span>
+              </button>
+            )}
           </div>
         )}
       </div>

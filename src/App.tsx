@@ -341,7 +341,7 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
+    <div className={`min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors ${activeTab === 'chat' ? 'h-screen h-dvh overflow-hidden' : ''}`}>
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-20 right-4 z-50 bg-slate-900 dark:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 animate-bounce border border-slate-700">
@@ -350,35 +350,37 @@ function AppContent() {
         </div>
       )}
 
-      {/* Top Header with Back Button, Dev Panel and Notification Center */}
-      <Header
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        canGoBack={canGoBack}
-        onGoBack={handleGoBack}
-        pendingReportsCount={pendingReportsCount}
-        pendingFriendRequestsCount={pendingFriendRequestsCount}
-        unreadNotificationsCount={unreadNotificationsCount}
-        unreadMessagesCount={unreadMessagesCount}
-        onOpenNotifications={openNotificationsModal}
-        onViewOwnProfile={() => {
-          if (userProfile) {
-            openUserProfileModal(userProfile);
-          } else if (currentUser) {
-            openUserProfileModal({
-              uid: currentUser.uid,
-              displayName: currentUser.displayName || 'Citizen Member',
-              email: currentUser.email || '',
-              photoURL: currentUser.photoURL || undefined,
-              county: 'Nairobi',
-              createdAt: new Date().toISOString()
-            });
-          }
-        }}
-        onOpenCreatePost={() => {
-          setActiveTab('community');
-        }}
-      />
+      {/* Top Header with Back Button, Dev Panel and Notification Center (hidden in chat for true full-screen inboxes) */}
+      {activeTab !== 'chat' && (
+        <Header
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          canGoBack={canGoBack}
+          onGoBack={handleGoBack}
+          pendingReportsCount={pendingReportsCount}
+          pendingFriendRequestsCount={pendingFriendRequestsCount}
+          unreadNotificationsCount={unreadNotificationsCount}
+          unreadMessagesCount={unreadMessagesCount}
+          onOpenNotifications={openNotificationsModal}
+          onViewOwnProfile={() => {
+            if (userProfile) {
+              openUserProfileModal(userProfile);
+            } else if (currentUser) {
+              openUserProfileModal({
+                uid: currentUser.uid,
+                displayName: currentUser.displayName || 'Citizen Member',
+                email: currentUser.email || '',
+                photoURL: currentUser.photoURL || undefined,
+                county: 'Nairobi',
+                createdAt: new Date().toISOString()
+              });
+            }
+          }}
+          onOpenCreatePost={() => {
+            setActiveTab('community');
+          }}
+        />
+      )}
 
       {/* Contextual Top Back Bar for non-landing pages (omitted on chat for full-screen experience) */}
       {activeTab !== 'landing' && activeTab !== 'chat' && (
@@ -444,9 +446,7 @@ function AppContent() {
       <main
         className={
           activeTab === 'chat'
-            ? (isChatThreadOpen || !!directChatTargetUser
-                ? 'flex-1 w-full p-0 flex flex-col h-[calc(100dvh-4rem)] md:h-[calc(100dvh-4rem)] max-w-full overflow-hidden'
-                : 'flex-1 w-full p-0 pb-16 md:pb-0 flex flex-col h-[calc(100dvh-4rem)] md:h-[calc(100dvh-4rem)] max-w-full overflow-hidden')
+            ? 'flex-1 w-full p-0 flex flex-col h-full h-dvh max-w-full overflow-hidden'
             : 'flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full'
         }
       >
@@ -544,6 +544,7 @@ function AppContent() {
             onClearDirectChatTargetUser={() => setDirectChatTargetUser(null)}
             onViewUserProfile={(user) => openUserProfileModal(user)}
             onThreadStateChange={(isOpen) => setIsChatThreadOpen(isOpen)}
+            onGoBack={handleGoBack}
           />
         )}
 
@@ -642,10 +643,9 @@ function AppContent() {
         />
       )}
 
-      {/* Mobile-First Bottom Navigation Bar (Hidden when actively in direct chat or thread on mobile so typing panel is never obscured) */}
-      {!(activeTab === 'chat' && (isChatThreadOpen || !!directChatTargetUser)) && (
+      {/* Mobile-First Bottom Navigation Bar (Hidden when in chat so messaging inboxes are true full screen) */}
+      {activeTab !== 'chat' && (
         <MobileBottomNav
-
           activeTab={activeTab}
           pendingFriendRequestsCount={pendingFriendRequestsCount}
           unreadNotificationsCount={unreadNotificationsCount}

@@ -45,11 +45,18 @@ export const SOLID_POST_BACKGROUNDS: SolidColorOption[] = [
 export const REACTION_TYPES = [
   { key: 'like', emoji: '👍', label: 'Like' },
   { key: 'love', emoji: '❤️', label: 'Love' },
-  { key: 'haha', emoji: '😂', label: 'Haha' },
   { key: 'fire', emoji: '🔥', label: 'Moto' },
   { key: 'clap', emoji: '👏', label: 'Makofi' },
-  { key: 'kenya', emoji: '🇰🇪', label: 'Kenya' },
-  { key: 'wow', emoji: '😮', label: 'Wow' }
+  { key: 'respect', emoji: '🤝', label: 'Heshima' },
+  { key: 'idea', emoji: '💡', label: 'Idea' },
+  { key: 'facts', emoji: '💯', label: '100%' },
+  { key: 'haha', emoji: '😂', label: 'Haha' },
+  { key: 'wow', emoji: '😮', label: 'Wow' },
+  { key: 'pray', emoji: '🙏', label: 'Shukrani' },
+  { key: 'celebrate', emoji: '🎉', label: 'Shangwe' },
+  { key: 'sad', emoji: '😢', label: 'Pole' },
+  { key: 'lion', emoji: '🦁', label: 'Simba' },
+  { key: 'kenya', emoji: '🇰🇪', label: 'Kenya' }
 ] as const;
 
 export type ReactionKey = typeof REACTION_TYPES[number]['key'];

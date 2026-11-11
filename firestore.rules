@@ -152,6 +152,24 @@ service cloud.firestore {
         && data.votedAt is timestamp;
     }
 
+    // Validation for CitizenStory
+    function isValidCitizenStory(data) {
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.authorId is string && data.authorId == request.auth.uid
+        && data.authorName is string && data.authorName.size() > 0 && data.authorName.size() <= 100
+        && (!('authorPhotoUrl' in data) || (data.authorPhotoUrl is string && data.authorPhotoUrl.size() <= 600000))
+        && (!('authorCounty' in data) || (data.authorCounty is string && data.authorCounty.size() <= 50))
+        && data.type in ['image', 'video']
+        && data.mediaUrl is string && data.mediaUrl.size() > 0 && data.mediaUrl.size() <= 1500000
+        && (!('caption' in data) || (data.caption is string && data.caption.size() <= 500))
+        && (!('duration' in data) || (data.duration is number && data.duration >= 1 && data.duration <= 60))
+        && (!('viewers' in data) || (data.viewers is list && data.viewers.size() <= 2000))
+        && (!('viewsCount' in data) || (data.viewsCount is int && data.viewsCount >= 0))
+        && (!('reactions' in data) || data.reactions is map)
+        && (!('expiresAt' in data) || data.expiresAt is timestamp || data.expiresAt is string)
+        && (data.createdAt is timestamp || data.createdAt is string);
+    }
+
     // 1. Users collection
     match /users/{userId} {
       allow get: if isSignedIn() && isValidId(userId);
@@ -387,6 +405,25 @@ service cloud.firestore {
         && (resource.data.userId == request.auth.uid || request.auth.token.email == 'muriithipeterkangethe237@gmail.com');
       allow delete: if isSignedIn()
         && (resource.data.userId == request.auth.uid || request.auth.token.email == 'muriithipeterkangethe237@gmail.com');
+    }
+
+    // 15. Citizen Stories collection (Photos and Videos)
+    match /stories/{storyId} {
+      allow read: if true; // Publicly viewable by all citizens
+      allow create: if isSignedIn()
+        && isValidId(storyId)
+        && incoming().authorId == request.auth.uid
+        && isValidCitizenStory(incoming());
+      allow update: if isSignedIn()
+        && isValidId(storyId)
+        && (
+          existing().authorId == request.auth.uid ||
+          request.auth.token.email == 'muriithipeterkangethe237@gmail.com' ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['viewers', 'viewsCount', 'reactions'])
+        );
+      allow delete: if isSignedIn()
+        && isValidId(storyId)
+        && (existing().authorId == request.auth.uid || request.auth.token.email == 'muriithipeterkangethe237@gmail.com');
     }
   }
 }

@@ -21,6 +21,7 @@ import {
   reactToCommunityComment
 } from '../services/communityService';
 import { DailyCommunityPoll } from './DailyCommunityPoll';
+import { CitizenStoriesBar } from './Stories/CitizenStoriesBar';
 import { compressImage, formatFileSize } from '../utils/imageCompressor';
 import { ALL_47_COUNTIES, getConstituenciesByCounty } from '../data/kenyaCounties';
 import { analyzeContentSafety, getSafetyExplanation } from '../utils/safetyFilter';
@@ -905,6 +906,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         </div>
       </div>
 
+      {/* Citizen 24h Stories Bar (Pictures & Videos) */}
+      <CitizenStoriesBar
+        currentUser={currentUser}
+        userProfile={userProfile}
+        onOpenAuthModal={(mode) => openAuthModal(mode === 'register' ? 'register' : 'signin')}
+        onViewUserProfile={onViewUserProfile}
+      />
+
       {/* Daily Community Poll Interactive Feature */}
       <section aria-label="Daily Community Poll" className="space-y-2">
         <div className="flex items-center justify-between px-1">
@@ -1763,14 +1772,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                             {isPickerOpen && (
                               <div
                                 onClick={(e) => e.stopPropagation()}
-                                className="absolute left-0 bottom-full mb-2 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-1.5 flex items-center gap-1.5 z-40 animate-in fade-in zoom-in-95"
+                                className="absolute left-0 bottom-full mb-2 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-1.5 flex items-center gap-1 z-40 animate-in fade-in zoom-in-95 max-w-[calc(100vw-2.5rem)] overflow-x-auto scrollbar-none"
                               >
                                 {REACTION_TYPES.map((r) => (
                                   <button
                                     key={r.key}
                                     type="button"
                                     onClick={() => handleReactToPost(post, r.key)}
-                                    className={`w-9 h-9 flex items-center justify-center text-lg rounded-xl hover:scale-130 transition-transform cursor-pointer ${
+                                    className={`w-8 h-8 sm:w-9 sm:h-9 shrink-0 flex items-center justify-center text-base sm:text-lg rounded-xl hover:scale-125 transition-transform cursor-pointer ${
                                       userPostReaction === r.key
                                         ? 'bg-emerald-100 dark:bg-emerald-900/60 ring-2 ring-emerald-500'
                                         : 'hover:bg-slate-100 dark:hover:bg-slate-700'
@@ -1999,14 +2008,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                   {isCommentPickerOpen && (
                                     <div
                                       onClick={(e) => e.stopPropagation()}
-                                      className="absolute left-0 bottom-full mb-1 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-1 flex items-center gap-1 z-30 animate-in fade-in zoom-in-95"
+                                      className="absolute left-0 bottom-full mb-1 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-1 flex items-center gap-1 z-30 animate-in fade-in zoom-in-95 max-w-[calc(100vw-2.5rem)] overflow-x-auto scrollbar-none"
                                     >
                                       {REACTION_TYPES.map((r) => (
                                         <button
                                           key={r.key}
                                           type="button"
                                           onClick={() => handleReactToComment(post.id, comment, r.key)}
-                                          className={`w-7 h-7 flex items-center justify-center text-sm rounded-xl hover:scale-125 transition-transform cursor-pointer ${
+                                          className={`w-7 h-7 shrink-0 flex items-center justify-center text-sm rounded-xl hover:scale-125 transition-transform cursor-pointer ${
                                             userCommentReaction === r.key
                                               ? 'bg-emerald-100 dark:bg-emerald-900/60 ring-1 ring-emerald-500'
                                               : 'hover:bg-slate-100 dark:hover:bg-slate-700'
