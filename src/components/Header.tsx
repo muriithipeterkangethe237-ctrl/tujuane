@@ -155,18 +155,12 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={() => setActiveTab('landing')}
-              className="text-left flex items-center gap-2.5 group whitespace-nowrap shrink-0 cursor-pointer"
+              className="group whitespace-nowrap shrink-0 cursor-pointer flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-emerald-500/50 rounded-xl"
+              title="Home - Kenya Community Hub"
+              aria-label="Home"
             >
-              <div className="w-9 h-9 rounded-xl bg-slate-950 p-0.5 border border-emerald-500/40 flex items-center justify-center transition-transform group-hover:scale-105 shadow-md overflow-hidden relative shrink-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-950 p-0.5 border border-emerald-500/40 flex items-center justify-center transition-transform group-hover:scale-105 shadow-md overflow-hidden relative shrink-0">
                 <AppLogoIcon className="w-full h-full" />
-              </div>
-              <div>
-                <span className="text-lg font-extrabold tracking-tight text-slate-900 dark:text-white group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
-                  TUJUANE
-                </span>
-                <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 font-semibold tracking-wide uppercase">
-                  Kenya Community Network
-                </span>
               </div>
             </button>
           </div>
@@ -299,13 +293,22 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {currentUser && onOpenCreatePost && (
+            {/* Plus (+) Create Post Button (hidden on hub surface per user request) */}
+            {activeTab !== 'landing' && onOpenCreatePost && (
               <button
-                onClick={onOpenCreatePost}
-                className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
+                onClick={() => {
+                  if (currentUser) {
+                    onOpenCreatePost();
+                  } else {
+                    openAuthModal('register');
+                  }
+                }}
+                className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm hover:shadow-emerald-600/30 border border-emerald-500/50 shrink-0"
+                title="Create a post, story, or discussion"
+                aria-label="Create new post"
               >
-                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Post Discussion</span>
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span className="hidden sm:inline font-bold">Create</span>
               </button>
             )}
 

@@ -22,6 +22,8 @@ import {
 } from '../services/communityService';
 import { DailyCommunityPoll } from './DailyCommunityPoll';
 import { CitizenStoriesBar } from './Stories/CitizenStoriesBar';
+import { PostTypeSelectorModal, PostCreationType, PostTypeOption } from './PostTypeSelectorModal';
+import { CreateStoryModal } from './Stories/CreateStoryModal';
 import { compressImage, formatFileSize } from '../utils/imageCompressor';
 import { ALL_47_COUNTIES, getConstituenciesByCounty } from '../data/kenyaCounties';
 import { analyzeContentSafety, getSafetyExplanation } from '../utils/safetyFilter';
@@ -78,14 +80,26 @@ import {
   Smile
 } from 'lucide-react';
 
+export interface ExternalCreateRequest {
+  category?: PostCategory;
+  solidBg?: PostBackgroundColor;
+  requiresImage?: boolean;
+  openSelector?: boolean;
+  timestamp: number;
+}
+
 interface CommunityFeedProps {
   onOpenDirectChatWithUser?: (authorId: string, authorName: string) => void;
   onViewUserProfile?: (user: UserProfile) => void;
+  externalCreateRequest?: ExternalCreateRequest | null;
+  onClearExternalCreateRequest?: () => void;
 }
 
 export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   onOpenDirectChatWithUser,
-  onViewUserProfile
+  onViewUserProfile,
+  externalCreateRequest,
+  onClearExternalCreateRequest
 }) => {
   const {
     currentUser,
@@ -120,6 +134,32 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [modalBgColor, setModalBgColor] = useState<PostBackgroundColor>('default');
+  const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
+  const [isStoryModalOpen, setIsStoryModalOpen] = useState(false);
+
+  // Handle external create request from Header or App level
+  useEffect(() => {
+    if (!externalCreateRequest) return;
+    if (externalCreateRequest.openSelector) {
+      setIsTypeSelectorOpen(true);
+    } else {
+      if (externalCreateRequest.category) {
+        setPostCategory(externalCreateRequest.category);
+      }
+      if (externalCreateRequest.solidBg) {
+        setModalBgColor(externalCreateRequest.solidBg);
+      } else {
+        setModalBgColor('default');
+      }
+      setIsCreateModalOpen(true);
+      if (externalCreateRequest.requiresImage) {
+        setTimeout(() => fileInputRef.current?.click(), 250);
+      }
+    }
+    if (onClearExternalCreateRequest) {
+      onClearExternalCreateRequest();
+    }
+  }, [externalCreateRequest]);
 
   // Active expanded comments
   const [expandedCommentsPostId, setExpandedCommentsPostId] = useState<string | null>(null);
@@ -409,7 +449,38 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       triggerToast(`⚠️ Account suspended until ${untilStr}: ${userProfile?.banReason || 'Policy violation'}`);
       return;
     }
+    setIsTypeSelectorOpen(true);
+  };
+
+  const handleSelectPostType = (type: PostCreationType, option?: PostTypeOption) => {
+    setIsTypeSelectorOpen(false);
+    if (!currentUser) {
+      openAuthModal('register');
+      return;
+    }
+    if (isBanned) {
+      triggerToast(`⛔ Account permanently banned: ${userProfile?.banReason || 'Policy violation'}`);
+      return;
+    }
+    if (isSuspended) {
+      triggerToast(`⚠️ Account suspended: ${userProfile?.banReason || 'Policy violation'}`);
+      return;
+    }
+
+    if (type === 'story') {
+      setIsStoryModalOpen(true);
+      return;
+    }
+
+    setPostCategory(option?.category || 'general');
+    setModalBgColor(option?.solidBg || (type === 'solid_bg' ? 'emerald' : 'default'));
     setIsCreateModalOpen(true);
+
+    if (option?.requiresImage) {
+      setTimeout(() => {
+        fileInputRef.current?.click();
+      }, 250);
+    }
   };
 
   // Submit new community post with Safety Filtering (Title and location now fully optional)
@@ -899,9 +970,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           <button
             onClick={currentUser ? handleOpenCreateModal : () => openAuthModal('register')}
             className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md hover:shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer"
+            title="Choose post type: Discussion, Photo, 24h Story, Jobs, News or Question"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Add Discussion</span>
+            <span>Create Post</span>
           </button>
         </div>
       </div>
@@ -2194,19 +2266,33 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   <Flame className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base">Start a Discussion</h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Share with the Kenyan community</p>
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base">Create Post</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Share with Kenyans across 47 counties</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsCreateModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                title="Close dialog (Esc)"
-                aria-label="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateModalOpen(false);
+                    setIsTypeSelectorOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors cursor-pointer"
+                  title="Switch to another post format or 24h story"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Choose Type</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Close dialog (Esc)"
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {formError && (
@@ -2894,6 +2980,29 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Post Type Selector Modal */}
+      {isTypeSelectorOpen && (
+        <PostTypeSelectorModal
+          isOpen={isTypeSelectorOpen}
+          onClose={() => setIsTypeSelectorOpen(false)}
+          onSelectType={handleSelectPostType}
+        />
+      )}
+
+      {/* 24h Citizen Story Creator Modal */}
+      {isStoryModalOpen && (
+        <CreateStoryModal
+          isOpen={isStoryModalOpen}
+          currentUser={currentUser}
+          userProfile={userProfile}
+          onClose={() => setIsStoryModalOpen(false)}
+          onStoryPublished={(_storyId) => {
+            setIsStoryModalOpen(false);
+            triggerToast('✓ Story published to Citizen Stories tray!');
+          }}
+        />
       )}
     </div>
   );

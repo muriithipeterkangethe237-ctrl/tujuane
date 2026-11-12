@@ -22,6 +22,9 @@ import { ThemeProvider } from './context/ThemeContext';
 import { UserProfile } from './types/chat';
 import { UserNotification, AccountStandingSummary } from './types/notification';
 import { CommunityPost } from './types/community';
+import { PostTypeSelectorModal, PostCreationType, PostTypeOption } from './components/PostTypeSelectorModal';
+import { CreateStoryModal } from './components/Stories/CreateStoryModal';
+import { ExternalCreateRequest } from './components/CommunityFeed';
 import { subscribeToSafetyReports } from './services/safetyService';
 import { subscribeToIncomingFriendRequests } from './services/socialService';
 import { subscribeToCommunityPosts } from './services/communityService';
@@ -39,6 +42,7 @@ function AppContent() {
     currentUser,
     userProfile,
     isAuthModalOpen,
+    openAuthModal,
     closeAuthModal,
     authModalInitialMode
   } = useAuth();
@@ -144,6 +148,64 @@ function AppContent() {
     setTimeout(() => {
       setToastMessage(null);
     }, 4000);
+  };
+
+  // Post type selector and story creation modals from top Header
+  const [isPostTypeSelectorOpen, setIsPostTypeSelectorOpen] = useState(false);
+  const [isStoryModalOpen, setIsStoryModalOpen] = useState(false);
+  const [feedCreateRequest, setFeedCreateRequest] = useState<ExternalCreateRequest | null>(null);
+
+  const handleSelectPostTypeFromApp = (type: PostCreationType, option?: PostTypeOption) => {
+    setIsPostTypeSelectorOpen(false);
+    if (!currentUser) {
+      openAuthModal('register');
+      return;
+    }
+    if (isBanned) {
+      showToast(`⛔ Account permanently banned: ${userProfile?.banReason || 'Policy violation'}`);
+      return;
+    }
+    if (isSuspended) {
+      showToast(`⚠️ Account suspended: ${userProfile?.banReason || 'Policy violation'}`);
+      return;
+    }
+
+    if (type === 'story') {
+      setIsStoryModalOpen(true);
+      return;
+    }
+
+    setActiveTab('community');
+    setFeedCreateRequest({
+      category: option?.category || 'general',
+      solidBg: option?.solidBg || (type === 'solid_bg' ? 'emerald' : 'default'),
+      requiresImage: !!option?.requiresImage,
+      timestamp: Date.now()
+    });
+  };
+
+  const handleDirectPostFromBottomNav = () => {
+    if (!currentUser) {
+      openAuthModal('register');
+      return;
+    }
+    if (isBanned) {
+      showToast(`⛔ Account permanently banned: ${userProfile?.banReason || 'Policy violation'}`);
+      return;
+    }
+    if (isSuspended) {
+      showToast(`⚠️ Account suspended: ${userProfile?.banReason || 'Policy violation'}`);
+      return;
+    }
+
+    // Direct Post action: bypasses post type selector and opens post creator directly
+    setActiveTab('community');
+    setFeedCreateRequest({
+      category: 'general',
+      solidBg: 'default',
+      requiresImage: false,
+      timestamp: Date.now()
+    });
   };
 
   // Refs to always have current values in window popstate event without stale closure
@@ -377,7 +439,7 @@ function AppContent() {
             }
           }}
           onOpenCreatePost={() => {
-            setActiveTab('community');
+            setIsPostTypeSelectorOpen(true);
           }}
         />
       )}
@@ -534,6 +596,8 @@ function AppContent() {
           <CommunityFeed
             onOpenDirectChatWithUser={handleOpenDirectChatWithPostAuthor}
             onViewUserProfile={(user) => openUserProfileModal(user)}
+            externalCreateRequest={feedCreateRequest}
+            onClearExternalCreateRequest={() => setFeedCreateRequest(null)}
           />
         )}
 
@@ -651,6 +715,7 @@ function AppContent() {
           unreadNotificationsCount={unreadNotificationsCount}
           unreadMessagesCount={unreadMessagesCount}
           onOpenNotifications={openNotificationsModal}
+          onDirectPost={handleDirectPostFromBottomNav}
           setActiveTab={(tab) => {
             setActiveTab(tab);
           }}
@@ -660,6 +725,29 @@ function AppContent() {
       {/* Offline Status Badge for PWA Resilience */}
       <OfflineIndicator />
 
+      {/* Post Type Selector Modal (triggered from top Header Plus button) */}
+      {isPostTypeSelectorOpen && (
+        <PostTypeSelectorModal
+          isOpen={isPostTypeSelectorOpen}
+          onClose={() => setIsPostTypeSelectorOpen(false)}
+          onSelectType={handleSelectPostTypeFromApp}
+        />
+      )}
+
+      {/* 24h Citizen Story Creator Modal (triggered from top Header Plus button) */}
+      {isStoryModalOpen && (
+        <CreateStoryModal
+          isOpen={isStoryModalOpen}
+          currentUser={currentUser}
+          userProfile={userProfile}
+          onClose={() => setIsStoryModalOpen(false)}
+          onStoryPublished={(_storyId) => {
+            setIsStoryModalOpen(false);
+            showToast('✓ Story published to Citizen Stories tray!');
+            setActiveTab('community');
+          }}
+        />
+      )}
     </div>
   );
 }
