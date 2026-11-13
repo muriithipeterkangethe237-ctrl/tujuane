@@ -110,7 +110,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Process Video File (Max ~1.2MB for base64 story clip, up to 30s)
+  // Process Video File (Max 700KB raw so Base64 stays under Firestore's 1MiB document limit)
   const processVideoFile = (file: File) => {
     setErrorMessage(null);
     if (!file.type.startsWith('video/')) {
@@ -118,11 +118,10 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
       return;
     }
 
-    // Limit video file size to ~1.2MB for responsive Firestore storage
-    const MAX_VIDEO_BYTES = 1.3 * 1024 * 1024;
+    const MAX_VIDEO_BYTES = 700 * 1024;
     if (file.size > MAX_VIDEO_BYTES) {
       setErrorMessage(
-        `Video file size (${(file.size / (1024 * 1024)).toFixed(1)}MB) is too large. Please select a short clip under 1.2MB (5 to 15 seconds recommended).`
+        `Video file size (${(file.size / 1024).toFixed(0)}KB) is too large. Please select a short clip under 700KB (5 to 15 seconds recommended).`
       );
       return;
     }
@@ -302,7 +301,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                     Upload Photo or Video
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
-                    Choose an image (JPEG, PNG, WebP) or short video clip (MP4, WebM up to 30s)
+                    Choose an image (JPEG, PNG, WebP) or short video clip (MP4, WebM up to 30s, max 700KB)
                   </p>
                 </div>
               </div>

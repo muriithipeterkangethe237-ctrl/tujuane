@@ -155,13 +155,26 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={() => setActiveTab('landing')}
-              className="group whitespace-nowrap shrink-0 cursor-pointer flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-emerald-500/50 rounded-xl"
+              className={`group whitespace-nowrap shrink-0 cursor-pointer flex items-center focus:outline-none focus:ring-2 focus:ring-emerald-500/50 rounded-xl ${
+                activeTab === 'landing' ? 'gap-2.5 text-left' : 'justify-center'
+              }`}
               title="Home - Kenya Community Hub"
               aria-label="Home"
             >
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-950 p-0.5 border border-emerald-500/40 flex items-center justify-center transition-transform group-hover:scale-105 shadow-md overflow-hidden relative shrink-0">
                 <AppLogoIcon className="w-full h-full" />
               </div>
+              {/* Return the name TUJUANE on the hub surface alongside the app icon */}
+              {activeTab === 'landing' && (
+                <div>
+                  <span className="text-lg font-extrabold tracking-tight text-slate-900 dark:text-white group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
+                    TUJUANE
+                  </span>
+                  <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 font-semibold tracking-wide uppercase">
+                    Kenya Community Network
+                  </span>
+                </div>
+              )}
             </button>
           </div>
 

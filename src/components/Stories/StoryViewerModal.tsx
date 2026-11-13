@@ -9,13 +9,19 @@ import {
   Eye,
   Send,
   MapPin,
-  Play,
+  Sparkles,
+  AlertCircle,
   Pause,
-  Sparkles
+  Play
 } from 'lucide-react';
 import { UserProfile } from '../../types/chat';
 import { CitizenStory, UserStoryGroup } from '../../types/story';
-import { recordStoryView, reactToCitizenStory, deleteCitizenStory } from '../../services/storyService';
+import {
+  recordStoryView,
+  reactToCitizenStory,
+  deleteCitizenStory,
+  getRealStoryViewers
+} from '../../services/storyService';
 import { getOrCreateDirectChat, sendChatMessage } from '../../services/chatService';
 
 interface StoryViewerModalProps {
@@ -54,103 +60,173 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   onStoryDeleted,
   onViewUserProfile
 }) => {
-  const [currentGroupIndex, setCurrentGroupIndex] = useState<number>(0);
+  const [activeAuthorId, setActiveAuthorId] = useState<string | null>(null);
   const [currentStoryIndex, setCurrentStoryIndex] = useState<number>(0);
   const [progress, setProgress] = useState<number>(0);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState<boolean>(true);
+  const [mediaError, setMediaError] = useState<boolean>(false);
   const [replyText, setReplyText] = useState<string>('');
   const [isSendingReply, setIsSendingReply] = useState<boolean>(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const progressTimerRef = useRef<any>(null);
+  const wasOpenRef = useRef<boolean>(false);
 
-  // Initialize group index when opened
+  // Initialize author and reset playback state ONLY when modal opens (not on every snapshot update)
   useEffect(() => {
-    if (initialAuthorId && storyGroups.length > 0) {
-      const idx = storyGroups.findIndex((g) => g.authorId === initialAuthorId);
-      if (idx !== -1) {
-        setCurrentGroupIndex(idx);
-        setCurrentStoryIndex(0);
+    if (isOpen && !wasOpenRef.current) {
+      const targetAuthor =
+        (initialAuthorId && storyGroups.some((g) => g.authorId === initialAuthorId)
+          ? initialAuthorId
+          : storyGroups[0]?.authorId) || null;
+      setActiveAuthorId(targetAuthor);
+      setCurrentStoryIndex(0);
+      setProgress(0);
+      setIsPaused(false);
+      setMediaError(false);
+      setConfirmDeleteOpen(false);
+      setReplyText('');
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, initialAuthorId, storyGroups]);
+
+  // If modal opened just as a new story is arriving via snapshot, sync target author once available
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!activeAuthorId && storyGroups.length > 0) {
+      const targetAuthor =
+        (initialAuthorId && storyGroups.some((g) => g.authorId === initialAuthorId)
+          ? initialAuthorId
+          : storyGroups[0]?.authorId) || null;
+      setActiveAuthorId(targetAuthor);
+      setCurrentStoryIndex(0);
+      setProgress(0);
+    }
+  }, [isOpen, activeAuthorId, initialAuthorId, storyGroups]);
+
+  const resolvedGroupIndex = activeAuthorId
+    ? storyGroups.findIndex((g) => g.authorId === activeAuthorId)
+    : 0;
+  const currentGroupIndex = resolvedGroupIndex >= 0 ? resolvedGroupIndex : 0;
+  const activeGroup = storyGroups[currentGroupIndex];
+  const safeStoryIndex = activeGroup
+    ? Math.min(currentStoryIndex, Math.max(0, activeGroup.stories.length - 1))
+    : 0;
+  const activeStory: CitizenStory | undefined = activeGroup?.stories[safeStoryIndex];
+
+  // Record view only once per unique non-author citizen
+  useEffect(() => {
+    if (!isOpen || !activeStory || !currentUser?.uid) return;
+    if (activeStory.authorId === currentUser.uid) return;
+    const realViewers = getRealStoryViewers(activeStory);
+    if (realViewers.includes(currentUser.uid)) return;
+
+    recordStoryView(activeStory.id, currentUser.uid);
+  }, [isOpen, activeStory?.id, activeStory?.authorId, currentUser?.uid]);
+
+  // Reset media error & progress whenever the active story changes
+  useEffect(() => {
+    if (!isOpen || !activeStory?.id) return;
+    setProgress(0);
+    setMediaError(false);
+    setConfirmDeleteOpen(false);
+  }, [isOpen, activeStory?.id]);
+
+  // Keep HTMLVideoElement playback synced with isPaused & activeStory
+  useEffect(() => {
+    if (!isOpen || !activeStory || activeStory.type !== 'video') return;
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    if (isPaused || confirmDeleteOpen) {
+      videoEl.pause();
+    } else {
+      const playPromise = videoEl.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {
+          // Fallback to muted playback if browser blocked unmuted autoplay
+          if (videoEl) {
+            videoEl.muted = true;
+            setIsMuted(true);
+            videoEl.play().catch(() => {});
+          }
+        });
       }
     }
-  }, [initialAuthorId, storyGroups]);
-
-  const activeGroup = storyGroups[currentGroupIndex];
-  const activeStory: CitizenStory | undefined = activeGroup?.stories[currentStoryIndex];
-
-  // Auto-record view when active story changes
-  useEffect(() => {
-    if (activeStory && currentUser) {
-      recordStoryView(activeStory.id, currentUser.uid);
-    }
-  }, [activeStory?.id, currentUser?.uid]);
+  }, [isOpen, activeStory?.id, activeStory?.type, isPaused, confirmDeleteOpen]);
 
   // Navigate to next story or next author
   const handleNextStory = useCallback(() => {
-    if (!activeGroup) return;
+    if (!activeGroup) {
+      onClose();
+      return;
+    }
 
-    if (currentStoryIndex < activeGroup.stories.length - 1) {
-      setCurrentStoryIndex((prev) => prev + 1);
+    if (safeStoryIndex < activeGroup.stories.length - 1) {
+      setCurrentStoryIndex(safeStoryIndex + 1);
+      setProgress(0);
+    } else if (currentGroupIndex < storyGroups.length - 1) {
+      const nextGroup = storyGroups[currentGroupIndex + 1];
+      setActiveAuthorId(nextGroup.authorId);
+      setCurrentStoryIndex(0);
       setProgress(0);
     } else {
-      // Go to next author group if available
-      if (currentGroupIndex < storyGroups.length - 1) {
-        setCurrentGroupIndex((prev) => prev + 1);
-        setCurrentStoryIndex(0);
-        setProgress(0);
-      } else {
-        // Reached end of all stories
-        onClose();
-      }
+      onClose();
     }
-  }, [activeGroup, currentStoryIndex, currentGroupIndex, storyGroups.length, onClose]);
+  }, [activeGroup, safeStoryIndex, currentGroupIndex, storyGroups, onClose]);
 
   // Navigate to previous story or previous author
   const handlePrevStory = useCallback(() => {
-    if (currentStoryIndex > 0) {
-      setCurrentStoryIndex((prev) => prev - 1);
+    if (safeStoryIndex > 0) {
+      setCurrentStoryIndex(safeStoryIndex - 1);
       setProgress(0);
-    } else {
-      if (currentGroupIndex > 0) {
-        const prevGroup = storyGroups[currentGroupIndex - 1];
-        setCurrentGroupIndex((prev) => prev - 1);
-        setCurrentStoryIndex(prevGroup.stories.length - 1);
-        setProgress(0);
-      }
+    } else if (currentGroupIndex > 0) {
+      const prevGroup = storyGroups[currentGroupIndex - 1];
+      setActiveAuthorId(prevGroup.authorId);
+      setCurrentStoryIndex(Math.max(0, prevGroup.stories.length - 1));
+      setProgress(0);
     }
-  }, [currentStoryIndex, currentGroupIndex, storyGroups]);
+  }, [safeStoryIndex, currentGroupIndex, storyGroups]);
 
-  // Timer loop for progress bar
+  // Pure progress timer loop (never mutates external state inside setProgress updater)
   useEffect(() => {
-    if (!isOpen || !activeStory || isPaused) return;
+    if (!isOpen || !activeStory || isPaused || confirmDeleteOpen || mediaError) return;
 
-    const totalSeconds = activeStory.type === 'video' ? (activeStory.duration || 10) : (activeStory.duration || 6);
+    const totalSeconds =
+      activeStory.type === 'video' ? activeStory.duration || 15 : activeStory.duration || 6;
     const stepIntervalMs = 50;
     const progressStep = 100 / ((totalSeconds * 1000) / stepIntervalMs);
 
-    progressTimerRef.current = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(progressTimerRef.current);
-          handleNextStory();
-          return 0;
-        }
-        return prev + progressStep;
-      });
+    const timer = setInterval(() => {
+      setProgress((prev) => Math.min(100, prev + progressStep));
     }, stepIntervalMs);
 
-    return () => {
-      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
-    };
-  }, [isOpen, activeStory?.id, isPaused, handleNextStory]);
+    return () => clearInterval(timer);
+  }, [isOpen, activeStory?.id, activeStory?.type, activeStory?.duration, isPaused, confirmDeleteOpen, mediaError]);
 
-  // Keyboard navigation listener
+  // Advance cleanly once progress reaches 100%
+  useEffect(() => {
+    if (isOpen && activeStory && progress >= 100) {
+      handleNextStory();
+    }
+  }, [isOpen, activeStory, progress, handleNextStory]);
+
+  // Keyboard navigation listener (ignored when typing inside inputs/textareas)
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (document.activeElement?.tagName || '').toUpperCase();
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+        if (e.key === 'Escape') {
+          onClose();
+        }
+        return;
+      }
+
       if (e.key === 'ArrowRight' || e.key === ' ') {
         e.preventDefault();
         handleNextStory();
@@ -166,10 +242,39 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, handleNextStory, handlePrevStory, onClose]);
 
-  if (!isOpen || !activeGroup || !activeStory) return null;
+  if (!isOpen) return null;
 
-  const isOwnStory = currentUser && currentUser.uid === activeStory.authorId;
+  if (!activeGroup || !activeStory) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl select-none"
+        onClick={onClose}
+      >
+        <div
+          className="relative w-full max-w-md mx-4 rounded-3xl bg-slate-950 border border-white/10 p-8 text-center text-white space-y-3"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute top-3 right-3 p-2 text-white/70 hover:text-white rounded-full bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="w-10 h-10 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin mx-auto" />
+          <p className="text-sm font-bold">Loading story...</p>
+          <p className="text-xs text-white/60">If this story expired or was removed, tap close.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const isOwnStory = Boolean(currentUser && currentUser.uid === activeStory.authorId);
   const isVideo = activeStory.type === 'video';
+  const authorDisplayName = activeStory.authorName || 'Citizen Member';
+  const realViewers = getRealStoryViewers(activeStory);
+  const realViewsCount = realViewers.length;
 
   const formatRelativeTime = (isoString: string) => {
     try {
@@ -185,13 +290,19 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   };
 
   const handleSendReaction = async (emoji: string) => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      setFeedbackToast('Sign in to react to stories');
+      setTimeout(() => setFeedbackToast(null), 2000);
+      return;
+    }
     try {
       await reactToCitizenStory(activeStory.id, currentUser.uid, emoji);
       setFeedbackToast(`Reacted with ${emoji}`);
       setTimeout(() => setFeedbackToast(null), 2000);
     } catch (err) {
       console.error('Error reacting to story:', err);
+      setFeedbackToast('Could not save reaction');
+      setTimeout(() => setFeedbackToast(null), 2000);
     }
   };
 
@@ -201,10 +312,9 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
 
     setIsSendingReply(true);
     try {
-      // Send direct chat message referencing story
       const targetUser: UserProfile = {
         uid: activeStory.authorId,
-        displayName: activeStory.authorName,
+        displayName: authorDisplayName,
         email: '',
         photoURL: activeStory.authorPhotoUrl,
         county: activeStory.authorCounty || 'Kenya',
@@ -233,18 +343,31 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
     }
   };
 
-  const handleDeleteStory = async () => {
-    if (!window.confirm('Delete this story? This action cannot be undone.')) return;
+  const handleConfirmDeleteStory = async () => {
+    setIsDeleting(true);
     try {
-      await deleteCitizenStory(activeStory.id);
-      if (onStoryDeleted) onStoryDeleted(activeStory.id);
+      const deletedId = activeStory.id;
+      await deleteCitizenStory(deletedId);
+      setConfirmDeleteOpen(false);
+      if (onStoryDeleted) onStoryDeleted(deletedId);
       if (activeGroup.stories.length <= 1) {
-        onClose();
+        if (currentGroupIndex < storyGroups.length - 1) {
+          setActiveAuthorId(storyGroups[currentGroupIndex + 1].authorId);
+          setCurrentStoryIndex(0);
+          setProgress(0);
+        } else {
+          onClose();
+        }
       } else {
-        handleNextStory();
+        setCurrentStoryIndex((prev) => Math.max(0, Math.min(prev, activeGroup.stories.length - 2)));
+        setProgress(0);
       }
     } catch (err) {
       console.error('Error deleting story:', err);
+      setFeedbackToast('Could not delete story.');
+      setTimeout(() => setFeedbackToast(null), 2500);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -265,18 +388,14 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
       <div
         className="relative w-full h-full max-w-md max-h-[100dvh] md:max-h-[92vh] md:rounded-3xl overflow-hidden bg-slate-950 flex flex-col justify-between shadow-2xl border border-white/10"
         onClick={(e) => e.stopPropagation()}
-        onMouseDown={() => setIsPaused(true)}
-        onMouseUp={() => setIsPaused(false)}
-        onTouchStart={() => setIsPaused(true)}
-        onTouchEnd={() => setIsPaused(false)}
       >
         {/* TOP SEGMENTS PROGRESS BAR */}
         <div className="absolute top-0 inset-x-0 z-30 p-3 pt-3.5 flex items-center gap-1.5 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
           {activeGroup.stories.map((story, idx) => {
             let fillWidth = '0%';
-            if (idx < currentStoryIndex) {
+            if (idx < safeStoryIndex) {
               fillWidth = '100%';
-            } else if (idx === currentStoryIndex) {
+            } else if (idx === safeStoryIndex) {
               fillWidth = `${progress}%`;
             }
             return (
@@ -304,7 +423,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
               if (onViewUserProfile) {
                 onViewUserProfile({
                   uid: activeStory.authorId,
-                  displayName: activeStory.authorName,
+                  displayName: authorDisplayName,
                   email: '',
                   photoURL: activeStory.authorPhotoUrl,
                   county: activeStory.authorCounty || 'Kenya',
@@ -312,23 +431,23 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                 });
               }
             }}
-            className="flex items-center gap-2.5 cursor-pointer group"
+            className="flex items-center gap-2.5 cursor-pointer group min-w-0"
           >
             {activeStory.authorPhotoUrl ? (
               <img
                 src={activeStory.authorPhotoUrl}
-                alt={activeStory.authorName}
-                className="w-9 h-9 rounded-full object-cover border-2 border-emerald-400 group-hover:scale-105 transition-transform"
+                alt={authorDisplayName}
+                className="w-9 h-9 rounded-full object-cover border-2 border-emerald-400 group-hover:scale-105 transition-transform shrink-0"
               />
             ) : (
-              <div className="w-9 h-9 rounded-full bg-emerald-500 text-slate-950 font-black flex items-center justify-center text-xs border border-white/20">
-                {activeStory.authorName.charAt(0)}
+              <div className="w-9 h-9 rounded-full bg-emerald-500 text-slate-950 font-black flex items-center justify-center text-xs border border-white/20 shrink-0">
+                {authorDisplayName.charAt(0).toUpperCase()}
               </div>
             )}
-            <div>
+            <div className="min-w-0">
               <div className="font-extrabold text-xs sm:text-sm text-white flex items-center gap-1.5 truncate">
-                <span className="truncate group-hover:underline">{activeStory.authorName}</span>
-                <span className="text-[10px] text-white/70 font-normal">
+                <span className="truncate group-hover:underline">{authorDisplayName}</span>
+                <span className="text-[10px] text-white/70 font-normal shrink-0">
                   · {formatRelativeTime(activeStory.createdAt)}
                 </span>
               </div>
@@ -341,14 +460,25 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsPaused((p) => !p)}
+              className="p-2 text-white/80 hover:text-white rounded-full bg-black/40 hover:bg-black/60 transition-colors cursor-pointer"
+              title={isPaused ? 'Resume story' : 'Pause story'}
+              aria-label={isPaused ? 'Resume story' : 'Pause story'}
+            >
+              {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+            </button>
+
             {isVideo && (
               <button
                 type="button"
                 onClick={() => {
+                  const nextMuted = !isMuted;
+                  setIsMuted(nextMuted);
                   if (videoRef.current) {
-                    videoRef.current.muted = !isMuted;
-                    setIsMuted(!isMuted);
+                    videoRef.current.muted = nextMuted;
                   }
                 }}
                 className="p-2 text-white/80 hover:text-white rounded-full bg-black/40 hover:bg-black/60 transition-colors cursor-pointer"
@@ -361,7 +491,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
             {isOwnStory && (
               <button
                 type="button"
-                onClick={handleDeleteStory}
+                onClick={() => setConfirmDeleteOpen(true)}
                 className="p-2 text-rose-400 hover:text-rose-300 rounded-full bg-black/40 hover:bg-black/60 transition-colors cursor-pointer"
                 title="Delete this story"
               >
@@ -382,41 +512,73 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
         </div>
 
         {/* MEDIA DISPLAY (PHOTO OR VIDEO) */}
-        <div className="relative flex-1 w-full h-full flex items-center justify-center bg-black">
-          {isVideo ? (
+        <div
+          className="relative flex-1 w-full h-full flex items-center justify-center bg-black"
+          onMouseDown={() => setIsPaused(true)}
+          onMouseUp={() => setIsPaused(false)}
+          onMouseLeave={() => setIsPaused(false)}
+          onTouchStart={() => setIsPaused(true)}
+          onTouchEnd={() => setIsPaused(false)}
+        >
+          {mediaError ? (
+            <div className="px-6 text-center text-white/80 space-y-2 z-10">
+              <AlertCircle className="w-9 h-9 text-amber-400 mx-auto" />
+              <p className="text-sm font-bold">Could not load this story media</p>
+              <button
+                type="button"
+                onClick={handleNextStory}
+                className="px-4 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-xs font-bold text-white cursor-pointer"
+              >
+                Skip to Next
+              </button>
+            </div>
+          ) : isVideo ? (
             <video
+              key={activeStory.id}
               ref={videoRef}
               src={activeStory.mediaUrl}
               autoPlay
               playsInline
               muted={isMuted}
               onEnded={handleNextStory}
+              onError={() => setMediaError(true)}
               className="w-full h-full object-contain"
             />
           ) : (
             <img
+              key={activeStory.id}
               src={activeStory.mediaUrl}
               alt="Citizen story"
+              onError={() => setMediaError(true)}
               className="w-full h-full object-contain"
             />
           )}
 
-          {/* TAP NAVIGATION ZONES (Left / Right) */}
+          {/* TAP NAVIGATION ZONES (Left / Right, avoiding header & footer controls) */}
           <div
-            className="absolute left-0 top-16 bottom-24 w-1/3 z-20 cursor-pointer"
-            onClick={handlePrevStory}
+            className="absolute left-0 top-24 bottom-32 w-1/3 z-20 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              handlePrevStory();
+            }}
             title="Previous story"
           />
           <div
-            className="absolute right-0 top-16 bottom-24 w-1/3 z-20 cursor-pointer"
-            onClick={handleNextStory}
+            className="absolute right-0 top-24 bottom-32 w-1/3 z-20 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleNextStory();
+            }}
             title="Next story"
           />
 
           {/* Desktop Hover Navigation Buttons */}
           <button
             type="button"
-            onClick={handlePrevStory}
+            onClick={(e) => {
+              e.stopPropagation();
+              handlePrevStory();
+            }}
             className="hidden md:flex absolute -left-14 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white items-center justify-center backdrop-blur-md transition-all cursor-pointer shadow-lg"
             title="Previous"
           >
@@ -424,7 +586,10 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
           </button>
           <button
             type="button"
-            onClick={handleNextStory}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleNextStory();
+            }}
             className="hidden md:flex absolute -right-14 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white items-center justify-center backdrop-blur-md transition-all cursor-pointer shadow-lg"
             title="Next"
           >
@@ -432,8 +597,44 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
           </button>
         </div>
 
-        {/* BOTTOM STORY OVERLAY: Caption, Viewers, Quick Reactions & Reply */}
-        <div className="absolute bottom-0 inset-x-0 z-30 p-4 space-y-2.5 bg-gradient-to-t from-black/90 via-black/70 to-transparent">
+        {/* Inline Delete Confirmation Overlay */}
+        {confirmDeleteOpen && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute inset-0 z-40 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
+          >
+            <div className="bg-slate-900 border border-white/15 rounded-2xl p-5 max-w-xs w-full text-center space-y-4 shadow-2xl">
+              <h4 className="text-sm font-extrabold text-white">Delete this story?</h4>
+              <p className="text-xs text-white/70">
+                This story will be permanently removed from the 24h tray.
+              </p>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setConfirmDeleteOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={handleConfirmDeleteStory}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer"
+                >
+                  {isDeleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* BOTTOM STORY OVERLAY: Caption, Real Views, Quick Reactions & Reply */}
+        <div
+          className="absolute bottom-0 inset-x-0 z-30 p-4 space-y-2.5 bg-gradient-to-t from-black/90 via-black/70 to-transparent"
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Caption */}
           {activeStory.caption && (
             <div className="p-3 bg-black/60 backdrop-blur-md rounded-2xl text-white text-xs sm:text-sm text-center font-medium border border-white/10 shadow-lg">
@@ -441,15 +642,21 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
             </div>
           )}
 
-          {/* Viewers & Reaction Pills */}
-          <div className="flex items-center justify-between text-xs text-white/80">
-            <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10">
-              <Eye className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="font-bold">{activeStory.viewsCount || 0} views</span>
-            </div>
+          {/* Real Unique Viewers & Reaction Pills */}
+          <div className="flex items-center justify-between gap-2 text-xs text-white/80">
+            {isOwnStory ? (
+              <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 shrink-0">
+                <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="font-bold">
+                  {realViewsCount} {realViewsCount === 1 ? 'view' : 'views'}
+                </span>
+              </div>
+            ) : (
+              <div />
+            )}
 
             {/* Quick Reactions Bar */}
-            <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 max-w-[210px] sm:max-w-xs overflow-x-auto scrollbar-none">
+            <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 max-w-[230px] sm:max-w-xs overflow-x-auto scrollbar-none">
               {QUICK_STORY_REACTIONS.map((r) => (
                 <button
                   key={r.emoji}
@@ -471,7 +678,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                 type="text"
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
-                placeholder={`Reply to ${activeStory.authorName}...`}
+                placeholder={`Reply to ${authorDisplayName}...`}
                 className="flex-1 px-4 py-2 bg-black/60 border border-white/20 rounded-full text-xs text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-400 backdrop-blur-md"
               />
               <button

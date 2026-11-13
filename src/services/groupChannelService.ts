@@ -22,85 +22,8 @@ import {
   MessageReplyReference
 } from '../types/chat';
 
-// Predefined official community channels
-export const DEFAULT_CHANNELS: CommunityChannel[] = [
-  {
-    id: 'general-kenya',
-    name: 'General Kenya',
-    description: 'National open lounge for Kenyans across all 47 counties.',
-    category: 'topic',
-    icon: '🇰🇪',
-    memberCount: 1420,
-    isOfficial: true
-  },
-  {
-    id: 'nairobi-hub',
-    name: 'Nairobi Central',
-    description: 'Nairobi county discussions, matatu routes, events, and town life.',
-    category: 'county',
-    countyScope: 'Nairobi',
-    icon: '🏙️',
-    memberCount: 890,
-    isOfficial: true
-  },
-  {
-    id: 'mombasa-pwani',
-    name: 'Mombasa Pwani',
-    description: 'Coast updates, beach vibes, Swahili culture, and regional news.',
-    category: 'county',
-    countyScope: 'Mombasa',
-    icon: '🌊',
-    memberCount: 420,
-    isOfficial: true
-  },
-  {
-    id: 'nakuru-rift',
-    name: 'Nakuru Rift',
-    description: 'Nakuru city life, Rift Valley agriculture, and community alerts.',
-    category: 'county',
-    countyScope: 'Nakuru',
-    icon: '🦩',
-    memberCount: 310,
-    isOfficial: true
-  },
-  {
-    id: 'kisumu-dala',
-    name: 'Kisumu Dala',
-    description: 'Lakeside conversations, fish spots, and Kisumu county news.',
-    category: 'county',
-    countyScope: 'Kisumu',
-    icon: '🐟',
-    memberCount: 360,
-    isOfficial: true
-  },
-  {
-    id: 'tech-and-hustle',
-    name: 'Tech & Hustle Kenya',
-    description: 'Kenyan devs, designers, online freelancing, and side hustles.',
-    category: 'hustle',
-    icon: '💻',
-    memberCount: 780,
-    isOfficial: true
-  },
-  {
-    id: 'campus-vibes',
-    name: 'Campus Kenya',
-    description: 'University & college students sharing advice, hostels, and fun.',
-    category: 'campus',
-    icon: '🎓',
-    memberCount: 650,
-    isOfficial: true
-  },
-  {
-    id: 'county-announcements',
-    name: 'County Notices',
-    description: 'Important community announcements, local tenders, and youth forums.',
-    category: 'announcements',
-    icon: '📢',
-    memberCount: 1100,
-    isOfficial: true
-  }
-];
+// Predefined sample channels removed — chats use real 1-on-1 conversations and user-created groups
+export const DEFAULT_CHANNELS: CommunityChannel[] = [];
 
 /**
  * Subscribe to messages in a public channel

@@ -19,25 +19,18 @@ code, pre, kbd, .font-mono {
   font-feature-settings: "tnum" 1;
 }
 
-/* Custom smooth scroll and subtle scrollbar */
+/* Custom smooth scroll without visible side scroll indicator */
 html {
   scroll-behavior: smooth;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.4);
-  border-radius: 9999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.6);
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }

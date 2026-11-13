@@ -5,8 +5,7 @@ import {
   deleteDoc,
   updateDoc,
   onSnapshot,
-  arrayUnion,
-  increment,
+  runTransaction,
   query,
   orderBy
 } from 'firebase/firestore';
@@ -15,6 +14,18 @@ import { UserProfile } from '../types/chat';
 import { CitizenStory, CreateStoryParams, UserStoryGroup } from '../types/story';
 
 const STORIES_COLLECTION = 'stories';
+
+/**
+ * Helper to compute real unique viewers excluding the story author
+ */
+export function getRealStoryViewers(story: Pick<CitizenStory, 'viewers' | 'authorId'>): string[] {
+  const rawViewers = Array.isArray(story.viewers) ? story.viewers : [];
+  return Array.from(
+    new Set(
+      rawViewers.filter((uid) => typeof uid === 'string' && uid.length > 0 && uid !== story.authorId)
+    )
+  );
+}
 
 /**
  * Publish a new photo or video story
@@ -88,11 +99,15 @@ export function subscribeToActiveStories(
         // Verify 24h expiration
         const expiresMs = data.expiresAt ? new Date(data.expiresAt).getTime() : 0;
         if (!expiresMs || expiresMs > nowMs) {
+          const cleanViewers = getRealStoryViewers({
+            viewers: Array.isArray(data.viewers) ? data.viewers : [],
+            authorId: data.authorId
+          });
           activeStories.push({
             ...data,
             id: d.id,
-            viewers: Array.isArray(data.viewers) ? data.viewers : [],
-            viewsCount: typeof data.viewsCount === 'number' ? data.viewsCount : 0,
+            viewers: cleanViewers,
+            viewsCount: cleanViewers.length,
             reactions: data.reactions || {}
           });
         }
@@ -108,16 +123,42 @@ export function subscribeToActiveStories(
 }
 
 /**
- * Record that a user viewed a story (idempotent, only increments once per user)
+ * Record that a user viewed a story (idempotent, never counts the author or repeats)
  */
 export async function recordStoryView(storyId: string, userId: string): Promise<void> {
   if (!storyId || !userId) return;
   const storyRef = doc(db, STORIES_COLLECTION, storyId);
 
   try {
-    await updateDoc(storyRef, {
-      viewers: arrayUnion(userId),
-      viewsCount: increment(1)
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(storyRef);
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+      // Never count the author viewing their own story
+      if (data.authorId === userId) return;
+
+      const rawViewers: string[] = Array.isArray(data.viewers) ? data.viewers : [];
+      const cleanViewers = Array.from(
+        new Set(rawViewers.filter((uid) => typeof uid === 'string' && uid.length > 0 && uid !== data.authorId))
+      );
+
+      if (cleanViewers.includes(userId)) {
+        // Normalize previously inflated viewsCount or author self-view if present
+        if (data.viewsCount !== cleanViewers.length || rawViewers.length !== cleanViewers.length) {
+          transaction.update(storyRef, {
+            viewers: cleanViewers,
+            viewsCount: cleanViewers.length
+          });
+        }
+        return;
+      }
+
+      const updatedViewers = [...cleanViewers, userId];
+      transaction.update(storyRef, {
+        viewers: updatedViewers,
+        viewsCount: updatedViewers.length
+      });
     });
   } catch (error) {
     console.warn('Error recording story view:', error);
@@ -140,7 +181,8 @@ export async function reactToCitizenStory(
       [`reactions.${userId}`]: emoji
     });
   } catch (error) {
-    console.warn('Error reacting to story:', error);
+    handleFirestoreError(error, OperationType.UPDATE, `stories/${storyId}`);
+    throw error;
   }
 }
 
@@ -170,7 +212,7 @@ export function groupStoriesByAuthor(
     if (!groupMap[story.authorId]) {
       groupMap[story.authorId] = {
         authorId: story.authorId,
-        authorName: story.authorName,
+        authorName: story.authorName || 'Citizen Member',
         authorPhotoUrl: story.authorPhotoUrl,
         authorCounty: story.authorCounty,
         hasUnviewed: false,
@@ -187,7 +229,7 @@ export function groupStoriesByAuthor(
     group.stories.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     group.lastStoryTime = group.stories[group.stories.length - 1].createdAt;
     group.hasUnviewed = currentUserId
-      ? group.stories.some((s) => !s.viewers?.includes(currentUserId))
+      ? group.stories.some((s) => s.authorId !== currentUserId && !s.viewers?.includes(currentUserId))
       : true;
   });
 

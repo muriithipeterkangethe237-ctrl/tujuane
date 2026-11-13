@@ -215,12 +215,12 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
 
   if (isLoadingPolls) {
     return (
-      <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-xs text-center transition-colors">
-        <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-3 animate-pulse">
-          <Vote className="w-6 h-6" />
+      <div className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs text-center transition-colors ${compact ? 'rounded-2xl p-4' : 'rounded-3xl p-6'}`}>
+        <div className={`rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-2 animate-pulse ${compact ? 'w-9 h-9' : 'w-11 h-11'}`}>
+          <Vote className={compact ? 'w-4 h-4' : 'w-5 h-5'} />
         </div>
-        <h3 className="font-bold text-slate-800 dark:text-slate-100">Inapakia Kura za Jamii...</h3>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Loading real-time community polls across Kenya</p>
+        <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">Inapakia Kura za Jamii...</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Loading real-time community polls across Kenya</p>
       </div>
     );
   }
@@ -229,11 +229,11 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
   const totalVotesSafe = Math.max(1, activePoll?.totalVotes ?? 0);
 
   return (
-    <div className="relative bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-md overflow-hidden transition-all">
+    <div className={`relative bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 overflow-hidden transition-all ${compact ? 'rounded-2xl shadow-sm' : 'rounded-3xl shadow-md'}`}>
       {/* Toast message */}
       {voteToast && (
-        <div className="absolute top-4 right-4 z-30 bg-slate-900 text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow-xl flex items-center gap-2 animate-bounce">
-          <Check className="w-4 h-4 text-emerald-400" />
+        <div className="absolute top-3 right-3 z-30 bg-slate-900 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow-xl flex items-center gap-1.5 animate-bounce">
+          <Check className="w-3.5 h-3.5 text-emerald-400" />
           <span>{voteToast}</span>
         </div>
       )}
@@ -241,7 +241,7 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
       {activePoll ? (
       <>
       {/* Decorative Kenyan Flag Top Ribbon */}
-      <div className="h-1.5 w-full flex">
+      <div className="h-1 w-full flex">
         <div className="flex-1 bg-black" />
         <div className="w-1.5 bg-white" />
         <div className="flex-1 bg-red-600" />
@@ -250,16 +250,16 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
       </div>
 
       {/* Header section */}
-      <div className="p-5 sm:p-6 pb-4 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-b from-slate-50/70 dark:from-slate-800/40 to-white dark:to-slate-900">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-600 text-white shadow-xs">
-              <Vote className="w-3.5 h-3.5" />
-              <span>Daily Community Poll</span>
+      <div className={`border-b border-slate-100 dark:border-slate-800 bg-gradient-to-b from-slate-50/70 dark:from-slate-800/40 to-white dark:to-slate-900 ${compact ? 'px-3.5 py-2.5 sm:px-4 sm:py-3' : 'p-4 sm:p-5 pb-3.5'}`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <span className={`inline-flex items-center gap-1 rounded-full font-bold bg-emerald-600 text-white shadow-xs ${compact ? 'px-2.5 py-0.5 text-[11px]' : 'px-2.5 py-0.5 text-xs'}`}>
+              <Vote className="w-3 h-3" />
+              <span>Daily Poll</span>
             </span>
 
-            <span className={`inline-flex items-center gap-1 px-2.5 py-0.8 rounded-lg text-[11px] font-semibold border ${categoryBadge?.bg}`}>
-              <Sparkles className="w-3 h-3" />
+            <span className={`inline-flex items-center gap-1 rounded-lg font-semibold border ${compact ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-0.5 text-[11px]'} ${categoryBadge?.bg}`}>
+              <Sparkles className="w-2.5 h-2.5" />
               <span>{categoryBadge?.label}</span>
             </span>
 
@@ -270,25 +270,25 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
           </div>
 
           {/* Carousel controls & create poll */}
-          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+          <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
             {filteredPolls.length > 1 && (
-              <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 border border-slate-200 dark:border-slate-700">
                 <button
                   onClick={handlePrevPoll}
                   title="Previous Poll"
-                  className="p-1.5 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+                  className="p-1 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors cursor-pointer"
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
-                <span className="px-2 text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                  {selectedPollIndex + 1} / {filteredPolls.length}
+                <span className="px-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                  {selectedPollIndex + 1}/{filteredPolls.length}
                 </span>
                 <button
                   onClick={handleNextPoll}
                   title="Next Poll"
-                  className="p-1.5 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+                  className="p-1 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors cursor-pointer"
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
@@ -298,16 +298,16 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
                 if (!currentUser) loginWithGoogle();
                 else setIsModalOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-500 text-white text-xs font-semibold transition-all shadow-xs cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-500 text-white text-[11px] font-semibold transition-all shadow-xs cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-3 h-3" />
               <span className="hidden sm:inline">Propose Poll</span>
             </button>
           </div>
         </div>
 
         {/* Category Pill Filters */}
-        <div className="flex items-center gap-1.5 mt-4 overflow-x-auto pb-1 scrollbar-none text-xs">
+        <div className={`flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none ${compact ? 'mt-2 text-[11px]' : 'mt-3 text-xs'}`}>
           {[
             { id: 'all', label: 'All Polls' },
             { id: 'culture', label: 'Utamaduni (Culture)' },
@@ -321,7 +321,7 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
                 setSelectedCategory(cat.id);
                 setSelectedPollIndex(0);
               }}
-              className={`px-3 py-1 rounded-xl font-medium transition-all cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-0.5 rounded-lg font-medium transition-all cursor-pointer whitespace-nowrap ${
                 selectedCategory === cat.id
                   ? 'bg-slate-900 dark:bg-emerald-600 text-white font-bold shadow-xs'
                   : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
@@ -333,14 +333,14 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
         </div>
 
         {/* Poll Title & Description */}
-        <div className="mt-4">
+        <div className={compact ? 'mt-2' : 'mt-3'}>
           <div className="flex items-start gap-2">
-            <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-snug">
+            <h2 className={`font-extrabold text-slate-900 dark:text-white tracking-tight leading-snug ${compact ? 'text-sm sm:text-base' : 'text-base sm:text-lg'}`}>
               {activePoll.title}
             </h2>
           </div>
           {activePoll.description && (
-            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">
+            <p className={`text-slate-600 dark:text-slate-300 leading-snug ${compact ? 'text-[11px] sm:text-xs mt-0.5' : 'text-xs sm:text-sm mt-1'}`}>
               {activePoll.description}
             </p>
           )}
@@ -348,7 +348,7 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
       </div>
 
       {/* Options & Live Voting Body */}
-      <div className="p-5 sm:p-6 space-y-3">
+      <div className={compact ? 'px-3.5 py-3 sm:px-4 space-y-2' : 'p-4 sm:p-5 space-y-2.5'}>
         {activePoll.options.map((option) => {
           const isSelected = userVoteOptionId === option.id;
           const voteCount = option.votesCount || 0;
@@ -360,7 +360,7 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
             <div
               key={option.id}
               onClick={() => handleCastVote(option.id)}
-              className={`relative overflow-hidden rounded-2xl border-2 transition-all cursor-pointer group ${
+              className={`relative overflow-hidden rounded-xl transition-all cursor-pointer group ${compact ? 'border' : 'border-2'} ${
                 isSelected
                   ? 'border-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/30 shadow-xs'
                   : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-800/70 hover:bg-slate-50/70 dark:hover:bg-slate-800'
@@ -376,40 +376,40 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
                 style={{ width: `${percentage}%` }}
               />
 
-              <div className="relative z-10 p-3.5 sm:p-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
+              <div className={`relative z-10 flex items-center justify-between ${compact ? 'px-3 py-2 gap-2.5' : 'px-3.5 py-2.5 sm:py-3 gap-3'}`}>
+                <div className="flex items-center gap-2.5 min-w-0">
                   {/* Selection Radio / Check Indicator */}
                   <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 border transition-all ${
+                    className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border transition-all ${
                       isSelected
                         ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
                         : 'border-slate-300 dark:border-slate-600 group-hover:border-slate-400 dark:group-hover:border-slate-500 bg-white dark:bg-slate-700'
                     }`}
                   >
                     {isSelected ? (
-                      <CheckCircle2 className="w-4 h-4 fill-emerald-600 text-white" />
+                      <CheckCircle2 className="w-3.5 h-3.5 fill-emerald-600 text-white" />
                     ) : (
-                      <div className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-500 group-hover:bg-slate-400 dark:group-hover:bg-slate-400" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-500 group-hover:bg-slate-400 dark:group-hover:bg-slate-400" />
                     )}
                   </div>
 
                   {/* Option Text and Emoji */}
                   <div className="min-w-0">
-                    <span className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 block break-words">
-                      {option.emoji && <span className="mr-2 text-base">{option.emoji}</span>}
+                    <span className={`font-semibold text-slate-800 dark:text-slate-100 block break-words leading-snug ${compact ? 'text-xs' : 'text-xs sm:text-sm'}`}>
+                      {option.emoji && <span className="mr-1.5 text-sm">{option.emoji}</span>}
                       {option.text}
                     </span>
                     {isSelected && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider mt-0.5">
-                        <Check className="w-3 h-3 stroke-[3]" /> Kura Yako (Your Vote)
+                        <Check className="w-2.5 h-2.5 stroke-[3]" /> Kura Yako
                       </span>
                     )}
                   </div>
                 </div>
 
                 {/* Percentage & Vote Count */}
-                <div className="text-right shrink-0">
-                  <div className={`text-sm sm:text-base font-extrabold font-mono ${
+                <div className="text-right shrink-0 flex items-baseline gap-1.5 sm:block">
+                  <div className={`font-extrabold font-mono ${compact ? 'text-xs sm:text-sm' : 'text-sm sm:text-base'} ${
                     isSelected ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-100'
                   }`}>
                     {percentage}%
@@ -424,16 +424,16 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
         })}
 
         {/* Footer Meta: Total votes, live pulse indicator & engagement */}
-        <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-          <div className="flex items-center gap-3">
+        <div className={`border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between text-slate-500 dark:text-slate-400 ${compact ? 'pt-2 mt-2 gap-2 text-[11px]' : 'pt-2.5 mt-2.5 gap-2.5 text-xs'}`}>
+          <div className="flex items-center gap-2.5">
             <span className="flex items-center gap-1 font-bold text-slate-700 dark:text-slate-300">
               <Users className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
               <span>{activePoll.totalVotes.toLocaleString()} Citizens Voted</span>
             </span>
 
             <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold text-[11px]">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
-              <span>Live Updates</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping inline-block" />
+              <span>Live</span>
             </span>
           </div>
 
@@ -441,28 +441,28 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
             {!currentUser ? (
               <button
                 onClick={loginWithGoogle}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/80 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/80 transition-colors cursor-pointer"
               >
-                <Lock className="w-3.5 h-3.5" />
-                <span>Sign in with Google to Vote</span>
+                <Lock className="w-3 h-3" />
+                <span>Sign in to Vote</span>
               </button>
             ) : userVoteOptionId ? (
               <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                Tap another option anytime to change your ballot
+                Tap another option anytime to change
               </span>
             ) : (
               <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                Click any option above to cast your vote
+                Tap any option to vote
               </span>
             )}
 
             {onDiscussInFeed && (
               <button
                 onClick={() => onDiscussInFeed(activePoll.title)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 title="Discuss this topic in community feed"
               >
-                <MessageSquare className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                <MessageSquare className="w-3 h-3 text-slate-500 dark:text-slate-400" />
                 <span className="hidden sm:inline">Discuss</span>
               </button>
             )}
@@ -471,12 +471,12 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
       </div>
       </>
       ) : (
-        <div className="p-8 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-3">
-            <Vote className="w-6 h-6" />
+        <div className={`text-center ${compact ? 'p-5' : 'p-7'}`}>
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-2.5">
+            <Vote className="w-5 h-5" />
           </div>
-          <h3 className="font-bold text-slate-800 dark:text-slate-100">No public polls right now</h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">No public polls right now</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Earlier polls are hidden. Propose a new poll for the community.
           </p>
           <button
@@ -484,9 +484,9 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
               if (!currentUser) loginWithGoogle();
               else setIsModalOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-xl bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-500 text-white text-sm font-semibold transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 mt-3 px-3.5 py-1.5 rounded-xl bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-500 text-white text-xs font-semibold transition-colors cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>Propose Poll</span>
           </button>
         </div>

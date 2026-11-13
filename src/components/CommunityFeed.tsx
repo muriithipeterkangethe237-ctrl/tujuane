@@ -77,7 +77,8 @@ import {
   MoreVertical,
   CornerUpLeft,
   Palette,
-  Smile
+  Smile,
+  Vote
 } from 'lucide-react';
 
 export interface ExternalCreateRequest {
@@ -119,7 +120,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [selectedCounty, setSelectedCounty] = useState<string>('All');
   const [sortBy, setSortBy] = useState<'latest' | 'popular'>('latest');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showDailyPoll, setShowDailyPoll] = useState(true);
+  const [showDailyPoll, setShowDailyPoll] = useState(false);
 
   // Post creation modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -952,31 +953,6 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         </div>
       )}
 
-      {/* Feed Action Header: Add Discussion Button */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
-        <div>
-          <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-            <span>Community Feed</span>
-            <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 rounded-full text-[10px] font-bold">
-              47 Counties
-            </span>
-          </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Share updates, hustle stories, and neighborhood news across Kenya
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={currentUser ? handleOpenCreateModal : () => openAuthModal('register')}
-            className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md hover:shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer"
-            title="Choose post type: Discussion, Photo, 24h Story, Jobs, News or Question"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Create Post</span>
-          </button>
-        </div>
-      </div>
 
       {/* Citizen 24h Stories Bar (Pictures & Videos) */}
       <CitizenStoriesBar
@@ -986,29 +962,33 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         onViewUserProfile={onViewUserProfile}
       />
 
-      {/* Daily Community Poll Interactive Feature */}
+      {/* Daily Community Poll Interactive Feature (Minimized slim bar by default) */}
       <section aria-label="Daily Community Poll" className="space-y-2">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping inline-block" />
-            <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-              <span>Today's Featured Citizen Poll</span>
-              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
-                Live Voting
-              </span>
-            </h2>
+        <button
+          type="button"
+          onClick={() => setShowDailyPoll((prev) => !prev)}
+          aria-expanded={showDailyPoll}
+          className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700/70 shadow-2xs transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <Vote className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+              Daily Citizen Polls
+            </span>
+            <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-emerald-200/70 dark:border-emerald-800/60 shrink-0">
+              Live
+            </span>
           </div>
-          <button
-            onClick={() => setShowDailyPoll(!showDailyPoll)}
-            className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition-colors"
-          >
-            <span>{showDailyPoll ? 'Hide Poll' : 'Show Poll'}</span>
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 shrink-0">
+            <span>{showDailyPoll ? 'Minimize' : 'Expand'}</span>
             {showDailyPoll ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-        </div>
+          </span>
+        </button>
 
         {showDailyPoll && (
           <DailyCommunityPoll
+            compact
             onDiscussInFeed={(topicTitle) => {
               setSearchQuery(topicTitle.slice(0, 25));
               window.scrollTo({ top: 600, behavior: 'smooth' });

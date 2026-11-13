@@ -6,7 +6,6 @@ import {
   UserProfile,
   MessageAttachment,
   MessageReplyReference,
-  CommunityChannel,
   GroupChat,
   ChannelMessage,
   InAppNotification
@@ -28,9 +27,6 @@ import {
   subscribeToUserPresence
 } from '../../services/chatService';
 import {
-  DEFAULT_CHANNELS,
-  subscribeToChannelMessages,
-  sendChannelMessage,
   createGroupChat,
   subscribeToGroups,
   joinGroupChat,
@@ -65,7 +61,6 @@ import {
   Ban,
   FileSpreadsheet,
   AlertCircle,
-  Hash,
   Plus,
   Bell,
   BellOff,
@@ -121,11 +116,11 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     unmuteUser
   } = useAuth();
 
-  // Primary navigation tabs: Direct 1-on-1, Channels, Groups, Members
-  const [activeTab, setActiveTab] = useState<'direct' | 'channels' | 'groups' | 'members'>('direct');
+  // Primary navigation tabs: Direct 1-on-1, Groups, Citizens
+  const [activeTab, setActiveTab] = useState<'direct' | 'groups' | 'members'>('direct');
 
   // Active chat session modes
-  const [activeChatMode, setActiveChatMode] = useState<'direct' | 'channel' | 'group'>('direct');
+  const [activeChatMode, setActiveChatMode] = useState<'direct' | 'group'>('direct');
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activePartner, setActivePartner] = useState<UserProfile | null>(null);
 
@@ -139,17 +134,14 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     lastSeen?: string;
     lastSeenText: string;
   }>({ isOnline: false, lastSeenText: 'Offline' });
-  const [activeChannel, setActiveChannel] = useState<CommunityChannel | null>(null);
   const [activeGroup, setActiveGroup] = useState<GroupChat | null>(null);
 
   // Data states
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [directMessages, setDirectMessages] = useState<ChatMessage[]>([]);
-  const [channelMessages, setChannelMessages] = useState<ChannelMessage[]>([]);
   const [groupMessages, setGroupMessages] = useState<ChannelMessage[]>([]);
   const [communityUsers, setCommunityUsers] = useState<UserProfile[]>([]);
   const [communityGroups, setCommunityGroups] = useState<GroupChat[]>([]);
-  const [channels] = useState<CommunityChannel[]>(DEFAULT_CHANNELS);
 
   // Notifications state
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
@@ -180,7 +172,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   const [actionModalMessage, setActionModalMessage] = useState<ChatMessage | null>(null);
   const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
   const [forwardSearch, setForwardSearch] = useState('');
-  const [forwardTab, setForwardTab] = useState<'citizens' | 'channels' | 'groups'>('citizens');
+  const [forwardTab, setForwardTab] = useState<'citizens' | 'groups'>('citizens');
   const [isForwardingSending, setIsForwardingSending] = useState(false);
   const [chatToast, setChatToast] = useState<string | null>(null);
 
@@ -387,21 +379,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     return () => unsub();
   }, [activeChatId, activeChatMode, currentUser]);
 
-  // Subscribe to active channel messages
-  useEffect(() => {
-    if (activeChatMode !== 'channel' || !activeChannel) {
-      setChannelMessages([]);
-      return;
-    }
-    const unsub = subscribeToChannelMessages(activeChannel.id, (msgs) => {
-      setChannelMessages(msgs);
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 50);
-    });
-    return () => unsub();
-  }, [activeChannel, activeChatMode]);
-
   // Subscribe to active group messages
   useEffect(() => {
     if (activeChatMode !== 'group' || !activeGroup) {
@@ -434,7 +411,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     if (status === 'granted') {
       notificationService.notify({
         title: 'TUJUANE Kenya Notifications Enabled!',
-        body: 'You will receive real-time alerts for direct chats, channels, and group mentions.',
+        body: 'You will receive real-time alerts for direct chats and group mentions.',
         type: 'direct_chat',
         sourceId: 'system',
         sourceName: 'TUJUANE'
@@ -497,7 +474,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
     try {
       setActivePartner(targetUser);
-      setActiveChannel(null);
       setActiveGroup(null);
       setActiveChatMode('direct');
       if (existingChatId) {
@@ -513,23 +489,10 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     }
   };
 
-
-  // Select channel
-  const handleSelectChannel = (channel: CommunityChannel) => {
-    setActiveChannel(channel);
-    setActivePartner(null);
-    setActiveGroup(null);
-    setActiveChatId(null);
-    setActiveChatMode('channel');
-    setReplyingToMessage(null);
-    setEditingMessage(null);
-  };
-
   // Select group
   const handleSelectGroup = (group: GroupChat) => {
     setActiveGroup(group);
     setActivePartner(null);
-    setActiveChannel(null);
     setActiveChatId(null);
     setActiveChatMode('group');
     setReplyingToMessage(null);
@@ -726,15 +689,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
           fileToSend || undefined,
           replyToSend
         );
-      } else if (activeChatMode === 'channel' && activeChannel) {
-        await sendChannelMessage(
-          activeChannel.id,
-          userProfile,
-          textToSend,
-          imageToSend || undefined,
-          fileToSend || undefined,
-          replyToSend
-        );
       } else if (activeChatMode === 'group' && activeGroup) {
         await sendGroupMessage(
           activeGroup.id,
@@ -887,28 +841,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     }
   };
 
-  const handleExecuteForwardToChannel = async (channel: CommunityChannel) => {
-    if (!forwardingMessage || !userProfile) return;
-    setIsForwardingSending(true);
-    try {
-      await sendChannelMessage(
-        channel.id,
-        userProfile,
-        forwardingMessage.text || '',
-        forwardingMessage.mediaUrl,
-        forwardingMessage.attachment
-      );
-      notificationService.playChime();
-      showChatToast(`Message forwarded to #${channel.name}`);
-      setForwardingMessage(null);
-    } catch (err) {
-      console.error('Failed to forward to channel:', err);
-      showChatToast('Failed to forward message.');
-    } finally {
-      setIsForwardingSending(false);
-    }
-  };
-
   const handleExecuteForwardToGroup = async (group: GroupChat) => {
     if (!forwardingMessage || !userProfile) return;
     setIsForwardingSending(true);
@@ -942,16 +874,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     );
   });
 
-  // Filter channels
-  const filteredChannels = channels.filter((ch) => {
-    if (!searchQuery.trim()) return true;
-    return (
-      ch.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ch.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ch.category.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  });
-
   // Filter groups
   const filteredGroups = communityGroups.filter((g) => {
     if (!searchQuery.trim()) return true;
@@ -974,7 +896,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   // Whether a thread is currently open
   const isThreadOpen =
     (activeChatMode === 'direct' && (!!activeChatId || !!activePartner)) ||
-    (activeChatMode === 'channel' && !!activeChannel) ||
     (activeChatMode === 'group' && !!activeGroup);
 
   // Notify parent container (App.tsx) of thread open state to prevent mobile bottom nav collision
@@ -997,9 +918,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               TUJUANE Community Communication
             </h2>
             <p className="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
-              Connect with fellow Kenyans through direct 1-on-1 chats, county channels, and custom
-              community groups. Stay informed with instant push notifications, media sharing, and
-              live typing indicators.
+              Connect with fellow Kenyans through direct 1-on-1 chats and custom community groups.
+              Stay informed with instant push notifications, media sharing, and live typing indicators.
             </p>
           </div>
 
@@ -1032,9 +952,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-6 border-t border-slate-100 text-left">
             <div className="p-3 bg-slate-50 rounded-xl space-y-1">
-              <Hash className="w-4 h-4 text-emerald-600" />
-              <div className="font-bold text-xs text-slate-900">County Channels</div>
-              <div className="text-[11px] text-slate-500">Public hubs for Nairobi, Mombasa, Nakuru & Kisumu</div>
+              <MessageSquare className="w-4 h-4 text-emerald-600" />
+              <div className="font-bold text-xs text-slate-900">Direct Messages</div>
+              <div className="text-[11px] text-slate-500">Private 1-on-1 conversations with fellow citizens</div>
             </div>
             <div className="p-3 bg-slate-50 rounded-xl space-y-1">
               <Users className="w-4 h-4 text-emerald-600" />
@@ -1264,9 +1184,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
           </div>
         </div>
 
-        {/* 4 Primary Navigation Tabs */}
+        {/* 3 Primary Navigation Tabs */}
         <div className="px-3 pt-3">
-          <div className="grid grid-cols-4 p-1 bg-slate-200/80 dark:bg-slate-800 rounded-xl text-[11px] font-semibold text-center">
+          <div className="grid grid-cols-3 p-1 bg-slate-200/80 dark:bg-slate-800 rounded-xl text-[11px] font-semibold text-center">
             <button
               onClick={() => setActiveTab('direct')}
               className={`py-1.5 rounded-lg transition-all cursor-pointer truncate ${
@@ -1276,17 +1196,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               }`}
             >
               Direct
-            </button>
-            <button
-              onClick={() => setActiveTab('channels')}
-              className={`py-1.5 rounded-lg transition-all cursor-pointer truncate flex items-center justify-center gap-1 ${
-                activeTab === 'channels'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <Hash className="w-3 h-3" />
-              <span>Channels</span>
             </button>
             <button
               onClick={() => setActiveTab('groups')}
@@ -1323,8 +1232,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               placeholder={
                 activeTab === 'direct'
                   ? 'Search 1-on-1 chats...'
-                  : activeTab === 'channels'
-                  ? 'Search county channels...'
                   : activeTab === 'groups'
                   ? 'Search community groups...'
                   : 'Search by member or county...'
@@ -1463,49 +1370,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
             )
           )}
 
-          {/* TAB 2: Channels (County & Topic) */}
-          {activeTab === 'channels' && (
-            <div className="space-y-1">
-              <div className="px-2 py-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                Official Kenya Channels
-              </div>
-              {filteredChannels.map((ch) => {
-                const isSelected = activeChatMode === 'channel' && activeChannel?.id === ch.id;
-                return (
-                  <button
-                    key={ch.id}
-                    onClick={() => handleSelectChannel(ch)}
-                    className={`w-full p-2.5 rounded-2xl text-left transition-all flex items-center gap-3 cursor-pointer ${
-                      isSelected
-                        ? 'bg-emerald-50/90 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 shadow-2xs'
-                        : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/80 border border-transparent'
-                    }`}
-                  >
-                    <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-lg shrink-0 border border-slate-200 dark:border-slate-700 shadow-2xs">
-                      {ch.icon}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-1">
-                        <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1 truncate">
-                          <Hash className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                          <span className="truncate">{ch.name}</span>
-                        </div>
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 font-medium">
-                          {ch.memberCount} members
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                        {ch.lastMessage || ch.description}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* TAB 3: Community Groups */}
+          {/* TAB 2: Community Groups */}
           {activeTab === 'groups' && (
             <div className="space-y-1">
               <div className="flex items-center justify-between px-2 py-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
@@ -1658,7 +1523,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
         </div>
       </div>
 
-      {/* RIGHT COLUMN: Active Conversation Window (Direct, Channel, or Group) */}
+      {/* RIGHT COLUMN: Active Conversation Window (Direct or Group) */}
       <div
         className={`flex-1 flex flex-col bg-white dark:bg-slate-900 h-full min-h-0 overflow-hidden ${
           isThreadOpen ? 'flex' : 'hidden md:flex'
@@ -1674,7 +1539,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   onClick={() => {
                     setActiveChatId(null);
                     setActivePartner(null);
-                    setActiveChannel(null);
                     setActiveGroup(null);
                     if (onClearDirectChatTargetUser) onClearDirectChatTargetUser();
                     if (window.innerWidth >= 768 && onGoBack) {
@@ -1779,27 +1643,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                       </div>
                     </div>
                   </div>
-                )}
-
-                {/* Channel Header */}
-                {activeChatMode === 'channel' && activeChannel && (
-                  <>
-                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-center text-xl shrink-0">
-                      {activeChannel.icon}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5 truncate">
-                        <Hash className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                        <span>{activeChannel.name}</span>
-                        <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full font-semibold border border-slate-200 dark:border-slate-700">
-                          Public Channel
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                        {activeChannel.description}
-                      </div>
-                    </div>
-                  </>
                 )}
 
                 {/* Group Header */}
@@ -2236,99 +2079,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                   })
                 ))}
 
-              {/* CHANNEL MESSAGES STREAM */}
-              {activeChatMode === 'channel' &&
-                (channelMessages.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400 dark:text-slate-500 space-y-2">
-                    <Hash className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
-                    <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Welcome to #{activeChannel?.name}!
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
-                      This is the beginning of the #{activeChannel?.name} channel. Be the first to
-                      say hello to fellow community members!
-                    </p>
-                  </div>
-                ) : (
-                  channelMessages.map((msg) => {
-                    const isMe = msg.senderId === currentUser.uid;
-                    return (
-                      <div
-                        id={`msg-${msg.id}`}
-                        key={msg.id}
-                        className={`flex gap-2.5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
-                      >
-                        {/* Avatar */}
-                        {msg.senderPhoto ? (
-                          <img
-                            src={msg.senderPhoto}
-                            alt={msg.senderName}
-                            className="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5 border border-slate-200 dark:border-slate-700"
-                          />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
-                            {msg.senderName?.charAt(0) || 'M'}
-                          </div>
-                        )}
-
-                        <div className={`max-w-[80%] space-y-1 ${isMe ? 'items-end' : 'items-start'}`}>
-                          {/* Sender name & county */}
-                          <div
-                            className={`flex items-center gap-1.5 text-[11px] ${
-                              isMe ? 'justify-end' : 'justify-start'
-                            }`}
-                          >
-                            <span className="font-bold text-slate-900 dark:text-white">{msg.senderName}</span>
-                            <span className="px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded text-[9px] font-medium border border-slate-200 dark:border-slate-700">
-                              {msg.senderCounty || 'Nairobi'}
-                            </span>
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                              {new Date(msg.createdAt).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </span>
-                          </div>
-
-                          <div
-                            className={`p-3 rounded-2xl shadow-2xs space-y-1.5 ${
-                              isMe
-                                ? 'bg-slate-900 dark:bg-emerald-700 text-white rounded-tr-xs'
-                                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-tl-xs'
-                            }`}
-                          >
-                            {msg.mediaUrl && (
-                              <img
-                                src={msg.mediaUrl}
-                                alt="Channel media"
-                                className="max-h-60 rounded-xl object-contain cursor-pointer"
-                                onClick={() => setLightboxImage(msg.mediaUrl!)}
-                              />
-                            )}
-
-                            {msg.attachment && (
-                              <div
-                                onClick={() => handleDownloadFile(msg.attachment!)}
-                                className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl flex items-center justify-between gap-2 text-xs cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-                              >
-                                <div className="flex items-center gap-1.5 truncate">
-                                  <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                  <span className="truncate font-semibold">
-                                    {msg.attachment.name}
-                                  </span>
-                                </div>
-                                <Download className="w-3.5 h-3.5 shrink-0" />
-                              </div>
-                            )}
-
-                            <div className="text-xs sm:text-sm whitespace-pre-wrap">{msg.text}</div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                ))}
-
               {/* GROUP MESSAGES STREAM */}
               {activeChatMode === 'group' &&
                 (groupMessages.length === 0 ? (
@@ -2597,8 +2347,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                     placeholder={
                       isCompressingImage
                         ? 'Optimizing photo...'
-                        : activeChatMode === 'channel'
-                        ? `Message #${activeChannel?.name}...`
                         : activeChatMode === 'group'
                         ? `Message group ${activeGroup?.name}...`
                         : `Message ${activePartner?.displayName || 'member'}...`
@@ -2633,10 +2381,10 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
               <Globe className="w-8 h-8" />
             </div>
             <div className="space-y-1">
-              <h3 className="font-bold text-slate-800 dark:text-slate-200 text-base">Select a Channel or Conversation</h3>
+              <h3 className="font-bold text-slate-800 dark:text-slate-200 text-base">Select a Conversation or Group</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs">
-                Pick a County Channel like <strong>#Nairobi Central</strong>, join a <strong>Community Group</strong>,
-                or start a private <strong>1-on-1 Direct Chat</strong>.
+                Start a private <strong>1-on-1 Direct Chat</strong> with any citizen or join a{' '}
+                <strong>Community Group</strong>.
               </p>
             </div>
             {onGoBack && (
@@ -3194,7 +2942,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 <div>
                   <h3 className="font-bold text-sm text-slate-900 dark:text-white">Forward Message</h3>
                   <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                    Select a citizen, channel, or group
+                    Select a citizen or group
                   </span>
                 </div>
               </div>
@@ -3224,7 +2972,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 type="text"
                 value={forwardSearch}
                 onChange={(e) => setForwardSearch(e.target.value)}
-                placeholder="Search citizen or channel..."
+                placeholder="Search citizen or group..."
                 className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
               />
             </div>
@@ -3239,15 +2987,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 }`}
               >
                 Citizens ({communityUsers.filter((u) => u.uid !== currentUser?.uid).length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setForwardTab('channels')}
-                className={`flex-1 py-1.5 rounded-lg text-center transition-all cursor-pointer ${
-                  forwardTab === 'channels' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs font-bold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Channels ({DEFAULT_CHANNELS.length})
               </button>
               <button
                 type="button"
@@ -3286,34 +3025,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                         type="button"
                         disabled={isForwardingSending}
                         onClick={() => handleExecuteForwardToCitizen(citizen)}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shrink-0 flex items-center gap-1 shadow-2xs"
-                      >
-                        <Send className="w-3 h-3" />
-                        <span>Send</span>
-                      </button>
-                    </div>
-                  ))
-              )}
-
-              {/* Channels */}
-              {forwardTab === 'channels' && (
-                DEFAULT_CHANNELS
-                  .filter((ch) => !forwardSearch.trim() || ch.name.toLowerCase().includes(forwardSearch.toLowerCase()))
-                  .map((ch) => (
-                    <div key={ch.id} className="pt-2 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-xl bg-slate-900 dark:bg-slate-800 text-emerald-400 font-mono font-bold flex items-center justify-center text-xs shrink-0 border border-slate-800 dark:border-slate-700">
-                          #
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-slate-900 dark:text-white truncate">#{ch.name}</div>
-                          <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{ch.description}</div>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={isForwardingSending}
-                        onClick={() => handleExecuteForwardToChannel(ch)}
                         className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shrink-0 flex items-center gap-1 shadow-2xs"
                       >
                         <Send className="w-3 h-3" />
