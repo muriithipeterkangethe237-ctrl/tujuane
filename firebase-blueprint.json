@@ -69,20 +69,41 @@
         "id": { "type": "string", "maxLength": 128 },
         "authorId": { "type": "string", "maxLength": 128 },
         "authorName": { "type": "string", "maxLength": 100 },
-        "authorPhotoUrl": { "type": "string", "maxLength": 500 },
+        "authorPhotoUrl": { "type": "string", "maxLength": 600000 },
         "authorCounty": { "type": "string", "maxLength": 50 },
         "title": { "type": "string", "maxLength": 150 },
         "content": { "type": "string", "maxLength": 2000 },
         "category": { "type": "string", "enum": ["general", "discussion", "hustle", "local_news", "meetup", "campus", "question", "speed_report", "hotspot_tip", "outage_alert"] },
         "county": { "type": "string", "maxLength": 50 },
-        "mediaUrl": { "type": "string", "maxLength": 600000 },
+        "mediaUrl": { "type": "string", "maxLength": 950000 },
+        "mediaType": { "type": "string", "enum": ["image", "video"] },
         "mediaCaption": { "type": "string", "maxLength": 200 },
+        "videoThumbnail": { "type": "string", "maxLength": 200000 },
+        "videoDuration": { "type": "number" },
+        "videoSizeBytes": { "type": "integer" },
+        "videoChunkCount": { "type": "integer" },
+        "videoMimeType": { "type": "string", "maxLength": 100 },
+        "videoStatus": { "type": "string", "enum": ["ready", "uploading"] },
         "upvotes": { "type": "integer" },
         "upvoters": { "type": "array" },
         "commentsCount": { "type": "integer" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "authorId", "authorName", "title", "content", "category", "county", "createdAt"]
+    },
+    "VideoChunk": {
+      "title": "VideoChunk",
+      "description": "Ordered Base64 video segment belonging to a community post short video",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "index": { "type": "integer" },
+        "data": { "type": "string", "maxLength": 650000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "postId", "authorId", "index", "data", "createdAt"]
     },
     "CommunityComment": {
       "title": "CommunityComment",
@@ -215,6 +236,10 @@
     "/community_posts/{postId}/comments/{commentId}": {
       "schema": "CommunityComment",
       "description": "Comments attached to a community post"
+    },
+    "/community_posts/{postId}/video_chunks/{chunkId}": {
+      "schema": "VideoChunk",
+      "description": "Chunked Base64 short-video data segments attached to a community post"
     },
     "/community_polls/{pollId}": {
       "schema": "CommunityPoll",

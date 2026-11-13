@@ -6,6 +6,7 @@ import {
   PostCategory,
   CreatePostParams,
   PostBackgroundColor,
+  PostMediaType,
   SOLID_POST_BACKGROUNDS,
   REACTION_TYPES,
   ReactionKey
@@ -24,7 +25,13 @@ import { DailyCommunityPoll } from './DailyCommunityPoll';
 import { CitizenStoriesBar } from './Stories/CitizenStoriesBar';
 import { PostTypeSelectorModal, PostCreationType, PostTypeOption } from './PostTypeSelectorModal';
 import { CreateStoryModal } from './Stories/CreateStoryModal';
+import { FeedVideoPlayer } from './FeedVideoPlayer';
 import { compressImage, formatFileSize } from '../utils/imageCompressor';
+import {
+  processFeedVideoFile,
+  formatVideoDuration,
+  ProcessedFeedVideo
+} from '../utils/videoProcessor';
 import { ALL_47_COUNTIES, getConstituenciesByCounty } from '../data/kenyaCounties';
 import { analyzeContentSafety, getSafetyExplanation } from '../utils/safetyFilter';
 import { SafetyCategory, SafetyScanResult } from '../types/safety';
@@ -78,13 +85,15 @@ import {
   CornerUpLeft,
   Palette,
   Smile,
-  Vote
+  Vote,
+  Video
 } from 'lucide-react';
 
 export interface ExternalCreateRequest {
   category?: PostCategory;
   solidBg?: PostBackgroundColor;
   requiresImage?: boolean;
+  requiresVideo?: boolean;
   openSelector?: boolean;
   timestamp: number;
 }
@@ -130,7 +139,12 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [postCounty, setPostCounty] = useState('Nairobi');
   const [mediaCaption, setMediaCaption] = useState('');
   const [compressedImage, setCompressedImage] = useState<string | null>(null);
+  const [modalMediaType, setModalMediaType] = useState<PostMediaType>('image');
   const [imageMeta, setImageMeta] = useState<{ origSize: number; compSize: number } | null>(null);
+  const [videoMeta, setVideoMeta] = useState<{ size: number; duration: number } | null>(null);
+  const [modalVideoData, setModalVideoData] = useState<ProcessedFeedVideo | null>(null);
+  const [modalUploadProgress, setModalUploadProgress] = useState<number | null>(null);
+  const [modalHighlightVideo, setModalHighlightVideo] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -152,9 +166,17 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       } else {
         setModalBgColor('default');
       }
+      setFormError(null);
+      setModalUploadProgress(null);
+      setModalHighlightVideo(!!externalCreateRequest.requiresVideo);
+      if (externalCreateRequest.requiresVideo) {
+        setModalMediaType('video');
+      }
       setIsCreateModalOpen(true);
-      if (externalCreateRequest.requiresImage) {
-        setTimeout(() => fileInputRef.current?.click(), 250);
+      if (externalCreateRequest.requiresVideo) {
+        setTimeout(() => videoInputRef.current?.click(), 180);
+      } else if (externalCreateRequest.requiresImage) {
+        setTimeout(() => fileInputRef.current?.click(), 180);
       }
     }
     if (onClearExternalCreateRequest) {
@@ -179,15 +201,26 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [activeReactionPickerCommentId, setActiveReactionPickerCommentId] = useState<string | null>(null);
 
   // Lightbox Modal state
-  const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string; author: string } | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{
+    url: string;
+    title: string;
+    author: string;
+    mediaType?: PostMediaType;
+    mimeType?: string;
+  } | null>(null);
 
   // Toast notice
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // Direct Quick Post Composer State (Direct caption posting without tagging location)
+  // Direct Quick Post Composer State (Direct caption, photo, or short video posting without tagging location)
   const [quickCaption, setQuickCaption] = useState('');
   const [quickImage, setQuickImage] = useState<string | null>(null);
+  const [quickMediaType, setQuickMediaType] = useState<PostMediaType>('image');
   const [quickImageMeta, setQuickImageMeta] = useState<{ origSize: number; compSize: number } | null>(null);
+  const [quickVideoMeta, setQuickVideoMeta] = useState<{ size: number; duration: number } | null>(null);
+  const [quickVideoData, setQuickVideoData] = useState<ProcessedFeedVideo | null>(null);
+  const [quickError, setQuickError] = useState<string | null>(null);
+  const [quickUploadProgress, setQuickUploadProgress] = useState<number | null>(null);
   const [isQuickCompressing, setIsQuickCompressing] = useState(false);
   const [isQuickSubmitting, setIsQuickSubmitting] = useState(false);
   const [quickShowLocation, setQuickShowLocation] = useState(false);
@@ -195,11 +228,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [quickConstituency, setQuickConstituency] = useState('');
   const [quickBgColor, setQuickBgColor] = useState<PostBackgroundColor>('default');
   const quickFileInputRef = useRef<HTMLInputElement | null>(null);
+  const quickVideoInputRef = useRef<HTMLInputElement | null>(null);
 
   // Full Modal optional location toggle
   const [modalIncludeLocation, setModalIncludeLocation] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
   const commentFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [selectedConstituency, setSelectedConstituency] = useState('All');
@@ -291,7 +326,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       {
         county: selectedCounty === 'All' ? undefined : selectedCounty,
         constituency: selectedConstituency === 'All' ? undefined : selectedConstituency,
-        category: selectedCategory === 'all' ? undefined : selectedCategory,
+        category: selectedCategory === 'all' || selectedCategory === 'videos' ? undefined : selectedCategory,
         sortBy
       },
       (incomingPosts) => {
@@ -301,13 +336,37 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     return () => unsub();
   }, [selectedCounty, selectedConstituency, selectedCategory, sortBy]);
 
-  // Handle image upload and compression
+  // Handle image or short video upload in Create Modal
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const isVideoFile =
+      file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v|3gp|mkv)$/i.test(file.name || '');
+
+    if (isVideoFile) {
+      setIsCompressing(true);
+      setFormError(null);
+      setModalMediaType('video');
+      try {
+        const processed = await processFeedVideoFile(file);
+        if (modalVideoData?.previewObjectUrl) {
+          URL.revokeObjectURL(modalVideoData.previewObjectUrl);
+        }
+        setModalVideoData(processed);
+        setCompressedImage(processed.previewObjectUrl);
+        setImageMeta(null);
+        setVideoMeta({ size: processed.sizeBytes, duration: processed.duration });
+      } catch (err: any) {
+        setFormError(err?.message || 'Could not process selected short video.');
+      } finally {
+        setIsCompressing(false);
+      }
+      return;
+    }
+
     if (!file.type.startsWith('image/')) {
-      setFormError('Please select a valid image file (JPG, PNG, WebP).');
+      setFormError('Please select a valid image (JPG, PNG, WebP) or short video (MP4, WebM, MOV) file.');
       return;
     }
 
@@ -316,7 +375,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
     try {
       const result = await compressImage(file, 1200, 0.78);
+      if (modalVideoData?.previewObjectUrl) {
+        URL.revokeObjectURL(modalVideoData.previewObjectUrl);
+      }
+      setModalVideoData(null);
+      setModalMediaType('image');
       setCompressedImage(result.dataUrl);
+      setVideoMeta(null);
       setImageMeta({
         origSize: result.originalSizeBytes,
         compSize: result.compressedSizeBytes
@@ -330,44 +395,94 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   };
 
   const handleRemoveImage = () => {
+    if (modalVideoData?.previewObjectUrl) {
+      URL.revokeObjectURL(modalVideoData.previewObjectUrl);
+    }
+    setModalVideoData(null);
     setCompressedImage(null);
+    setModalMediaType('image');
     setImageMeta(null);
+    setVideoMeta(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (videoInputRef.current) videoInputRef.current.value = '';
   };
 
-  // Handle quick post image attachment
+  // Handle quick post image or short video attachment
   const handleQuickImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const isVideoFile =
+      file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v|3gp|mkv)$/i.test(file.name || '');
+
+    if (isVideoFile) {
+      setIsQuickCompressing(true);
+      setQuickError(null);
+      setQuickMediaType('video');
+      try {
+        const processed = await processFeedVideoFile(file);
+        if (quickVideoData?.previewObjectUrl) {
+          URL.revokeObjectURL(quickVideoData.previewObjectUrl);
+        }
+        setQuickVideoData(processed);
+        setQuickImage(processed.previewObjectUrl);
+        setQuickImageMeta(null);
+        setQuickVideoMeta({ size: processed.sizeBytes, duration: processed.duration });
+      } catch (err: any) {
+        const msg = err?.message || 'Could not load short video.';
+        setQuickError(msg);
+        triggerToast(msg);
+      } finally {
+        setIsQuickCompressing(false);
+      }
+      return;
+    }
+
     if (!file.type.startsWith('image/')) {
-      triggerToast('Please select a valid image file (JPG, PNG, WebP).');
+      const msg = 'Please select a valid image (JPG, PNG, WebP) or short video (MP4, WebM, MOV).';
+      setQuickError(msg);
+      triggerToast(msg);
       return;
     }
 
     setIsQuickCompressing(true);
+    setQuickError(null);
     try {
       const res = await compressImage(file, 1200, 0.78);
+      if (quickVideoData?.previewObjectUrl) {
+        URL.revokeObjectURL(quickVideoData.previewObjectUrl);
+      }
+      setQuickVideoData(null);
+      setQuickMediaType('image');
       setQuickImage(res.dataUrl);
+      setQuickVideoMeta(null);
       setQuickImageMeta({
         origSize: res.originalSizeBytes,
         compSize: res.compressedSizeBytes
       });
     } catch (err) {
       console.error('Quick image error:', err);
-      triggerToast('Could not process image.');
+      setQuickError('Could not process image.');
     } finally {
       setIsQuickCompressing(false);
     }
   };
 
   const handleRemoveQuickImage = () => {
+    if (quickVideoData?.previewObjectUrl) {
+      URL.revokeObjectURL(quickVideoData.previewObjectUrl);
+    }
+    setQuickVideoData(null);
     setQuickImage(null);
+    setQuickMediaType('image');
     setQuickImageMeta(null);
+    setQuickVideoMeta(null);
+    setQuickError(null);
     if (quickFileInputRef.current) quickFileInputRef.current.value = '';
+    if (quickVideoInputRef.current) quickVideoInputRef.current.value = '';
   };
 
-  // Submit direct quick post (Caption only, no location required!)
+  // Submit direct quick post (Caption, photo, or short video — no location required!)
   const handleDirectQuickPost = async () => {
     if (!currentUser || !userProfile) {
       openAuthModal();
@@ -375,8 +490,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
 
     const trimmedCaption = quickCaption.trim();
-    if (!trimmedCaption && !quickImage) {
-      triggerToast('Please write a caption or select a photo.');
+    if (!trimmedCaption && !quickImage && !quickVideoData) {
+      setQuickError('Please write a caption or attach a photo / short video.');
       return;
     }
 
@@ -388,21 +503,39 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
 
     setIsQuickSubmitting(true);
+    setQuickError(null);
+    setQuickUploadProgress(quickVideoData ? 5 : null);
     try {
+      const isVideo = quickMediaType === 'video' && (!!quickVideoData || !!quickImage);
       const autoTitle = trimmedCaption
         ? trimmedCaption.slice(0, 75) + (trimmedCaption.length > 75 ? '...' : '')
+        : isVideo
+        ? 'Citizen Short Video'
         : 'Citizen Photo Update';
 
       const params: any = {
         title: autoTitle,
-        content: trimmedCaption || (quickImage ? 'Shared a citizen photo.' : ''),
+        content:
+          trimmedCaption ||
+          (isVideo ? 'Shared a short video on the feed.' : quickImage ? 'Shared a citizen photo.' : ''),
         category: 'general',
         county: quickShowLocation ? quickCounty : '',
         constituency: quickShowLocation && quickConstituency ? quickConstituency : undefined,
-        mediaUrl: quickImage || undefined
+        mediaType: isVideo ? 'video' : quickImage ? 'image' : undefined
       };
 
-      if (quickBgColor && quickBgColor !== 'default' && !quickImage) {
+      if (isVideo && quickVideoData) {
+        params.mediaUrl = quickVideoData.inlineDataUrl || undefined;
+        params.videoChunks = quickVideoData.chunks;
+        params.videoThumbnail = quickVideoData.thumbnailDataUrl;
+        params.videoDuration = quickVideoData.duration;
+        params.videoSizeBytes = quickVideoData.sizeBytes;
+        params.videoMimeType = quickVideoData.mimeType;
+      } else if (quickImage) {
+        params.mediaUrl = quickImage;
+      }
+
+      if (quickBgColor && quickBgColor !== 'default' && !quickImage && !quickVideoData) {
         params.backgroundColor = quickBgColor;
       }
 
@@ -413,20 +546,33 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         params.moderationStatus = 'under_review';
       }
 
-      await createCommunityPost(userProfile, params);
+      await createCommunityPost(userProfile, params, (pct) => {
+        if (quickVideoData) setQuickUploadProgress(pct);
+      });
+
+      if (quickVideoData?.previewObjectUrl) {
+        URL.revokeObjectURL(quickVideoData.previewObjectUrl);
+      }
       setQuickCaption('');
+      setQuickVideoData(null);
       setQuickImage(null);
+      setQuickMediaType('image');
       setQuickImageMeta(null);
+      setQuickVideoMeta(null);
       setQuickShowLocation(false);
       setQuickConstituency('');
       setQuickBgColor('default');
       if (quickFileInputRef.current) quickFileInputRef.current.value = '';
-      triggerToast('✓ Post published to TUJUANE Feed!');
+      if (quickVideoInputRef.current) quickVideoInputRef.current.value = '';
+      triggerToast(isVideo ? '✓ Short video published to TUJUANE Feed!' : '✓ Post published to TUJUANE Feed!');
     } catch (err: any) {
       console.error('Direct post error:', err);
-      triggerToast(err.message || 'Failed to post caption.');
+      const errMsg = 'Failed to publish post. Please try again.';
+      setQuickError(errMsg);
+      triggerToast(errMsg);
     } finally {
       setIsQuickSubmitting(false);
+      setQuickUploadProgress(null);
     }
   };
 
@@ -475,12 +621,22 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
     setPostCategory(option?.category || 'general');
     setModalBgColor(option?.solidBg || (type === 'solid_bg' ? 'emerald' : 'default'));
+    setFormError(null);
+    setModalUploadProgress(null);
+    setModalHighlightVideo(!!option?.requiresVideo);
+    if (option?.requiresVideo) {
+      setModalMediaType('video');
+    }
     setIsCreateModalOpen(true);
 
-    if (option?.requiresImage) {
+    if (option?.requiresVideo) {
+      setTimeout(() => {
+        videoInputRef.current?.click();
+      }, 180);
+    } else if (option?.requiresImage) {
       setTimeout(() => {
         fileInputRef.current?.click();
-      }, 250);
+      }, 180);
     }
   };
 
@@ -503,8 +659,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
 
     const trimmedContent = postContent.trim();
-    if (!trimmedContent && !compressedImage) {
-      setFormError('Please enter caption details or attach an image.');
+    if (!trimmedContent && !compressedImage && !modalVideoData) {
+      setFormError('Please enter caption details or attach a photo / short video.');
       return;
     }
 
@@ -517,22 +673,41 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
     setIsSubmitting(true);
     setFormError(null);
+    setModalUploadProgress(modalVideoData ? 5 : null);
+
+    const isVideo = modalMediaType === 'video' && (!!modalVideoData || !!compressedImage);
 
     const derivedTitle = postTitle.trim()
       ? postTitle.trim()
-      : trimmedContent.slice(0, 75) + (trimmedContent.length > 75 ? '...' : '') || 'Citizen Update';
+      : trimmedContent.slice(0, 75) + (trimmedContent.length > 75 ? '...' : '') ||
+        (isVideo ? 'Citizen Short Video' : 'Citizen Update');
+
+    const safeContent =
+      trimmedContent ||
+      (isVideo ? 'Shared a short video on the feed.' : compressedImage ? 'Shared a community photo.' : '');
 
     const params: any = {
       title: derivedTitle,
-      content: trimmedContent,
+      content: safeContent,
       category: postCategory,
       county: modalIncludeLocation ? postCounty : '',
       constituency: modalIncludeLocation && postConstituency ? postConstituency : undefined,
-      mediaUrl: compressedImage || undefined,
+      mediaType: isVideo ? 'video' : compressedImage ? 'image' : undefined,
       mediaCaption: mediaCaption.trim() || undefined
     };
 
-    if (modalBgColor && modalBgColor !== 'default' && !compressedImage) {
+    if (isVideo && modalVideoData) {
+      params.mediaUrl = modalVideoData.inlineDataUrl || undefined;
+      params.videoChunks = modalVideoData.chunks;
+      params.videoThumbnail = modalVideoData.thumbnailDataUrl;
+      params.videoDuration = modalVideoData.duration;
+      params.videoSizeBytes = modalVideoData.sizeBytes;
+      params.videoMimeType = modalVideoData.mimeType;
+    } else if (compressedImage) {
+      params.mediaUrl = compressedImage;
+    }
+
+    if (modalBgColor && modalBgColor !== 'default' && !compressedImage && !modalVideoData) {
       params.backgroundColor = modalBgColor;
     }
 
@@ -544,22 +719,34 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
 
     try {
-      await createCommunityPost(userProfile, params);
+      await createCommunityPost(userProfile, params, (pct) => {
+        if (modalVideoData) setModalUploadProgress(pct);
+      });
+      if (modalVideoData?.previewObjectUrl) {
+        URL.revokeObjectURL(modalVideoData.previewObjectUrl);
+      }
       setIsCreateModalOpen(false);
       // Reset form
       setPostTitle('');
       setPostContent('');
       setPostConstituency('');
+      setModalVideoData(null);
       setCompressedImage(null);
+      setModalMediaType('image');
       setImageMeta(null);
+      setVideoMeta(null);
       setMediaCaption('');
       setModalIncludeLocation(false);
+      setModalHighlightVideo(false);
       setModalBgColor('default');
-      triggerToast('✓ Post published to TUJUANE community!');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (videoInputRef.current) videoInputRef.current.value = '';
+      triggerToast(isVideo ? '✓ Short video published to TUJUANE feed!' : '✓ Post published to TUJUANE community!');
     } catch (err: any) {
-      setFormError(err.message || 'Failed to create post. Please try again.');
+      setFormError('Failed to publish post. Please try again.');
     } finally {
       setIsSubmitting(false);
+      setModalUploadProgress(null);
     }
   };
 
@@ -870,7 +1057,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     return posts.filter((p) => blockedUserIds.includes(p.authorId)).length;
   }, [posts, blockedUserIds]);
 
-  // Search, Audience and Block filter
+  // Search, Video, Audience and Block filter
   const filteredPosts = posts.filter((post) => {
     // Hide discussions from blocked users
     if (blockedUserIds && blockedUserIds.includes(post.authorId)) {
@@ -878,6 +1065,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
     if (feedAudience === 'following' && !followingIds.includes(post.authorId) && post.authorId !== currentUser?.uid) {
       return false;
+    }
+    if (selectedCategory === 'videos') {
+      const isVid =
+        post.mediaType === 'video' ||
+        (post.mediaUrl?.startsWith('data:video/') ?? false) ||
+        (post.videoChunkCount ?? 0) > 0;
+      if (!isVid) return false;
     }
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -1050,6 +1244,17 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               All Topics
             </button>
             <button
+              onClick={() => setSelectedCategory('videos')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors cursor-pointer ${
+                selectedCategory === 'videos'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50'
+              }`}
+            >
+              <Video className="w-3.5 h-3.5" />
+              <span>Short Videos</span>
+            </button>
+            <button
               onClick={() => setSelectedCategory('general')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors cursor-pointer ${
                 selectedCategory === 'general'
@@ -1193,9 +1398,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         </div>
       </div>
 
-      {/* DIRECT QUICK POST COMPOSER - Post directly without tagging location, caption only */}
+      {/* DIRECT QUICK POST COMPOSER - Post caption, photo, or short video directly */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs p-4 sm:p-5 space-y-3.5 transition-colors">
-        {/* Hidden file input for quick image */}
+        {/* Hidden file inputs for quick photo and short video */}
         <input
           ref={quickFileInputRef}
           type="file"
@@ -1203,6 +1408,27 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           onChange={handleQuickImageFileChange}
           className="hidden"
         />
+        <input
+          ref={quickVideoInputRef}
+          type="file"
+          accept="video/mp4,video/webm,video/quicktime,video/*"
+          onChange={handleQuickImageFileChange}
+          className="hidden"
+        />
+
+        {quickError && (
+          <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-2xl text-xs text-rose-800 dark:text-rose-200 flex items-center justify-between gap-2">
+            <span>{quickError}</span>
+            <button
+              type="button"
+              onClick={() => setQuickError(null)}
+              className="p-1 hover:bg-rose-100 dark:hover:bg-rose-900/50 rounded-lg cursor-pointer"
+              aria-label="Dismiss error"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         <div className="flex items-start gap-3">
           {/* User Avatar */}
@@ -1232,8 +1458,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               onChange={(e) => setQuickCaption(e.target.value)}
               placeholder={
                 currentUser
-                  ? "What's on your mind, Citizen? Share a caption, update, or thought..."
-                  : "Sign in to post quick captions and updates..."
+                  ? quickMediaType === 'video' && quickImage
+                    ? 'Add a caption for your short video (optional)...'
+                    : "What's on your mind, Citizen? Share a thought, photo, or short video..."
+                  : "Sign in to post captions, photos, or short videos..."
               }
               disabled={!currentUser}
               maxLength={2000}
@@ -1246,7 +1474,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           </div>
         </div>
 
-        {/* Solid Background Color Palette Selector (when no image attached) */}
+        {/* Solid Background Color Palette Selector (when no media attached) */}
         {!quickImage && currentUser && (
           <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs font-semibold">
@@ -1275,27 +1503,62 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           </div>
         )}
 
-        {/* Attached Photo Preview (if any) */}
+        {/* Attached Photo or Short Video Preview */}
         {quickImage && (
-          <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 max-h-64 flex items-center justify-center">
-            <img src={quickImage} alt="Attachment" className="max-h-64 object-contain w-full" />
+          <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950 max-h-72 flex items-center justify-center">
+            {quickMediaType === 'video' ? (
+              <video
+                src={quickImage}
+                poster={quickVideoData?.thumbnailDataUrl}
+                controls
+                playsInline
+                className="max-h-72 w-full object-contain bg-black"
+              />
+            ) : (
+              <img src={quickImage} alt="Attachment" className="max-h-64 object-contain w-full" />
+            )}
             <button
               type="button"
               onClick={handleRemoveQuickImage}
-              className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-full transition-colors cursor-pointer"
-              title="Remove attached photo"
+              disabled={isQuickSubmitting}
+              className="absolute top-2 right-2 p-1.5 bg-black/65 hover:bg-rose-600 text-white rounded-full transition-colors cursor-pointer z-10 disabled:opacity-40"
+              title={`Remove attached ${quickMediaType}`}
             >
               <X className="w-4 h-4" />
             </button>
-            {quickImageMeta && (
+            {quickMediaType === 'image' && quickImageMeta && (
               <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 text-white text-[10px] font-mono rounded-md">
                 Compressed to {formatFileSize(quickImageMeta.compSize)}
+              </span>
+            )}
+            {quickMediaType === 'video' && quickVideoMeta && (
+              <span className="absolute top-2 left-2 px-2 py-0.5 bg-black/75 text-white text-[10px] font-semibold rounded-md flex items-center gap-1 backdrop-blur-xs">
+                <Video className="w-3 h-3 text-indigo-400" />
+                <span>
+                  {formatVideoDuration(quickVideoMeta.duration)} · {formatFileSize(quickVideoMeta.size)}
+                </span>
               </span>
             )}
           </div>
         )}
 
-        {/* Optional Location Selector (Collapsed by default, only shown if toggled) */}
+        {/* Quick Video Upload Progress Bar */}
+        {isQuickSubmitting && quickUploadProgress !== null && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
+              <span>Publishing short video...</span>
+              <span>{quickUploadProgress}%</span>
+            </div>
+            <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-indigo-600 transition-all duration-200"
+                style={{ width: `${quickUploadProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Optional Location Selector */}
         {quickShowLocation && (
           <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800 rounded-2xl space-y-2 animate-in fade-in">
             <div className="flex items-center justify-between">
@@ -1344,7 +1607,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
         {/* Composer Actions Bottom Row */}
         <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800 gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {/* Add Photo Button */}
             <button
               type="button"
@@ -1352,12 +1615,27 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 if (!currentUser) openAuthModal();
                 else quickFileInputRef.current?.click();
               }}
-              disabled={isQuickCompressing}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              title="Attach a photo to this caption"
+              disabled={isQuickCompressing || isQuickSubmitting}
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
+              title="Attach a photo to this post"
             >
               <ImageIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>{isQuickCompressing ? 'Compressing...' : 'Photo'}</span>
+              <span>{isQuickCompressing && quickMediaType === 'image' ? 'Processing...' : 'Photo'}</span>
+            </button>
+
+            {/* Add Short Video Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!currentUser) openAuthModal();
+                else quickVideoInputRef.current?.click();
+              }}
+              disabled={isQuickCompressing || isQuickSubmitting}
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
+              title="Post a short video (MP4, WebM, MOV — up to 60s / 12 MB)"
+            >
+              <Video className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>{isQuickCompressing && quickMediaType === 'video' ? 'Preparing...' : 'Short Video'}</span>
             </button>
 
             {/* Optional Location Toggle */}
@@ -1389,11 +1667,17 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               <button
                 type="button"
                 onClick={handleDirectQuickPost}
-                disabled={isQuickSubmitting || (!quickCaption.trim() && !quickImage)}
+                disabled={isQuickSubmitting || isQuickCompressing || (!quickCaption.trim() && !quickImage)}
                 className="inline-flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>{isQuickSubmitting ? 'Posting...' : 'Direct Post'}</span>
+                <span>
+                  {isQuickSubmitting
+                    ? quickUploadProgress !== null
+                      ? `Posting (${quickUploadProgress}%)`
+                      : 'Posting...'
+                    : 'Direct Post'}
+                </span>
               </button>
             )}
           </div>
@@ -1713,7 +1997,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   )}
 
                   {/* Post Content - Solid Background Color Card (for text posts) or standard text */}
-                  {post.backgroundColor && post.backgroundColor !== 'default' && !post.mediaUrl ? (
+                  {post.backgroundColor && post.backgroundColor !== 'default' && !post.mediaUrl && !(post.videoChunkCount && post.videoChunkCount > 0) ? (
                     <div
                       className={`p-6 sm:p-8 rounded-2xl min-h-[140px] sm:min-h-[170px] flex flex-col items-center justify-center text-center shadow-inner ${
                         SOLID_POST_BACKGROUNDS.find((c) => c.id === post.backgroundColor)?.bgClass || 'bg-emerald-600 text-white'
@@ -1738,7 +2022,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         post.title !== post.content &&
                         !post.content.startsWith(post.title) &&
                         post.title !== 'Citizen Post' &&
-                        post.title !== 'Citizen Photo Update' && (
+                        post.title !== 'Citizen Photo Update' &&
+                        post.title !== 'Citizen Video Update' &&
+                        post.title !== 'Citizen Short Video' && (
                           <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-snug">
                             {post.title}
                           </h2>
@@ -1749,45 +2035,70 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     </div>
                   )}
 
-                  {/* Media Photo Attachment (If present) */}
-                  {post.mediaUrl && (
-                    <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 relative group max-h-96">
-                      <img
-                        src={post.mediaUrl}
-                        alt={post.mediaCaption || post.title}
-                        className="w-full h-auto max-h-96 object-contain cursor-pointer"
-                        onClick={() =>
-                          setLightboxImage({
-                            url: post.mediaUrl!,
-                            title: post.title,
-                            author: post.authorName
-                          })
-                        }
-                      />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 pointer-events-none">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setLightboxImage({
-                              url: post.mediaUrl!,
-                              title: post.title,
-                              author: post.authorName
-                            });
-                          }}
-                          className="pointer-events-auto p-2 bg-white/90 hover:bg-white text-slate-900 rounded-xl shadow-lg transition-transform hover:scale-105"
-                          title="View full-screen"
-                        >
-                          <Maximize2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                  {/* Media Photo or Short Video Attachment */}
+                  {(post.mediaUrl || (post.videoChunkCount ?? 0) > 0) && (() => {
+                    const isVideoPost =
+                      post.mediaType === 'video' ||
+                      (post.mediaUrl?.startsWith('data:video/') ?? false) ||
+                      (post.videoChunkCount ?? 0) > 0;
+                    return (
+                      <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950 relative group">
+                        {isVideoPost ? (
+                          <FeedVideoPlayer
+                            post={post}
+                            onOpenTheatre={(resolvedUrl) =>
+                              setLightboxImage({
+                                url: resolvedUrl,
+                                title: post.title,
+                                author: post.authorName,
+                                mediaType: 'video',
+                                mimeType: post.videoMimeType
+                              })
+                            }
+                          />
+                        ) : (
+                          <>
+                            <img
+                              src={post.mediaUrl}
+                              alt={post.mediaCaption || post.title}
+                              className="w-full h-auto max-h-96 object-contain cursor-pointer"
+                              onClick={() =>
+                                setLightboxImage({
+                                  url: post.mediaUrl!,
+                                  title: post.title,
+                                  author: post.authorName,
+                                  mediaType: 'image'
+                                })
+                              }
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 pointer-events-none">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLightboxImage({
+                                    url: post.mediaUrl!,
+                                    title: post.title,
+                                    author: post.authorName,
+                                    mediaType: 'image'
+                                  });
+                                }}
+                                className="pointer-events-auto p-2 bg-white/90 hover:bg-white text-slate-900 rounded-xl shadow-lg transition-transform hover:scale-105"
+                                title="View full-screen"
+                              >
+                                <Maximize2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </>
+                        )}
 
-                      {post.mediaCaption && (
-                        <div className="bg-slate-900/90 text-white text-[11px] px-3 py-1.5 border-t border-slate-800">
-                          {post.mediaCaption}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                        {post.mediaCaption && (
+                          <div className="bg-slate-900/90 text-white text-[11px] px-3 py-1.5 border-t border-slate-800">
+                            {post.mediaCaption}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Bottom Action Bar: Reactions & Replies (strictly one reaction per user) */}
                   <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
@@ -2450,8 +2761,34 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 )}
               </div>
 
+              {/* Highlighted Short Video Picker when opened via Short Video option */}
+              {modalHighlightVideo && !compressedImage && (
+                <div className="p-4 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/35 border-2 border-dashed border-indigo-300 dark:border-indigo-700 text-center space-y-2.5 animate-in fade-in">
+                  <div className="w-11 h-11 rounded-2xl bg-indigo-100 dark:bg-indigo-900/70 text-indigo-600 dark:text-indigo-300 flex items-center justify-center mx-auto">
+                    <Video className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-extrabold text-indigo-950 dark:text-indigo-200">
+                      Select a Short Video for the Feed
+                    </div>
+                    <p className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-0.5">
+                      MP4, WebM, or MOV · up to 60 seconds · max 12 MB
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => videoInputRef.current?.click()}
+                    disabled={isCompressing}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Video className="w-4 h-4" />
+                    <span>{isCompressing ? 'Preparing Video...' : 'Choose Short Video'}</span>
+                  </button>
+                </div>
+              )}
+
               {/* Solid Background Color Palette for text posts */}
-              {!compressedImage && (
+              {!compressedImage && !modalHighlightVideo && (
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
@@ -2493,7 +2830,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               {/* Content Body */}
               <div>
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  Caption & Discussion Details <span className="text-rose-500">*</span>
+                  Caption & Discussion Details {!compressedImage && <span className="text-rose-500">*</span>}
                 </label>
                 <textarea
                   rows={4}
@@ -2506,7 +2843,6 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       ? `${SOLID_POST_BACKGROUNDS.find((c) => c.id === modalBgColor)?.bgClass || 'bg-emerald-600 text-white'} text-center font-bold text-sm sm:text-base p-4 placeholder:text-white/70 shadow-inner`
                       : 'bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500'
                   }`}
-                  required
                 />
                 <div className="flex justify-between items-center text-[10px] text-slate-400 dark:text-slate-500 mt-1">
                   <span>Be respectful and adhere to community guidelines.</span>
@@ -2514,51 +2850,85 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 </div>
               </div>
 
-              {/* Media Photo Upload */}
+              {/* Media Photo or Short Video Upload */}
               <div>
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  Photo / Image Attachment (Optional)
+                  Photo or Short Video Attachment (Optional)
                 </label>
 
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/*"
+                  onChange={handleImageFileChange}
+                  className="hidden"
+                />
+                <input
+                  type="file"
+                  ref={videoInputRef}
+                  accept="video/mp4,video/webm,video/quicktime,video/*"
+                  onChange={handleImageFileChange}
+                  className="hidden"
+                />
+
                 {!compressedImage ? (
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 rounded-2xl p-4 text-center cursor-pointer transition-colors bg-slate-50/50 dark:bg-slate-800/40 hover:bg-emerald-50/20"
-                  >
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      accept="image/*"
-                      onChange={handleImageFileChange}
-                      className="hidden"
-                    />
-                    <ImageIcon className="w-8 h-8 text-slate-400 mx-auto mb-1.5" />
-                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      {isCompressing ? 'Compressing image...' : 'Click to upload a photo'}
-                    </p>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-                      Auto-compressed to under 600KB for rapid loading across Kenya
+                  <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-4 text-center bg-slate-50/50 dark:bg-slate-800/40 space-y-2.5">
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isCompressing}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-2xs transition-colors cursor-pointer"
+                      >
+                        <ImageIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span>Upload Photo</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => videoInputRef.current?.click()}
+                        disabled={isCompressing}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-2xs transition-colors cursor-pointer"
+                      >
+                        <Video className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <span>Upload Short Video</span>
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                      {isCompressing
+                        ? 'Processing media...'
+                        : 'Photos auto-compress for 3G/4G · Short videos (MP4/WebM/MOV) up to 60s / 12 MB'}
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-900 max-h-48 flex items-center justify-center">
-                      <img
-                        src={compressedImage}
-                        alt="Preview"
-                        className="max-h-48 w-auto object-contain"
-                      />
+                    <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-950 max-h-56 flex items-center justify-center">
+                      {modalMediaType === 'video' ? (
+                        <video
+                          src={compressedImage}
+                          poster={modalVideoData?.thumbnailDataUrl}
+                          controls
+                          playsInline
+                          className="max-h-56 w-full object-contain bg-black"
+                        />
+                      ) : (
+                        <img
+                          src={compressedImage}
+                          alt="Preview"
+                          className="max-h-48 w-auto object-contain"
+                        />
+                      )}
                       <button
                         type="button"
                         onClick={handleRemoveImage}
-                        className="absolute top-2 right-2 p-1.5 bg-black/70 hover:bg-rose-600 text-white rounded-lg transition-colors cursor-pointer"
-                        title="Remove image"
+                        disabled={isSubmitting}
+                        className="absolute top-2 right-2 p-1.5 bg-black/70 hover:bg-rose-600 text-white rounded-lg transition-colors cursor-pointer z-10 disabled:opacity-40"
+                        title={`Remove ${modalMediaType}`}
                       >
                         <X className="w-4 h-4" />
                       </button>
                     </div>
 
-                    {imageMeta && (
+                    {modalMediaType === 'image' && imageMeta && (
                       <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1">
                         <span>
                           Compressed: <strong>{formatFileSize(imageMeta.compSize)}</strong> (saved{' '}
@@ -2569,11 +2939,20 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       </div>
                     )}
 
+                    {modalMediaType === 'video' && videoMeta && (
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1">
+                        <span>
+                          Short Video: <strong>{formatVideoDuration(videoMeta.duration)}</strong> ({formatFileSize(videoMeta.size)})
+                        </span>
+                        <span className="text-indigo-600 dark:text-indigo-400 font-semibold">✓ Ready for Feed</span>
+                      </div>
+                    )}
+
                     <input
                       type="text"
                       value={mediaCaption}
                       onChange={(e) => setMediaCaption(e.target.value)}
-                      placeholder="Add a photo caption (optional)..."
+                      placeholder={`Add a ${modalMediaType} caption (optional)...`}
                       maxLength={200}
                       className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100"
                     />
@@ -2581,12 +2960,29 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 )}
               </div>
 
+              {/* Modal Video Upload Progress Bar */}
+              {isSubmitting && modalUploadProgress !== null && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
+                    <span>Uploading short video to feed...</span>
+                    <span>{modalUploadProgress}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-600 transition-all duration-200"
+                      style={{ width: `${modalUploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Form Actions */}
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-40"
                 >
                   Cancel
                 </button>
@@ -2598,12 +2994,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   {isSubmitting ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Publishing...</span>
+                      <span>
+                        {modalUploadProgress !== null ? `Publishing (${modalUploadProgress}%)` : 'Publishing...'}
+                      </span>
                     </>
                   ) : (
                     <>
                       <Send className="w-3.5 h-3.5" />
-                      <span>Publish Discussion</span>
+                      <span>Publish {modalMediaType === 'video' && compressedImage ? 'Video' : 'Post'}</span>
                     </>
                   )}
                 </button>
@@ -2613,24 +3011,28 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         </div>
       )}
 
-      {/* Lightbox Modal */}
+      {/* Lightbox Modal (Images & Videos) */}
       {lightboxImage && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
           onClick={() => setLightboxImage(null)}
         >
-          <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+          <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center w-full" onClick={(e) => e.stopPropagation()}>
             <div className="w-full flex items-center justify-between text-white pb-3 px-2">
-              <div>
-                <h4 className="font-bold text-sm sm:text-base">{lightboxImage.title}</h4>
+              <div className="min-w-0 pr-3">
+                <h4 className="font-bold text-sm sm:text-base truncate">{lightboxImage.title}</h4>
                 <p className="text-xs text-slate-400">Shared by {lightboxImage.author}</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 shrink-0">
                 <a
                   href={lightboxImage.url}
-                  download="tujuane-community-photo.png"
+                  download={
+                    lightboxImage.mediaType === 'video'
+                      ? `tujuane-short-video.${lightboxImage.mimeType?.includes('webm') ? 'webm' : 'mp4'}`
+                      : 'tujuane-community-photo.png'
+                  }
                   className="p-2 bg-white/10 hover:bg-white/20 rounded-xl text-white transition-colors cursor-pointer"
-                  title="Download original image"
+                  title={lightboxImage.mediaType === 'video' ? 'Download video' : 'Download original image'}
                 >
                   <Download className="w-4 h-4" />
                 </a>
@@ -2643,11 +3045,21 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               </div>
             </div>
 
-            <img
-              src={lightboxImage.url}
-              alt={lightboxImage.title}
-              className="max-h-[80vh] w-auto rounded-xl object-contain shadow-2xl"
-            />
+            {lightboxImage.mediaType === 'video' || lightboxImage.url.startsWith('data:video/') || lightboxImage.url.startsWith('blob:') ? (
+              <video
+                src={lightboxImage.url}
+                controls
+                autoPlay
+                playsInline
+                className="max-h-[80vh] w-full max-w-3xl rounded-xl bg-black shadow-2xl"
+              />
+            ) : (
+              <img
+                src={lightboxImage.url}
+                alt={lightboxImage.title}
+                className="max-h-[80vh] w-auto rounded-xl object-contain shadow-2xl"
+              />
+            )}
           </div>
         </div>
       )}

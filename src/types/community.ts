@@ -61,6 +61,8 @@ export const REACTION_TYPES = [
 
 export type ReactionKey = typeof REACTION_TYPES[number]['key'];
 
+export type PostMediaType = 'image' | 'video';
+
 export interface CommunityPost {
   id: string;
   authorId: string;
@@ -75,8 +77,15 @@ export interface CommunityPost {
   hotspotId?: string;
   hotspotName?: string;
   speedMbps?: number;
-  mediaUrl?: string; // base64 compressed data URI
+  mediaUrl?: string; // base64 compressed data URI (image or small inline video)
+  mediaType?: PostMediaType;
   mediaCaption?: string;
+  videoThumbnail?: string;
+  videoDuration?: number;
+  videoSizeBytes?: number;
+  videoChunkCount?: number;
+  videoMimeType?: string;
+  videoStatus?: 'ready' | 'uploading';
   backgroundColor?: PostBackgroundColor | string;
   upvotes: number;
   upvoters: string[]; // list of user UIDs who upvoted
@@ -119,6 +128,12 @@ export interface CreatePostParams {
   hotspotName?: string;
   speedMbps?: number;
   mediaUrl?: string;
+  mediaType?: PostMediaType;
   mediaCaption?: string;
+  videoThumbnail?: string;
+  videoDuration?: number;
+  videoSizeBytes?: number;
+  videoMimeType?: string;
+  videoChunks?: string[];
   backgroundColor?: PostBackgroundColor | string;
 }

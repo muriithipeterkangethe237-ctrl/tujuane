@@ -13,11 +13,16 @@ import {
   arrayRemove,
   increment,
   getDoc,
+  getDocs,
   runTransaction
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile } from '../types/chat';
 import { CommunityPost, CommunityComment, CreatePostParams } from '../types/community';
+import { base64ToBlobUrl } from '../utils/videoProcessor';
+
+const videoBlobUrlCache = new Map<string, string>();
+const inFlightVideoLoads = new Map<string, Promise<string>>();
 
 const POSTS_COLLECTION = 'community_posts';
 
@@ -26,7 +31,8 @@ const POSTS_COLLECTION = 'community_posts';
  */
 export async function createCommunityPost(
   author: UserProfile,
-  params: CreatePostParams
+  params: CreatePostParams,
+  onProgress?: (percent: number) => void
 ): Promise<string> {
   const postId = `post_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const postRef = doc(db, POSTS_COLLECTION, postId);
@@ -35,6 +41,8 @@ export async function createCommunityPost(
   const derivedTitle = params.title?.trim()
     ? params.title.trim().slice(0, 150)
     : (trimmedContent.slice(0, 75) + (trimmedContent.length > 75 ? '...' : '')) || 'Citizen Post';
+
+  const hasChunkedVideo = Array.isArray(params.videoChunks) && params.videoChunks.length > 0;
 
   const postData: any = {
     id: postId,
@@ -61,8 +69,25 @@ export async function createCommunityPost(
     postData.speedMbps = Number(params.speedMbps);
   }
 
-  if (params.mediaUrl) {
+  if (hasChunkedVideo) {
+    postData.mediaType = 'video';
+    postData.videoChunkCount = params.videoChunks!.length;
+    postData.videoStatus = 'uploading';
+    if (params.videoThumbnail) postData.videoThumbnail = params.videoThumbnail;
+    if (params.videoDuration !== undefined) postData.videoDuration = Number(params.videoDuration);
+    if (params.videoSizeBytes !== undefined) postData.videoSizeBytes = Math.round(params.videoSizeBytes);
+    if (params.videoMimeType) postData.videoMimeType = params.videoMimeType.slice(0, 100);
+  } else if (params.mediaUrl) {
     postData.mediaUrl = params.mediaUrl;
+    postData.mediaType =
+      params.mediaType || (params.mediaUrl.startsWith('data:video/') ? 'video' : 'image');
+    if (postData.mediaType === 'video') {
+      postData.videoStatus = 'ready';
+      if (params.videoThumbnail) postData.videoThumbnail = params.videoThumbnail;
+      if (params.videoDuration !== undefined) postData.videoDuration = Number(params.videoDuration);
+      if (params.videoSizeBytes !== undefined) postData.videoSizeBytes = Math.round(params.videoSizeBytes);
+      if (params.videoMimeType) postData.videoMimeType = params.videoMimeType.slice(0, 100);
+    }
   }
 
   if (params.constituency) {
@@ -78,11 +103,95 @@ export async function createCommunityPost(
   }
 
   try {
+    onProgress?.(hasChunkedVideo ? 5 : 50);
     await setDoc(postRef, postData);
+
+    if (hasChunkedVideo && params.videoChunks) {
+      const total = params.videoChunks.length;
+      const uploadedChunkIds: string[] = [];
+      const BATCH_CONCURRENCY = 4;
+
+      try {
+        for (let i = 0; i < total; i += BATCH_CONCURRENCY) {
+          const slice = params.videoChunks.slice(i, i + BATCH_CONCURRENCY);
+          await Promise.all(
+            slice.map(async (chunkData, offset) => {
+              const index = i + offset;
+              const chunkId = `chunk_${index}`;
+              const chunkRef = doc(db, POSTS_COLLECTION, postId, 'video_chunks', chunkId);
+              await setDoc(chunkRef, {
+                id: chunkId,
+                postId,
+                authorId: author.uid,
+                index,
+                data: chunkData,
+                createdAt: serverTimestamp(),
+              });
+              uploadedChunkIds.push(chunkId);
+            })
+          );
+          const pct = Math.min(95, Math.round(10 + ((i + slice.length) / total) * 85));
+          onProgress?.(pct);
+        }
+
+        await updateDoc(postRef, { videoStatus: 'ready' });
+        onProgress?.(100);
+      } catch (chunkErr) {
+        // Rollback partial chunks & post document cleanly
+        await Promise.allSettled([
+          ...uploadedChunkIds.map((cid) => deleteDoc(doc(db, POSTS_COLLECTION, postId, 'video_chunks', cid))),
+          deleteDoc(postRef),
+        ]);
+        handleFirestoreError(chunkErr, OperationType.CREATE, `${POSTS_COLLECTION}/${postId}/video_chunks`);
+      }
+    } else {
+      onProgress?.(100);
+    }
+
     return postId;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `${POSTS_COLLECTION}/${postId}`);
   }
+}
+
+/**
+ * Fetch and assemble chunked video segments from Firestore into a cached Blob Object URL
+ */
+export async function fetchAndAssemblePostVideo(
+  postId: string,
+  mimeType: string = 'video/mp4'
+): Promise<string> {
+  const cached = videoBlobUrlCache.get(postId);
+  if (cached) return cached;
+
+  const existingPromise = inFlightVideoLoads.get(postId);
+  if (existingPromise) return existingPromise;
+
+  const loadPromise = (async () => {
+    const chunksPath = `${POSTS_COLLECTION}/${postId}/video_chunks`;
+    try {
+      const chunksRef = collection(db, POSTS_COLLECTION, postId, 'video_chunks');
+      const snap = await getDocs(chunksRef);
+      if (snap.empty) {
+        throw new Error('Video data is unavailable.');
+      }
+      const ordered = snap.docs
+        .map((d) => d.data() as { index: number; data: string })
+        .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+
+      const fullBase64 = ordered.map((c) => c.data).join('');
+      const objectUrl = base64ToBlobUrl(fullBase64, mimeType);
+      videoBlobUrlCache.set(postId, objectUrl);
+      return objectUrl;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, chunksPath);
+    } finally {
+      inFlightVideoLoads.delete(postId);
+    }
+  })();
+
+  inFlightVideoLoads.set(postId, loadPromise);
+  return loadPromise;
 }
 
 /**
@@ -115,7 +224,23 @@ export function subscribeToCommunityPosts(
           hotspotName: d.hotspotName,
           speedMbps: d.speedMbps !== undefined ? Number(d.speedMbps) : undefined,
           mediaUrl: d.mediaUrl || undefined,
+          mediaType:
+            d.mediaType === 'video' || d.mediaType === 'image'
+              ? d.mediaType
+              : typeof d.mediaUrl === 'string' && d.mediaUrl.startsWith('data:video/')
+              ? 'video'
+              : (d.videoChunkCount ?? 0) > 0
+              ? 'video'
+              : d.mediaUrl
+              ? 'image'
+              : undefined,
           mediaCaption: d.mediaCaption || undefined,
+          videoThumbnail: d.videoThumbnail || undefined,
+          videoDuration: typeof d.videoDuration === 'number' ? d.videoDuration : undefined,
+          videoSizeBytes: typeof d.videoSizeBytes === 'number' ? d.videoSizeBytes : undefined,
+          videoChunkCount: typeof d.videoChunkCount === 'number' ? d.videoChunkCount : undefined,
+          videoMimeType: d.videoMimeType || undefined,
+          videoStatus: d.videoStatus || undefined,
           backgroundColor: d.backgroundColor || undefined,
           upvotes: typeof d.upvotes === 'number' ? d.upvotes : (d.upvoters?.length || 0),
           upvoters: Array.isArray(d.upvoters) ? d.upvoters : [],
@@ -131,7 +256,7 @@ export function subscribeToCommunityPosts(
           createdAt: d.createdAt?.toDate ? d.createdAt.toDate().toISOString() : new Date().toISOString(),
           updatedAt: d.updatedAt?.toDate ? d.updatedAt.toDate().toISOString() : undefined,
         };
-      });
+      }).filter((p) => p.videoStatus !== 'uploading');
 
       // Filter in-memory for flexible combination
       if (filters.county && filters.county !== 'All') {
@@ -416,6 +541,19 @@ export async function deleteCommunityPost(
     if (authorId !== userId && !isDeveloper) {
       throw new Error('Unauthorized: You can only delete your own posts.');
     }
+
+    // Clean up any video_chunks subcollection documents
+    const chunksSnap = await getDocs(collection(db, POSTS_COLLECTION, postId, 'video_chunks'));
+    if (!chunksSnap.empty) {
+      await Promise.allSettled(chunksSnap.docs.map((chunkDoc) => deleteDoc(chunkDoc.ref)));
+    }
+
+    const cachedUrl = videoBlobUrlCache.get(postId);
+    if (cachedUrl) {
+      URL.revokeObjectURL(cachedUrl);
+      videoBlobUrlCache.delete(postId);
+    }
+
     await deleteDoc(postRef);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `${POSTS_COLLECTION}/${postId}`);

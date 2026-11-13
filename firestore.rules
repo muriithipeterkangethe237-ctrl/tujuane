@@ -94,15 +94,22 @@ service cloud.firestore {
       return data.id is string && data.id.size() > 0 && data.id.size() <= 128
         && data.authorId is string && data.authorId == request.auth.uid
         && data.authorName is string && data.authorName.size() > 0 && data.authorName.size() <= 100
-        && (!('authorPhotoUrl' in data) || (data.authorPhotoUrl is string && data.authorPhotoUrl.size() <= 500))
+        && (!('authorPhotoUrl' in data) || (data.authorPhotoUrl is string && data.authorPhotoUrl.size() <= 600000))
         && (!('authorCounty' in data) || (data.authorCounty is string && data.authorCounty.size() <= 50))
         && data.title is string && data.title.size() > 0 && data.title.size() <= 150
         && data.content is string && data.content.size() > 0 && data.content.size() <= 2000
         && data.category in ['general', 'discussion', 'hustle', 'local_news', 'meetup', 'campus', 'question', 'speed_report', 'hotspot_tip', 'outage_alert']
         && data.county is string && data.county.size() <= 50
         && (!('constituency' in data) || (data.constituency is string && data.constituency.size() <= 60))
-        && (!('mediaUrl' in data) || (data.mediaUrl is string && data.mediaUrl.size() <= 600000))
+        && (!('mediaUrl' in data) || (data.mediaUrl is string && data.mediaUrl.size() <= 950000))
+        && (!('mediaType' in data) || (data.mediaType in ['image', 'video']))
         && (!('mediaCaption' in data) || (data.mediaCaption is string && data.mediaCaption.size() <= 200))
+        && (!('videoThumbnail' in data) || (data.videoThumbnail is string && data.videoThumbnail.size() <= 200000))
+        && (!('videoDuration' in data) || (data.videoDuration is number && data.videoDuration >= 0 && data.videoDuration <= 65))
+        && (!('videoSizeBytes' in data) || (data.videoSizeBytes is int && data.videoSizeBytes >= 0 && data.videoSizeBytes <= 13000000))
+        && (!('videoChunkCount' in data) || (data.videoChunkCount is int && data.videoChunkCount >= 0 && data.videoChunkCount <= 40))
+        && (!('videoMimeType' in data) || (data.videoMimeType is string && data.videoMimeType.size() <= 100))
+        && (!('videoStatus' in data) || (data.videoStatus in ['ready', 'uploading']))
         && (!('backgroundColor' in data) || (data.backgroundColor is string && data.backgroundColor.size() <= 40))
         && (!('reactions' in data) || data.reactions is map)
         && (!('reactionsCount' in data) || data.reactionsCount is map)
@@ -115,13 +122,23 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    // Validation for CommunityPost VideoChunk
+    function isValidVideoChunk(data, postId) {
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.postId == postId
+        && data.authorId is string && data.authorId == request.auth.uid
+        && data.index is int && data.index >= 0 && data.index < 40
+        && data.data is string && data.data.size() > 0 && data.data.size() <= 650000
+        && data.createdAt is timestamp;
+    }
+
     // Validation for CommunityComment
     function isValidCommunityComment(data, postId) {
       return data.id is string && data.id.size() > 0 && data.id.size() <= 128
         && data.postId == postId
         && data.authorId is string && data.authorId == request.auth.uid
         && data.authorName is string && data.authorName.size() > 0 && data.authorName.size() <= 100
-        && (!('authorPhotoUrl' in data) || (data.authorPhotoUrl is string && data.authorPhotoUrl.size() <= 500))
+        && (!('authorPhotoUrl' in data) || (data.authorPhotoUrl is string && data.authorPhotoUrl.size() <= 600000))
         && data.content is string && data.content.size() > 0 && data.content.size() <= 1000
         && (!('mediaUrl' in data) || (data.mediaUrl is string && data.mediaUrl.size() <= 600000))
         && (!('replyToCommentId' in data) || (data.replyToCommentId is string && data.replyToCommentId.size() <= 128))
@@ -244,8 +261,8 @@ service cloud.firestore {
       allow update: if isSignedIn()
         && isValidId(postId)
         && (
-          // Case 1: Post author editing
-          (existing().authorId == request.auth.uid && incoming().authorId == existing().authorId && incoming().createdAt == existing().createdAt)
+          // Case 1: Post author editing or finalizing video upload
+          (existing().authorId == request.auth.uid && incoming().authorId == existing().authorId && incoming().createdAt == existing().createdAt && isValidCommunityPost(incoming()))
           ||
           // Case 2: Developer / Moderator update
           (request.auth.token.email == 'muriithipeterkangethe237@gmail.com')
@@ -277,6 +294,20 @@ service cloud.firestore {
           );
         allow delete: if isSignedIn()
           && isValidId(commentId)
+          && (existing().authorId == request.auth.uid || request.auth.token.email == 'muriithipeterkangethe237@gmail.com');
+      }
+
+      // 5b. Chunked short-video segments subcollection
+      match /video_chunks/{chunkId} {
+        allow read: if true;
+
+        allow create: if isSignedIn()
+          && isValidId(chunkId)
+          && isValidVideoChunk(incoming(), postId)
+          && get(/databases/$(database)/documents/community_posts/$(postId)).data.authorId == request.auth.uid;
+
+        allow delete: if isSignedIn()
+          && isValidId(chunkId)
           && (existing().authorId == request.auth.uid || request.auth.token.email == 'muriithipeterkangethe237@gmail.com');
       }
     }

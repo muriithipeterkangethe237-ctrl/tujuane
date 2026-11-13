@@ -180,6 +180,7 @@ function AppContent() {
       category: option?.category || 'general',
       solidBg: option?.solidBg || (type === 'solid_bg' ? 'emerald' : 'default'),
       requiresImage: !!option?.requiresImage,
+      requiresVideo: !!option?.requiresVideo,
       timestamp: Date.now()
     });
   };
