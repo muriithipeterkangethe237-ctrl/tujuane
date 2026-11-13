@@ -370,14 +370,37 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 50);
 
-      // Auto-mark incoming messages as read & delivered
+      // Auto-mark incoming messages as delivered, and as read only while tab is visible
       if (currentUser) {
         markMessagesAsDelivered(activeChatId, currentUser.uid, msgs);
-        markMessagesAsRead(activeChatId, currentUser.uid, msgs);
+        if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+          markMessagesAsRead(activeChatId, currentUser.uid, msgs);
+        }
       }
     });
     return () => unsub();
   }, [activeChatId, activeChatMode, currentUser]);
+
+  // Mark incoming messages as read as soon as the user focuses/views the open chat tab
+  useEffect(() => {
+    if (activeChatMode !== 'direct' || !activeChatId || !currentUser || directMessages.length === 0) {
+      return;
+    }
+
+    const handleMarkReadIfVisible = () => {
+      if (document.visibilityState === 'visible') {
+        markMessagesAsRead(activeChatId, currentUser.uid, directMessages);
+      }
+    };
+
+    handleMarkReadIfVisible();
+    document.addEventListener('visibilitychange', handleMarkReadIfVisible);
+    window.addEventListener('focus', handleMarkReadIfVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', handleMarkReadIfVisible);
+      window.removeEventListener('focus', handleMarkReadIfVisible);
+    };
+  }, [activeChatId, activeChatMode, currentUser, directMessages]);
 
   // Subscribe to active group messages
   useEffect(() => {
@@ -1356,9 +1379,38 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           </span>
                         ) : (
                           <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate flex-1 flex items-center gap-1">
-                            {conv.lastMessageSenderId === currentUser.uid && (
-                              <CheckCheck className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0 inline" />
-                            )}
+                            {conv.lastMessageSenderId === currentUser.uid && (() => {
+                              const isLastMsgRead =
+                                conv.lastMessageStatus === 'read' ||
+                                (!conv.lastMessageStatus &&
+                                  !!partnerId &&
+                                  Array.isArray(conv.unreadBy) &&
+                                  !conv.unreadBy.includes(partnerId) &&
+                                  conv.lastMessage !== 'Conversation started');
+                              const isLastMsgDelivered =
+                                !isLastMsgRead &&
+                                (conv.lastMessageStatus === 'delivered' || isOnline);
+
+                              if (isLastMsgRead) {
+                                return (
+                                  <span title="Read" className="inline-flex shrink-0">
+                                    <CheckCheck className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400 stroke-[2.5]" />
+                                  </span>
+                                );
+                              }
+                              if (isLastMsgDelivered) {
+                                return (
+                                  <span title={isOnline ? 'Delivered (Online)' : 'Delivered'} className="inline-flex shrink-0">
+                                    <CheckCheck className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 stroke-[2]" />
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span title="Sent (Offline)" className="inline-flex shrink-0">
+                                  <Check className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 stroke-[2]" />
+                                </span>
+                              );
+                            })()}
                             <span className="truncate">{conv.lastMessage || 'Say hello...'}</span>
                           </div>
                         )}
@@ -1829,12 +1881,14 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
                     const isRead =
                       msg.status === 'read' ||
-                      (msg.readBy && activePartner && msg.readBy.includes(activePartner.uid));
+                      !!(msg.readBy && activePartner && msg.readBy.includes(activePartner.uid));
                     const isDelivered =
-                      msg.status === 'delivered' ||
-                      (msg.deliveredTo &&
-                        activePartner &&
-                        msg.deliveredTo.includes(activePartner.uid));
+                      !isRead &&
+                      (msg.status === 'delivered' ||
+                        !!(msg.deliveredTo &&
+                          activePartner &&
+                          msg.deliveredTo.includes(activePartner.uid)) ||
+                        partnerPresence.isOnline);
 
                     return (
                       <div
@@ -1969,14 +2023,22 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                               {isMe && (
                                 <span
                                   className="flex items-center"
-                                  title={isRead ? 'Read' : isDelivered ? 'Delivered' : 'Sent'}
+                                  title={
+                                    isRead
+                                      ? 'Read'
+                                      : isDelivered
+                                      ? partnerPresence.isOnline
+                                        ? 'Delivered (Online)'
+                                        : 'Delivered'
+                                      : 'Sent (Offline)'
+                                  }
                                 >
                                   {isRead ? (
-                                    <CheckCheck className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
+                                    <CheckCheck className="w-3.5 h-3.5 text-sky-400 dark:text-sky-300 stroke-[2.5]" />
                                   ) : isDelivered ? (
-                                    <CheckCheck className="w-3.5 h-3.5 text-slate-400 dark:text-emerald-200 stroke-[2]" />
+                                    <CheckCheck className="w-3.5 h-3.5 text-slate-300 dark:text-emerald-100/80 stroke-[2]" />
                                   ) : (
-                                    <Check className="w-3.5 h-3.5 text-slate-400 dark:text-emerald-200 stroke-[2]" />
+                                    <Check className="w-3.5 h-3.5 text-slate-400 dark:text-emerald-200/75 stroke-[2]" />
                                   )}
                                 </span>
                               )}

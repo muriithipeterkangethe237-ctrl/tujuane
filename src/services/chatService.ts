@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   query,
@@ -220,7 +221,9 @@ export async function sendChatMessage(
 
     await updateDoc(chatRef, {
       lastMessage: preview,
+      lastMessageId: messageId,
       lastMessageSenderId: sender.uid,
+      lastMessageStatus: 'sent',
       lastMessageTimestamp: serverTimestamp(),
       unreadBy: arrayUnion(recipientId),
       [`typingUsers.${sender.uid}`]: {
@@ -251,6 +254,67 @@ export async function sendChatMessage(
   }
 }
 
+const inFlightDeliveryChecks = new Set<string>();
+
+/**
+ * Automatically mark incoming unread messages as delivered when the recipient is online in the app
+ * (even before opening the exact conversation thread)
+ */
+export async function markChatUnreadMessagesAsDelivered(
+  chatId: string,
+  recipientId: string
+): Promise<void> {
+  if (!chatId || !recipientId) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+
+  const lockKey = `${chatId}:${recipientId}`;
+  if (inFlightDeliveryChecks.has(lockKey)) return;
+  inFlightDeliveryChecks.add(lockKey);
+
+  try {
+    const messagesRef = collection(db, 'chats', chatId, 'messages');
+    const q = query(messagesRef, where('recipientId', '==', recipientId));
+    const snap = await getDocs(q);
+
+    const undeliveredDocs = snap.docs.filter((docSnap) => {
+      const d = docSnap.data();
+      const deliveredTo: string[] = Array.isArray(d.deliveredTo) ? d.deliveredTo : [];
+      return !deliveredTo.includes(recipientId) && d.status !== 'read';
+    });
+
+    const chatRef = doc(db, 'chats', chatId);
+    const chatSnap = await getDoc(chatRef);
+    const chatData = chatSnap.exists() ? chatSnap.data() : null;
+    const shouldUpgradeConversationStatus =
+      !!chatData &&
+      chatData.lastMessageSenderId !== recipientId &&
+      chatData.lastMessageStatus !== 'delivered' &&
+      chatData.lastMessageStatus !== 'read';
+
+    if (undeliveredDocs.length === 0 && !shouldUpgradeConversationStatus) {
+      return;
+    }
+
+    const batch = writeBatch(db);
+    for (const docSnap of undeliveredDocs) {
+      batch.update(docSnap.ref, {
+        deliveredTo: arrayUnion(recipientId),
+        status: 'delivered'
+      });
+    }
+    if (shouldUpgradeConversationStatus) {
+      batch.update(chatRef, {
+        lastMessageStatus: 'delivered'
+      });
+    }
+    await batch.commit();
+  } catch (err) {
+    console.warn('Could not mark background chat messages as delivered:', err);
+  } finally {
+    inFlightDeliveryChecks.delete(lockKey);
+  }
+}
+
 /**
  * Mark messages as delivered
  */
@@ -268,12 +332,25 @@ export async function markMessagesAsDelivered(
   if (eligible.length === 0) return;
 
   try {
+    const chatRef = doc(db, 'chats', chatId);
+    const chatSnap = await getDoc(chatRef);
+    const chatData = chatSnap.exists() ? chatSnap.data() : null;
+
     const batch = writeBatch(db);
     for (const msg of eligible) {
       const msgRef = doc(db, 'chats', chatId, 'messages', msg.id);
       batch.update(msgRef, {
         deliveredTo: arrayUnion(recipientId),
         status: msg.status === 'read' ? 'read' : 'delivered'
+      });
+    }
+    if (
+      chatData &&
+      chatData.lastMessageSenderId !== recipientId &&
+      (!chatData.lastMessageStatus || chatData.lastMessageStatus === 'sent')
+    ) {
+      batch.update(chatRef, {
+        lastMessageStatus: 'delivered'
       });
     }
     await batch.commit();
@@ -296,14 +373,32 @@ export async function markMessagesAsRead(
       (!m.readBy || !m.readBy.includes(recipientId))
   );
 
-  if (eligible.length === 0) return;
-
   try {
     const chatRef = doc(db, 'chats', chatId);
+    const chatSnap = await getDoc(chatRef);
+    const chatData = chatSnap.exists() ? chatSnap.data() : null;
+    const isConversationUnreadForUser =
+      !!chatData &&
+      Array.isArray(chatData.unreadBy) &&
+      chatData.unreadBy.includes(recipientId);
+    const shouldMarkLastMessageRead =
+      !!chatData &&
+      chatData.lastMessageSenderId !== recipientId &&
+      chatData.lastMessageStatus !== 'read';
+
+    if (eligible.length === 0 && !isConversationUnreadForUser && !shouldMarkLastMessageRead) {
+      return;
+    }
+
     const batch = writeBatch(db);
-    batch.update(chatRef, {
+    const chatUpdate: Record<string, any> = {
       unreadBy: arrayRemove(recipientId)
-    });
+    };
+    if (shouldMarkLastMessageRead) {
+      chatUpdate.lastMessageStatus = 'read';
+    }
+    batch.update(chatRef, chatUpdate);
+
     for (const msg of eligible) {
       const msgRef = doc(db, 'chats', chatId, 'messages', msg.id);
       batch.update(msgRef, {
@@ -399,7 +494,9 @@ export function subscribeToUserChats(
           participants: d.participants as [string, string],
           participantDetails: d.participantDetails,
           lastMessage: d.lastMessage,
+          lastMessageId: d.lastMessageId || undefined,
           lastMessageSenderId: d.lastMessageSenderId,
+          lastMessageStatus: d.lastMessageStatus || undefined,
           lastMessageTimestamp: d.lastMessageTimestamp?.toDate
             ? d.lastMessageTimestamp.toDate().toISOString()
             : undefined,

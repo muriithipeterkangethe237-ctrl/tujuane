@@ -28,7 +28,10 @@ import { ExternalCreateRequest } from './components/CommunityFeed';
 import { subscribeToSafetyReports } from './services/safetyService';
 import { subscribeToIncomingFriendRequests } from './services/socialService';
 import { subscribeToCommunityPosts } from './services/communityService';
-import { subscribeToUserChats } from './services/chatService';
+import {
+  subscribeToUserChats,
+  markChatUnreadMessagesAsDelivered
+} from './services/chatService';
 import {
   subscribeToUserNotifications,
   calculateAccountStanding
@@ -102,20 +105,57 @@ function AppContent() {
     return () => unsub();
   }, [currentUser]);
 
-  // Subscribe to real-time user direct chats to display unread badge on Chat icon
+  // Subscribe to real-time user direct chats to display unread badge & mark messages delivered while online
   useEffect(() => {
     if (!currentUser) {
       setUnreadMessagesCount(0);
       return;
     }
 
+    let latestChats: Array<{
+      id: string;
+      lastMessageSenderId?: string;
+      lastMessageStatus?: string;
+      unreadBy?: string[];
+    }> = [];
+
+    const deliverIncomingChats = (chatsToDeliver: typeof latestChats) => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      for (const chat of chatsToDeliver) {
+        const isIncoming =
+          chat.lastMessageSenderId && chat.lastMessageSenderId !== currentUser.uid;
+        const needsDelivery =
+          isIncoming &&
+          (chat.unreadBy?.includes(currentUser.uid) ||
+            chat.lastMessageStatus === 'sent' ||
+            !chat.lastMessageStatus) &&
+          chat.lastMessageStatus !== 'delivered' &&
+          chat.lastMessageStatus !== 'read';
+
+        if (needsDelivery) {
+          markChatUnreadMessagesAsDelivered(chat.id, currentUser.uid);
+        }
+      }
+    };
+
     const unsub = subscribeToUserChats(currentUser.uid, (chats) => {
+      latestChats = chats;
       const unreadCount = chats.filter(
         (c) => Array.isArray(c.unreadBy) && c.unreadBy.includes(currentUser.uid)
       ).length;
       setUnreadMessagesCount(unreadCount);
+      deliverIncomingChats(chats);
     });
-    return () => unsub();
+
+    const handleOnline = () => {
+      deliverIncomingChats(latestChats);
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => {
+      unsub();
+      window.removeEventListener('online', handleOnline);
+    };
   }, [currentUser]);
 
   // Notifications count for bell (message notifications appear as badge on the chats icon)

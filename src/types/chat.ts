@@ -61,7 +61,9 @@ export interface ChatConversation {
     }
   >;
   lastMessage?: string;
+  lastMessageId?: string;
   lastMessageSenderId?: string;
+  lastMessageStatus?: MessageStatus;
   lastMessageTimestamp?: string;
   typingUsers?: Record<
     string,

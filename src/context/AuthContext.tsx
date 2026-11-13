@@ -378,15 +378,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       markOffline();
     };
 
+    const handleNetworkOnline = () => {
+      if (document.visibilityState === 'visible') {
+        markActive();
+      }
+    };
+
+    const handleNetworkOffline = () => {
+      markOffline();
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('beforeunload', handlePageHide);
     window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('online', handleNetworkOnline);
+    window.addEventListener('offline', handleNetworkOffline);
 
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', handlePageHide);
       window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('online', handleNetworkOnline);
+      window.removeEventListener('offline', handleNetworkOffline);
     };
   }, [currentUser]);
 

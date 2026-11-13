@@ -59,7 +59,9 @@ service cloud.firestore {
         && data.participants[0] is string && data.participants[1] is string
         && data.createdAt is timestamp
         && (!('lastMessage' in data) || (data.lastMessage is string && data.lastMessage.size() <= 500))
+        && (!('lastMessageId' in data) || (data.lastMessageId is string && data.lastMessageId.size() <= 128))
         && (!('lastMessageSenderId' in data) || (data.lastMessageSenderId is string && data.lastMessageSenderId.size() <= 128))
+        && (!('lastMessageStatus' in data) || data.lastMessageStatus in ['sending', 'sent', 'delivered', 'read'])
         && (!('lastMessageTimestamp' in data) || data.lastMessageTimestamp is timestamp)
         && (!('participantDetails' in data) || data.participantDetails is map)
         && (!('unreadBy' in data) || data.unreadBy is list)

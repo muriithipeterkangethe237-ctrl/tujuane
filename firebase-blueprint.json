@@ -37,7 +37,9 @@
         "participants": { "type": "array" },
         "participantDetails": { "type": "object" },
         "lastMessage": { "type": "string", "maxLength": 500 },
+        "lastMessageId": { "type": "string", "maxLength": 128 },
         "lastMessageSenderId": { "type": "string", "maxLength": 128 },
+        "lastMessageStatus": { "type": "string", "enum": ["sending", "sent", "delivered", "read"] },
         "lastMessageTimestamp": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
