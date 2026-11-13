@@ -4,10 +4,99 @@
 
 :root {
   color-scheme: light;
+  --tujuane-surface: rgba(255, 255, 255, 0.86);
+  --tujuane-surface-soft: rgba(241, 245, 249, 0.78);
+  --tujuane-surface-elevated: rgba(255, 255, 255, 0.94);
+  --tujuane-hairline: rgba(15, 23, 42, 0.06);
 }
 
 .dark {
   color-scheme: dark;
+  --tujuane-surface: rgba(15, 23, 42, 0.72);
+  --tujuane-surface-soft: rgba(30, 41, 59, 0.56);
+  --tujuane-surface-elevated: rgba(15, 23, 42, 0.88);
+  --tujuane-hairline: rgba(248, 250, 252, 0.07);
+}
+
+.theme-kenya {
+  color-scheme: dark;
+  --tujuane-surface: rgba(8, 13, 10, 0.56);
+  --tujuane-surface-soft: rgba(14, 22, 17, 0.48);
+  --tujuane-surface-elevated: rgba(8, 13, 10, 0.78);
+  --tujuane-hairline: rgba(255, 255, 255, 0.08);
+}
+
+.tujuane-surface {
+  background-color: var(--tujuane-surface);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.tujuane-surface-soft {
+  background-color: var(--tujuane-surface-soft);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.tujuane-surface-elevated {
+  background-color: var(--tujuane-surface-elevated);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.tujuane-divider {
+  border-color: var(--tujuane-hairline);
+}
+
+@keyframes kenya-wave-scroll {
+  0% {
+    transform: translate3d(0%, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@keyframes kenya-shield-float {
+  0%, 100% {
+    transform: translate3d(0, -1.5px, 0) rotate(-0.8deg);
+  }
+  50% {
+    transform: translate3d(0, 1.5px, 0) rotate(0.8deg);
+  }
+}
+
+@keyframes kenya-backdrop-sway {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1.03);
+  }
+  50% {
+    transform: translate3d(-1.5%, 1%, 0) scale(1.06);
+  }
+}
+
+.kenya-wave-scroll {
+  animation: kenya-wave-scroll 5.5s linear infinite;
+  will-change: transform;
+}
+
+.kenya-shield-float {
+  animation: kenya-shield-float 2.75s ease-in-out infinite;
+  will-change: transform;
+}
+
+.kenya-backdrop-sway {
+  animation: kenya-backdrop-sway 14s ease-in-out infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kenya-wave-scroll,
+  .kenya-shield-float,
+  .kenya-backdrop-sway {
+    animation: none !important;
+    transform: none !important;
+  }
 }
 
 body {

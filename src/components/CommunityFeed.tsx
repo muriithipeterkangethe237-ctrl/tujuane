@@ -26,6 +26,12 @@ import { CitizenStoriesBar } from './Stories/CitizenStoriesBar';
 import { PostTypeSelectorModal, PostCreationType, PostTypeOption } from './PostTypeSelectorModal';
 import { CreateStoryModal } from './Stories/CreateStoryModal';
 import { FeedVideoPlayer } from './FeedVideoPlayer';
+import { FeedAudioPlayer } from './FeedAudioPlayer';
+import {
+  VoiceShoutRecorder,
+  RecordedVoiceShout,
+  formatShoutSeconds
+} from './VoiceShoutRecorder';
 import { compressImage, formatFileSize } from '../utils/imageCompressor';
 import {
   processFeedVideoFile,
@@ -86,7 +92,8 @@ import {
   Palette,
   Smile,
   Vote,
-  Video
+  Video,
+  Mic
 } from 'lucide-react';
 
 export interface ExternalCreateRequest {
@@ -94,6 +101,7 @@ export interface ExternalCreateRequest {
   solidBg?: PostBackgroundColor;
   requiresImage?: boolean;
   requiresVideo?: boolean;
+  requiresAudio?: boolean;
   openSelector?: boolean;
   timestamp: number;
 }
@@ -143,6 +151,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [imageMeta, setImageMeta] = useState<{ origSize: number; compSize: number } | null>(null);
   const [videoMeta, setVideoMeta] = useState<{ size: number; duration: number } | null>(null);
   const [modalVideoData, setModalVideoData] = useState<ProcessedFeedVideo | null>(null);
+  const [modalAudioData, setModalAudioData] = useState<RecordedVoiceShout | null>(null);
+  const [modalShowVoiceRecorder, setModalShowVoiceRecorder] = useState(false);
   const [modalUploadProgress, setModalUploadProgress] = useState<number | null>(null);
   const [modalHighlightVideo, setModalHighlightVideo] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
@@ -169,8 +179,18 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       setFormError(null);
       setModalUploadProgress(null);
       setModalHighlightVideo(!!externalCreateRequest.requiresVideo);
+      setModalShowVoiceRecorder(!!externalCreateRequest.requiresAudio);
       if (externalCreateRequest.requiresVideo) {
         setModalMediaType('video');
+      } else if (externalCreateRequest.requiresAudio) {
+        if (modalVideoData?.previewObjectUrl) {
+          URL.revokeObjectURL(modalVideoData.previewObjectUrl);
+        }
+        setModalVideoData(null);
+        setCompressedImage(null);
+        setImageMeta(null);
+        setVideoMeta(null);
+        setModalMediaType('audio');
       }
       setIsCreateModalOpen(true);
       if (externalCreateRequest.requiresVideo) {
@@ -326,7 +346,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       {
         county: selectedCounty === 'All' ? undefined : selectedCounty,
         constituency: selectedConstituency === 'All' ? undefined : selectedConstituency,
-        category: selectedCategory === 'all' || selectedCategory === 'videos' ? undefined : selectedCategory,
+        category:
+          selectedCategory === 'all' || selectedCategory === 'videos' || selectedCategory === 'audio'
+            ? undefined
+            : selectedCategory,
         sortBy
       },
       (incomingPosts) => {
@@ -405,6 +428,16 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     setVideoMeta(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (videoInputRef.current) videoInputRef.current.value = '';
+  };
+
+  const handleClearModalAudio = () => {
+    if (modalAudioData?.previewObjectUrl) {
+      URL.revokeObjectURL(modalAudioData.previewObjectUrl);
+    }
+    setModalAudioData(null);
+    if (modalMediaType === 'audio') {
+      setModalMediaType('image');
+    }
   };
 
   // Handle quick post image or short video attachment
@@ -624,8 +657,12 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     setFormError(null);
     setModalUploadProgress(null);
     setModalHighlightVideo(!!option?.requiresVideo);
+    setModalShowVoiceRecorder(!!option?.requiresAudio);
     if (option?.requiresVideo) {
       setModalMediaType('video');
+    } else if (option?.requiresAudio) {
+      handleRemoveImage();
+      setModalMediaType('audio');
     }
     setIsCreateModalOpen(true);
 
@@ -659,8 +696,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
 
     const trimmedContent = postContent.trim();
-    if (!trimmedContent && !compressedImage && !modalVideoData) {
-      setFormError('Please enter caption details or attach a photo / short video.');
+    if (!trimmedContent && !compressedImage && !modalVideoData && !modalAudioData) {
+      setFormError('Please enter caption details or attach a photo, short video, or voice shout.');
       return;
     }
 
@@ -675,28 +712,40 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     setFormError(null);
     setModalUploadProgress(modalVideoData ? 5 : null);
 
-    const isVideo = modalMediaType === 'video' && (!!modalVideoData || !!compressedImage);
+    const isAudio = modalMediaType === 'audio' && !!modalAudioData;
+    const isVideo = !isAudio && modalMediaType === 'video' && (!!modalVideoData || !!compressedImage);
 
     const derivedTitle = postTitle.trim()
       ? postTitle.trim()
       : trimmedContent.slice(0, 75) + (trimmedContent.length > 75 ? '...' : '') ||
-        (isVideo ? 'Citizen Short Video' : 'Citizen Update');
+        (isAudio ? 'Citizen Voice Shout' : isVideo ? 'Citizen Short Video' : 'Citizen Update');
 
     const safeContent =
       trimmedContent ||
-      (isVideo ? 'Shared a short video on the feed.' : compressedImage ? 'Shared a community photo.' : '');
+      (isAudio
+        ? `Shared a ${formatShoutSeconds(modalAudioData!.duration)} voice shout.`
+        : isVideo
+        ? 'Shared a short video on the feed.'
+        : compressedImage
+        ? 'Shared a community photo.'
+        : '');
 
-    const params: any = {
+    const params: CreatePostParams & Record<string, any> = {
       title: derivedTitle,
       content: safeContent,
       category: postCategory,
       county: modalIncludeLocation ? postCounty : '',
       constituency: modalIncludeLocation && postConstituency ? postConstituency : undefined,
-      mediaType: isVideo ? 'video' : compressedImage ? 'image' : undefined,
+      mediaType: isAudio ? 'audio' : isVideo ? 'video' : compressedImage ? 'image' : undefined,
       mediaCaption: mediaCaption.trim() || undefined
     };
 
-    if (isVideo && modalVideoData) {
+    if (isAudio && modalAudioData) {
+      params.mediaUrl = modalAudioData.dataUrl;
+      params.audioDuration = modalAudioData.duration;
+      params.audioSizeBytes = modalAudioData.sizeBytes;
+      params.audioMimeType = modalAudioData.mimeType;
+    } else if (isVideo && modalVideoData) {
       params.mediaUrl = modalVideoData.inlineDataUrl || undefined;
       params.videoChunks = modalVideoData.chunks;
       params.videoThumbnail = modalVideoData.thumbnailDataUrl;
@@ -707,7 +756,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       params.mediaUrl = compressedImage;
     }
 
-    if (modalBgColor && modalBgColor !== 'default' && !compressedImage && !modalVideoData) {
+    if (modalBgColor && modalBgColor !== 'default' && !compressedImage && !modalVideoData && !modalAudioData) {
       params.backgroundColor = modalBgColor;
     }
 
@@ -725,12 +774,17 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       if (modalVideoData?.previewObjectUrl) {
         URL.revokeObjectURL(modalVideoData.previewObjectUrl);
       }
+      if (modalAudioData?.previewObjectUrl) {
+        URL.revokeObjectURL(modalAudioData.previewObjectUrl);
+      }
       setIsCreateModalOpen(false);
       // Reset form
       setPostTitle('');
       setPostContent('');
       setPostConstituency('');
       setModalVideoData(null);
+      setModalAudioData(null);
+      setModalShowVoiceRecorder(false);
       setCompressedImage(null);
       setModalMediaType('image');
       setImageMeta(null);
@@ -741,9 +795,15 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       setModalBgColor('default');
       if (fileInputRef.current) fileInputRef.current.value = '';
       if (videoInputRef.current) videoInputRef.current.value = '';
-      triggerToast(isVideo ? '✓ Short video published to TUJUANE feed!' : '✓ Post published to TUJUANE community!');
+      triggerToast(
+        isAudio
+          ? '✓ Voice shout published to TUJUANE feed!'
+          : isVideo
+          ? '✓ Short video published to TUJUANE feed!'
+          : '✓ Post published to TUJUANE community!'
+      );
     } catch (err: any) {
-      setFormError('Failed to publish post. Please try again.');
+      setFormError(err?.message || 'Failed to publish post. Please try again.');
     } finally {
       setIsSubmitting(false);
       setModalUploadProgress(null);
@@ -1073,6 +1133,12 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         (post.videoChunkCount ?? 0) > 0;
       if (!isVid) return false;
     }
+    if (selectedCategory === 'audio') {
+      const isAud =
+        post.mediaType === 'audio' ||
+        (post.mediaUrl?.startsWith('data:audio/') ?? false);
+      if (!isAud) return false;
+    }
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     const titleMatch = post.title.toLowerCase().includes(q);
@@ -1089,49 +1155,49 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         return {
           label: 'Jobs & Hustle',
           icon: Briefcase,
-          bg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+          bg: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300',
           dot: 'bg-emerald-500'
         };
       case 'local_news':
         return {
           label: 'Local Happenings',
           icon: Compass,
-          bg: 'bg-amber-100 text-amber-900 border-amber-200',
+          bg: 'bg-amber-500/12 text-amber-800 dark:text-amber-300',
           dot: 'bg-amber-500'
         };
       case 'meetup':
         return {
           label: 'Meetups & Events',
           icon: Users,
-          bg: 'bg-purple-100 text-purple-800 border-purple-200',
+          bg: 'bg-purple-500/12 text-purple-800 dark:text-purple-300',
           dot: 'bg-purple-500'
         };
       case 'campus':
         return {
           label: 'Campus Life',
           icon: GraduationCap,
-          bg: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+          bg: 'bg-indigo-500/12 text-indigo-800 dark:text-indigo-300',
           dot: 'bg-indigo-500'
         };
       case 'question':
         return {
           label: 'Questions & Advice',
           icon: HelpCircle,
-          bg: 'bg-teal-100 text-teal-800 border-teal-200',
+          bg: 'bg-teal-500/12 text-teal-800 dark:text-teal-300',
           dot: 'bg-teal-500'
         };
       case 'discussion':
         return {
           label: 'Civic Discussion',
           icon: Sparkles,
-          bg: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+          bg: 'bg-cyan-500/12 text-cyan-800 dark:text-cyan-300',
           dot: 'bg-cyan-500'
         };
       default:
         return {
           label: 'General Chit-Chat',
           icon: MessageSquare,
-          bg: 'bg-sky-100 text-sky-800 border-sky-200',
+          bg: 'bg-sky-500/12 text-sky-800 dark:text-sky-300',
           dot: 'bg-sky-500'
         };
     }
@@ -1162,7 +1228,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           type="button"
           onClick={() => setShowDailyPoll((prev) => !prev)}
           aria-expanded={showDailyPoll}
-          className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700/70 shadow-2xs transition-colors cursor-pointer"
+          className="w-full flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl tujuane-surface hover:opacity-95 transition-all cursor-pointer"
         >
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
@@ -1170,7 +1236,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
               Daily Citizen Polls
             </span>
-            <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-emerald-200/70 dark:border-emerald-800/60 shrink-0">
+            <span className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0">
               Live
             </span>
           </div>
@@ -1192,10 +1258,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       </section>
 
       {/* Filter and Search Controls */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 transition-colors">
+      <div className="tujuane-surface p-4 rounded-2xl space-y-3 transition-colors">
         {/* Audience Toggle: All Kenya vs Following & Friends */}
-        <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 flex-wrap gap-2">
-          <div className="inline-flex rounded-xl p-0.5 bg-slate-100 dark:bg-slate-800 text-xs font-semibold border border-slate-200 dark:border-slate-700">
+        <div className="flex items-center justify-between pb-2 border-b tujuane-divider flex-wrap gap-2">
+          <div className="inline-flex rounded-xl p-0.5 tujuane-surface-soft text-xs font-semibold">
             <button
               onClick={() => setFeedAudience('all')}
               className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
@@ -1253,6 +1319,17 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             >
               <Video className="w-3.5 h-3.5" />
               <span>Short Videos</span>
+            </button>
+            <button
+              onClick={() => setSelectedCategory('audio')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors cursor-pointer ${
+                selectedCategory === 'audio'
+                  ? 'bg-rose-600 text-white'
+                  : 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/50'
+              }`}
+            >
+              <Mic className="w-3.5 h-3.5" />
+              <span>Voice Shouts</span>
             </button>
             <button
               onClick={() => setSelectedCategory('general')}
@@ -1325,7 +1402,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           {/* Sort Control */}
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Sort:</span>
-            <div className="inline-flex rounded-xl p-0.5 bg-slate-100 dark:bg-slate-800 text-xs font-medium border border-slate-200 dark:border-slate-700">
+            <div className="inline-flex rounded-xl p-0.5 tujuane-surface-soft text-xs font-medium">
               <button
                 onClick={() => setSortBy('latest')}
                 className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
@@ -1347,7 +1424,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         </div>
 
         {/* Search bar & County / Constituency dropdowns */}
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-2 border-t tujuane-divider">
           <div className="sm:col-span-5 relative">
             <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-2.5" />
             <input
@@ -1355,7 +1432,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search conversations, authors, or topics..."
-              className="w-full pl-9 pr-3.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+              className="w-full pl-9 pr-3.5 py-1.5 text-xs tujuane-surface-soft rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
             />
           </div>
 
@@ -1367,7 +1444,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 setSelectedCounty(e.target.value);
                 setSelectedConstituency('All');
               }}
-              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer font-medium"
+              className="w-full px-2.5 py-1.5 text-xs tujuane-surface-soft rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer font-medium"
             >
               <option value="All">All 47 Kenya Counties</option>
               {ALL_47_COUNTIES.map((c) => (
@@ -1383,7 +1460,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               value={selectedConstituency}
               onChange={(e) => setSelectedConstituency(e.target.value)}
               disabled={selectedCounty === 'All' || availableFilterConstituencies.length === 0}
-              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer font-medium disabled:opacity-50"
+              className="w-full px-2.5 py-1.5 text-xs tujuane-surface-soft rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer font-medium disabled:opacity-50"
             >
               <option value="All">
                 {selectedCounty === 'All' ? 'All Constituencies' : `All ${selectedCounty} Constituencies`}
@@ -1399,7 +1476,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       </div>
 
       {/* DIRECT QUICK POST COMPOSER - Post caption, photo, or short video directly */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs p-4 sm:p-5 space-y-3.5 transition-colors">
+      <div className="tujuane-surface rounded-3xl p-4 sm:p-5 space-y-3.5 transition-colors">
         {/* Hidden file inputs for quick photo and short video */}
         <input
           ref={quickFileInputRef}
@@ -1433,18 +1510,18 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         <div className="flex items-start gap-3">
           {/* User Avatar */}
           <div className="shrink-0 mt-0.5">
-            {userProfile?.photoURL ? (
+              {userProfile?.photoURL ? (
               <img
                 src={userProfile.photoURL}
                 alt={userProfile.displayName}
-                className="w-10 h-10 rounded-2xl object-cover border border-slate-200 dark:border-slate-700"
+                className="w-10 h-10 rounded-2xl object-cover"
               />
             ) : currentUser ? (
-              <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-extrabold flex items-center justify-center text-sm border border-slate-200 dark:border-slate-700">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-extrabold flex items-center justify-center text-sm">
                 {(userProfile?.displayName || currentUser.displayName || 'C').charAt(0).toUpperCase()}
               </div>
             ) : (
-              <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-2xl tujuane-surface-soft text-slate-400 dark:text-slate-500 flex items-center justify-center">
                 <Users className="w-5 h-5" />
               </div>
             )}
@@ -1468,7 +1545,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               className={`w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-2xl focus:outline-none transition-all resize-none leading-relaxed disabled:opacity-60 ${
                 quickBgColor !== 'default' && !quickImage
                   ? `${SOLID_POST_BACKGROUNDS.find((c) => c.id === quickBgColor)?.bgClass || 'bg-emerald-600 text-white'} text-center font-bold text-sm sm:text-base p-4 placeholder:text-white/70 shadow-inner`
-                  : 'bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 focus:bg-white dark:focus:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500'
+                  : 'tujuane-surface-soft focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500'
               }`}
             />
           </div>
@@ -1476,7 +1553,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
         {/* Solid Background Color Palette Selector (when no media attached) */}
         {!quickImage && currentUser && (
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+          <div className="pt-2 border-t tujuane-divider flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs font-semibold">
               <Palette className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>Background Color:</span>
@@ -1505,7 +1582,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
         {/* Attached Photo or Short Video Preview */}
         {quickImage && (
-          <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950 max-h-72 flex items-center justify-center">
+          <div className="relative rounded-2xl overflow-hidden bg-slate-950/90 max-h-72 flex items-center justify-center">
             {quickMediaType === 'video' ? (
               <video
                 src={quickImage}
@@ -1606,7 +1683,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         )}
 
         {/* Composer Actions Bottom Row */}
-        <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800 gap-2 flex-wrap">
+        <div className="flex items-center justify-between pt-2 border-t tujuane-divider gap-2 flex-wrap">
           <div className="flex items-center gap-1.5 sm:gap-2">
             {/* Add Photo Button */}
             <button
@@ -1616,7 +1693,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 else quickFileInputRef.current?.click();
               }}
               disabled={isQuickCompressing || isQuickSubmitting}
-              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-slate-100/70 dark:hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50"
               title="Attach a photo to this post"
             >
               <ImageIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -1631,11 +1708,40 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 else quickVideoInputRef.current?.click();
               }}
               disabled={isQuickCompressing || isQuickSubmitting}
-              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-400 hover:bg-slate-100/70 dark:hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50"
               title="Post a short video (MP4, WebM, MOV — up to 60s / 12 MB)"
             >
               <Video className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               <span>{isQuickCompressing && quickMediaType === 'video' ? 'Preparing...' : 'Short Video'}</span>
+            </button>
+
+            {/* Record 30s Voice Shout Button (opens post modal directly in Voice Recorder mode) */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!currentUser) {
+                  openAuthModal();
+                  return;
+                }
+                if (isBanned || isSuspended) {
+                  handleOpenCreateModal();
+                  return;
+                }
+                handleRemoveImage();
+                setPostCategory('general');
+                setModalBgColor('default');
+                setModalHighlightVideo(false);
+                setModalShowVoiceRecorder(true);
+                setModalMediaType('audio');
+                setFormError(null);
+                setIsCreateModalOpen(true);
+              }}
+              disabled={isQuickCompressing || isQuickSubmitting}
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-rose-700 dark:hover:text-rose-400 hover:bg-slate-100/70 dark:hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50"
+              title="Record and share a 30-second audio shout"
+            >
+              <Mic className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+              <span>Voice Shout</span>
             </button>
 
             {/* Optional Location Toggle */}
@@ -1644,8 +1750,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               onClick={() => setQuickShowLocation(!quickShowLocation)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                 quickShowLocation
-                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100/70 dark:hover:bg-white/10'
               }`}
               title="Optionally tag county location"
             >
@@ -1686,7 +1792,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
       {/* Blocked Accounts Notice */}
       {blockedPostsCount > 0 && (
-        <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 flex items-center justify-between">
+        <div className="p-3 tujuane-surface-soft rounded-2xl text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Ban className="w-4 h-4 text-slate-400 shrink-0" />
             <span>
@@ -1700,8 +1806,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       {/* Posts Stream */}
       <div className="space-y-4">
         {filteredPosts.length === 0 ? (
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center space-y-4 transition-colors">
-            <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 flex items-center justify-center mx-auto">
+          <div className="tujuane-surface rounded-2xl p-12 text-center space-y-4 transition-colors">
+            <div className="w-12 h-12 rounded-2xl tujuane-surface-soft text-slate-400 dark:text-slate-500 flex items-center justify-center mx-auto">
               <MessageSquare className="w-6 h-6" />
             </div>
             <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">No discussions found in this section</h3>
@@ -1731,7 +1837,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             return (
               <article
                 key={post.id}
-                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-all overflow-hidden"
+                className="tujuane-surface rounded-2xl transition-all overflow-hidden"
               >
                 <div className="p-4 sm:p-6 space-y-4">
                   {/* Top: Author, Category Badge, County & Date */}
@@ -1758,7 +1864,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           <img
                             src={post.authorPhotoUrl}
                             alt={post.authorName}
-                            className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700 group-hover:ring-2 group-hover:ring-emerald-500 transition-all"
+                            className="w-10 h-10 rounded-full object-cover group-hover:ring-2 group-hover:ring-emerald-500 transition-all"
                           />
                         ) : (
                           <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-sm group-hover:bg-emerald-200 transition-colors">
@@ -1871,7 +1977,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
                     <div className="flex items-center gap-1.5 shrink-0 relative">
                       <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${catMeta.bg}`}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${catMeta.bg}`}
                       >
                         <span className={`w-1.5 h-1.5 rounded-full ${catMeta.dot}`} />
                         <Icon className="w-3.5 h-3.5" />
@@ -2024,7 +2130,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         post.title !== 'Citizen Post' &&
                         post.title !== 'Citizen Photo Update' &&
                         post.title !== 'Citizen Video Update' &&
-                        post.title !== 'Citizen Short Video' && (
+                        post.title !== 'Citizen Short Video' &&
+                        post.title !== 'Citizen Voice Shout' && (
                           <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-snug">
                             {post.title}
                           </h2>
@@ -2035,14 +2142,32 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     </div>
                   )}
 
-                  {/* Media Photo or Short Video Attachment */}
+                  {/* Media Photo, Short Video, or 30s Voice Shout Attachment */}
                   {(post.mediaUrl || (post.videoChunkCount ?? 0) > 0) && (() => {
+                    const isAudioPost =
+                      post.mediaType === 'audio' ||
+                      (post.mediaUrl?.startsWith('data:audio/') ?? false);
                     const isVideoPost =
-                      post.mediaType === 'video' ||
-                      (post.mediaUrl?.startsWith('data:video/') ?? false) ||
-                      (post.videoChunkCount ?? 0) > 0;
+                      !isAudioPost &&
+                      (post.mediaType === 'video' ||
+                        (post.mediaUrl?.startsWith('data:video/') ?? false) ||
+                        (post.videoChunkCount ?? 0) > 0);
+
+                    if (isAudioPost) {
+                      return (
+                        <div className="space-y-1.5">
+                          <FeedAudioPlayer post={post} />
+                          {post.mediaCaption && (
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300 px-1">
+                              {post.mediaCaption}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    }
+
                     return (
-                      <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950 relative group">
+                      <div className="rounded-xl overflow-hidden bg-slate-950/90 relative group">
                         {isVideoPost ? (
                           <FeedVideoPlayer
                             post={post}
@@ -2092,7 +2217,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         )}
 
                         {post.mediaCaption && (
-                          <div className="bg-slate-900/90 text-white text-[11px] px-3 py-1.5 border-t border-slate-800">
+                          <div className="bg-slate-950/80 text-white text-[11px] px-3 py-1.5">
                             {post.mediaCaption}
                           </div>
                         )}
@@ -2101,7 +2226,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   })()}
 
                   {/* Bottom Action Bar: Reactions & Replies (strictly one reaction per user) */}
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
+                  <div className="flex items-center justify-between pt-3 border-t tujuane-divider text-xs">
                     <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                       {/* Interactive Reactions Button & Popover */}
                       {(() => {
@@ -2122,8 +2247,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                               }}
                               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
                                 userPostReaction
-                                  ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 shadow-2xs'
-                                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                                  ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                                  : 'tujuane-surface-soft text-slate-600 dark:text-slate-300 hover:opacity-90'
                               }`}
                               title={userPostReaction ? `Your reaction: ${userReactionMeta?.label} (click to change or remove)` : 'Add a reaction'}
                             >
@@ -2168,10 +2293,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                       key={rKey}
                                       type="button"
                                       onClick={() => handleReactToPost(post, rKey)}
-                                      className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${
+                                      className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
                                         isMine
-                                          ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300'
-                                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+                                          ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                                          : 'tujuane-surface-soft text-slate-700 dark:text-slate-300 hover:opacity-85'
                                       }`}
                                       title={`${rMeta.label} (${count}) - Click to toggle reaction`}
                                     >
@@ -2189,7 +2314,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       {/* Comments Toggle Button */}
                       <button
                         onClick={() => handleToggleComments(post.id)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-semibold bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-semibold tujuane-surface-soft text-slate-600 dark:text-slate-300 hover:opacity-90 transition-colors cursor-pointer"
                       >
                         <MessageSquare className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                         <span>{post.commentsCount || 0}</span>
@@ -2218,7 +2343,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           triggerToast('Post copied to clipboard!');
                         }
                       }}
-                      className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                      className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100/70 dark:hover:bg-white/10 transition-colors cursor-pointer"
                       title="Share post"
                     >
                       <Share2 className="w-4 h-4" />
@@ -2226,15 +2351,15 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   </div>
                 </div>
 
-                {/* Expanded Comments Thread - No bubbles, clean flat modern thread items */}
+                {/* Expanded Comments Thread - Clean flat theme-blended thread items */}
                 {isExpanded && (
-                  <div className="bg-slate-50/70 dark:bg-slate-950/60 p-4 sm:p-6 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                  <div className="tujuane-surface-soft p-4 sm:p-6 border-t tujuane-divider space-y-4">
                     <h3 className="font-bold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
                       Replies ({comments.length})
                     </h3>
 
-                    {/* Comment list - flat, border-b clean divider without bubbles */}
-                    <div className="space-y-0 divide-y divide-slate-100 dark:divide-slate-800">
+                    {/* Comment list - flat, subtle theme-blended divider without bubbles */}
+                    <div className="space-y-0 divide-y divide-slate-900/5 dark:divide-white/5">
                       {comments.length === 0 ? (
                         <div className="text-xs text-slate-500 dark:text-slate-400 py-3 text-center">
                           No replies yet. Be the first to share your thoughts!
@@ -2332,7 +2457,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                   <img
                                     src={comment.mediaUrl}
                                     alt="Comment attachment"
-                                    className="max-h-48 rounded-lg border border-slate-200 dark:border-slate-700 object-cover cursor-pointer"
+                                    className="max-h-48 rounded-lg object-cover cursor-pointer"
                                     onClick={() =>
                                       setLightboxImage({
                                         url: comment.mediaUrl!,
@@ -2466,13 +2591,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                 ? `Reply to @${replyingToComment.authorName}...`
                                 : 'Write a reply to the community...'
                             }
-                            className="flex-1 px-3 py-2 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                            className="flex-1 px-3 py-2 text-xs tujuane-surface rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           />
 
                           <button
                             type="button"
                             onClick={() => commentFileInputRef.current?.click()}
-                            className="p-2 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                            className="p-2 tujuane-surface hover:opacity-90 rounded-xl text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                             title="Attach photo to reply"
                           >
                             <ImageIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -2509,9 +2634,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
                         {/* Comment Image preview */}
                         {commentImage && (
-                          <div className="flex items-center gap-2 mt-2 p-1.5 bg-white rounded-lg border border-slate-200 w-fit">
+                          <div className="flex items-center gap-2 mt-2 p-1.5 tujuane-surface rounded-lg w-fit">
                             <img src={commentImage} alt="Preview" className="w-8 h-8 rounded object-cover" />
-                            <span className="text-[10px] text-slate-600 font-medium">Photo attached</span>
+                            <span className="text-[10px] text-slate-600 dark:text-slate-300 font-medium">Photo attached</span>
                             <button
                               onClick={() => setCommentImage(null)}
                               className="text-slate-400 hover:text-rose-500 p-0.5"
@@ -2522,11 +2647,11 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         )}
                       </div>
                     ) : (
-                      <div className="text-center p-3 bg-white rounded-xl border border-slate-200 text-xs text-slate-600">
+                      <div className="text-center p-3 tujuane-surface rounded-xl text-xs text-slate-600 dark:text-slate-300">
                         <button
                           type="button"
                           onClick={() => openAuthModal('signin')}
-                          className="text-emerald-700 font-bold hover:underline cursor-pointer"
+                          className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline cursor-pointer"
                         >
                           Sign in or register
                         </button>{' '}
@@ -2788,7 +2913,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               )}
 
               {/* Solid Background Color Palette for text posts */}
-              {!compressedImage && !modalHighlightVideo && (
+              {!compressedImage && !modalHighlightVideo && !modalShowVoiceRecorder && !modalAudioData && (
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
@@ -2830,16 +2955,20 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               {/* Content Body */}
               <div>
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  Caption & Discussion Details {!compressedImage && <span className="text-rose-500">*</span>}
+                  Caption & Discussion Details {!compressedImage && !modalAudioData && <span className="text-rose-500">*</span>}
                 </label>
                 <textarea
                   rows={4}
                   value={postContent}
                   onChange={(e) => setPostContent(e.target.value)}
-                  placeholder="Share your thoughts, caption, questions, or opportunities..."
+                  placeholder={
+                    modalShowVoiceRecorder || modalAudioData
+                      ? 'Add an optional text note or context for your 30s voice shout...'
+                      : 'Share your thoughts, caption, questions, or opportunities...'
+                  }
                   maxLength={2000}
                   className={`w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl focus:outline-none resize-none leading-relaxed transition-all ${
-                    modalBgColor !== 'default' && !compressedImage
+                    modalBgColor !== 'default' && !compressedImage && !modalAudioData
                       ? `${SOLID_POST_BACKGROUNDS.find((c) => c.id === modalBgColor)?.bgClass || 'bg-emerald-600 text-white'} text-center font-bold text-sm sm:text-base p-4 placeholder:text-white/70 shadow-inner`
                       : 'bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500'
                   }`}
@@ -2850,11 +2979,25 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 </div>
               </div>
 
-              {/* Media Photo or Short Video Upload */}
+              {/* Media Photo, Short Video, or 30s Voice Shout Attachment */}
               <div>
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  Photo or Short Video Attachment (Optional)
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Photo, Short Video, or 30s Voice Shout (Optional)
+                  </label>
+                  {(modalShowVoiceRecorder || modalAudioData) && !isSubmitting && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleClearModalAudio();
+                        setModalShowVoiceRecorder(false);
+                      }}
+                      className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      Other media
+                    </button>
+                  )}
+                </div>
 
                 <input
                   type="file"
@@ -2871,9 +3014,36 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   className="hidden"
                 />
 
-                {!compressedImage ? (
+                {modalShowVoiceRecorder || modalAudioData ? (
+                  <div className="space-y-2.5">
+                    <VoiceShoutRecorder
+                      recordedShout={modalAudioData}
+                      onRecorded={(shout) => {
+                        handleRemoveImage();
+                        setModalHighlightVideo(false);
+                        setModalMediaType('audio');
+                        setModalAudioData(shout);
+                        setFormError(null);
+                      }}
+                      onClear={() => {
+                        handleClearModalAudio();
+                      }}
+                      disabled={isSubmitting}
+                    />
+                    {modalAudioData && (
+                      <input
+                        type="text"
+                        value={mediaCaption}
+                        onChange={(e) => setMediaCaption(e.target.value)}
+                        placeholder="Add an optional caption for this voice shout..."
+                        maxLength={200}
+                        className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100"
+                      />
+                    )}
+                  </div>
+                ) : !compressedImage ? (
                   <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-4 text-center bg-slate-50/50 dark:bg-slate-800/40 space-y-2.5">
-                    <div className="flex items-center justify-center gap-2">
+                    <div className="flex flex-wrap items-center justify-center gap-2">
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
@@ -2892,11 +3062,24 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         <Video className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                         <span>Upload Short Video</span>
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalHighlightVideo(false);
+                          setModalMediaType('audio');
+                          setModalShowVoiceRecorder(true);
+                        }}
+                        disabled={isCompressing}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-rose-500 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-2xs transition-colors cursor-pointer"
+                      >
+                        <Mic className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                        <span>Record Voice Shout (30s)</span>
+                      </button>
                     </div>
                     <p className="text-[10px] text-slate-400 dark:text-slate-500">
                       {isCompressing
                         ? 'Processing media...'
-                        : 'Photos auto-compress for 3G/4G · Short videos (MP4/WebM/MOV) up to 60s / 12 MB'}
+                        : 'Photos auto-compress · Short videos up to 60s · Voice shouts up to 30s'}
                     </p>
                   </div>
                 ) : (
@@ -3001,7 +3184,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   ) : (
                     <>
                       <Send className="w-3.5 h-3.5" />
-                      <span>Publish {modalMediaType === 'video' && compressedImage ? 'Video' : 'Post'}</span>
+                      <span>
+                        Publish{' '}
+                        {modalMediaType === 'audio' && modalAudioData
+                          ? 'Voice Shout'
+                          : modalMediaType === 'video' && compressedImage
+                          ? 'Video'
+                          : 'Post'}
+                      </span>
                     </>
                   )}
                 </button>

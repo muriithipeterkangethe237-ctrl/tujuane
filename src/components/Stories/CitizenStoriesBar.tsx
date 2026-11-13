@@ -77,8 +77,8 @@ export const CitizenStoriesBar: React.FC<CitizenStoriesBarProps> = ({
   return (
     <>
       {/* Stories Tray Carousel */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-3 sm:p-4 shadow-xs relative transition-colors">
-        <div className="flex items-center justify-between pb-2.5 mb-1 px-1 border-b border-slate-100 dark:border-slate-800/80">
+      <div className="tujuane-surface rounded-2xl p-3 sm:p-4 relative transition-colors">
+        <div className="flex items-center justify-between pb-2.5 mb-1 px-1 border-b tujuane-divider">
           <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
             <Sparkles className="w-3.5 h-3.5 text-emerald-500 fill-emerald-500" />
             <span>Citizen Stories</span>

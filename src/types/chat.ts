@@ -134,8 +134,13 @@ export interface GroupChat {
     }
   >;
   lastMessage?: string;
+  lastMessageId?: string;
+  lastMessageSenderId?: string;
   lastMessageSenderName?: string;
+  lastMessageStatus?: MessageStatus;
   lastMessageTimestamp?: string;
+  unreadBy?: string[];
+  deliveredBy?: string[];
   isPublic?: boolean;
   createdAt: string;
 }
@@ -151,6 +156,9 @@ export interface ChannelMessage {
   mediaUrl?: string;
   attachment?: MessageAttachment;
   replyTo?: MessageReplyReference;
+  status?: MessageStatus;
+  readBy?: string[];
+  deliveredTo?: string[];
   upvotes?: number;
   isEdited?: boolean;
   editedAt?: string;

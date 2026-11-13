@@ -18,7 +18,8 @@ import { NotificationCenterModal } from './components/NotificationCenterModal';
 import { AuthModal } from './components/AuthModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { ThemeProvider } from './context/ThemeContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { KenyanFlagBackdrop } from './components/KenyanFlagTheme';
 import { UserProfile } from './types/chat';
 import { UserNotification, AccountStandingSummary } from './types/notification';
 import { CommunityPost } from './types/community';
@@ -32,6 +33,10 @@ import {
   subscribeToUserChats,
   markChatUnreadMessagesAsDelivered
 } from './services/chatService';
+import {
+  subscribeToGroups,
+  markGroupUnreadMessagesAsDelivered
+} from './services/groupChannelService';
 import {
   subscribeToUserNotifications,
   calculateAccountStanding
@@ -49,6 +54,7 @@ function AppContent() {
     closeAuthModal,
     authModalInitialMode
   } = useAuth();
+  const { isKenyaTheme } = useTheme();
   const [activeTab, setActiveTabState] = useState<string>('landing');
   const [historyStack, setHistoryStack] = useState<string[]>(['landing']);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -105,7 +111,7 @@ function AppContent() {
     return () => unsub();
   }, [currentUser]);
 
-  // Subscribe to real-time user direct chats to display unread badge & mark messages delivered while online
+  // Subscribe to real-time user direct & group inboxes to display unread badge & mark messages delivered while online
   useEffect(() => {
     if (!currentUser) {
       setUnreadMessagesCount(0);
@@ -118,6 +124,29 @@ function AppContent() {
       lastMessageStatus?: string;
       unreadBy?: string[];
     }> = [];
+
+    let latestGroups: Array<{
+      id: string;
+      members: string[];
+      lastMessageSenderId?: string;
+      lastMessageStatus?: string;
+      unreadBy?: string[];
+      deliveredBy?: string[];
+    }> = [];
+
+    const updateTotalUnread = () => {
+      const directUnread = latestChats.filter(
+        (c) => Array.isArray(c.unreadBy) && c.unreadBy.includes(currentUser.uid)
+      ).length;
+      const groupUnread = latestGroups.filter(
+        (g) =>
+          Array.isArray(g.members) &&
+          g.members.includes(currentUser.uid) &&
+          Array.isArray(g.unreadBy) &&
+          g.unreadBy.includes(currentUser.uid)
+      ).length;
+      setUnreadMessagesCount(directUnread + groupUnread);
+    };
 
     const deliverIncomingChats = (chatsToDeliver: typeof latestChats) => {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
@@ -138,22 +167,49 @@ function AppContent() {
       }
     };
 
-    const unsub = subscribeToUserChats(currentUser.uid, (chats) => {
+    const deliverIncomingGroups = (groupsToDeliver: typeof latestGroups) => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      for (const grp of groupsToDeliver) {
+        if (!Array.isArray(grp.members) || !grp.members.includes(currentUser.uid)) continue;
+        const isIncoming =
+          grp.lastMessageSenderId && grp.lastMessageSenderId !== currentUser.uid;
+        const notDeliveredYet =
+          !Array.isArray(grp.deliveredBy) || !grp.deliveredBy.includes(currentUser.uid);
+        const needsDelivery =
+          isIncoming &&
+          (grp.unreadBy?.includes(currentUser.uid) ||
+            notDeliveredYet ||
+            grp.lastMessageStatus === 'sent' ||
+            !grp.lastMessageStatus) &&
+          grp.lastMessageStatus !== 'read';
+
+        if (needsDelivery) {
+          markGroupUnreadMessagesAsDelivered(grp.id, currentUser.uid);
+        }
+      }
+    };
+
+    const unsubChats = subscribeToUserChats(currentUser.uid, (chats) => {
       latestChats = chats;
-      const unreadCount = chats.filter(
-        (c) => Array.isArray(c.unreadBy) && c.unreadBy.includes(currentUser.uid)
-      ).length;
-      setUnreadMessagesCount(unreadCount);
+      updateTotalUnread();
       deliverIncomingChats(chats);
+    });
+
+    const unsubGroups = subscribeToGroups(currentUser.uid, (groups) => {
+      latestGroups = groups;
+      updateTotalUnread();
+      deliverIncomingGroups(groups);
     });
 
     const handleOnline = () => {
       deliverIncomingChats(latestChats);
+      deliverIncomingGroups(latestGroups);
     };
 
     window.addEventListener('online', handleOnline);
     return () => {
-      unsub();
+      unsubChats();
+      unsubGroups();
       window.removeEventListener('online', handleOnline);
     };
   }, [currentUser]);
@@ -221,6 +277,7 @@ function AppContent() {
       solidBg: option?.solidBg || (type === 'solid_bg' ? 'emerald' : 'default'),
       requiresImage: !!option?.requiresImage,
       requiresVideo: !!option?.requiresVideo,
+      requiresAudio: !!option?.requiresAudio,
       timestamp: Date.now()
     });
   };
@@ -444,7 +501,14 @@ function AppContent() {
   };
 
   return (
-    <div className={`min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors ${activeTab === 'chat' ? 'h-screen h-dvh overflow-hidden' : ''}`}>
+    <div
+      className={`relative min-h-screen flex flex-col text-slate-900 dark:text-slate-100 transition-colors ${
+        isKenyaTheme ? 'bg-transparent' : 'bg-slate-50 dark:bg-slate-950'
+      } ${activeTab === 'chat' ? 'h-screen h-dvh overflow-hidden' : ''}`}
+    >
+      {/* Animated Kenyan Flag Backdrop when Kenyan Flag theme is active */}
+      {isKenyaTheme && <KenyanFlagBackdrop />}
+
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-20 right-4 z-50 bg-slate-900 dark:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-lg flex items-center gap-2 animate-bounce border border-slate-700">
@@ -487,12 +551,12 @@ function AppContent() {
 
       {/* Contextual Top Back Bar for non-landing pages (omitted on chat for full-screen experience) */}
       {activeTab !== 'landing' && activeTab !== 'chat' && (
-        <div className="bg-slate-100/90 dark:bg-slate-900/90 border-b border-slate-200/80 dark:border-slate-800 px-4 sm:px-6 lg:px-8 py-2 sticky top-16 z-30 backdrop-blur-xs transition-colors">
+        <div className="border-b tujuane-divider px-4 sm:px-6 lg:px-8 py-2 sticky top-16 z-30 tujuane-surface-elevated transition-colors">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2.5 min-w-0">
               <button
                 onClick={handleGoBack}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold border border-slate-300 dark:border-slate-700 shadow-2xs hover:shadow-xs transition-all cursor-pointer group"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg tujuane-surface-soft hover:opacity-90 text-slate-800 dark:text-slate-200 font-bold transition-all cursor-pointer group"
                 aria-label="Back to previous screen"
               >
                 <ArrowLeft className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 stroke-[2.5] group-hover:-translate-x-0.5 transition-transform" />
@@ -549,8 +613,8 @@ function AppContent() {
       <main
         className={
           activeTab === 'chat'
-            ? 'flex-1 w-full p-0 flex flex-col h-full h-dvh max-w-full overflow-hidden'
-            : 'flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full'
+            ? 'relative z-10 flex-1 w-full p-0 flex flex-col h-full h-dvh max-w-full overflow-hidden'
+            : 'relative z-10 flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full'
         }
       >
         {/* Account Restriction Status Alert */}
@@ -608,18 +672,18 @@ function AppContent() {
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                   Daily Community Polls
                 </h1>
-                <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
                   Kura Yako, Sauti Yako — Live voice on Kenyan culture, Matatu heritage, lifestyle, and county devolution issues.
                 </p>
               </div>
               <button
                 onClick={handleGoBack}
-                className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-100 transition-colors shadow-2xs cursor-pointer"
+                className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl tujuane-surface text-slate-700 dark:text-slate-200 font-bold text-xs hover:opacity-90 transition-colors cursor-pointer"
               >
-                <ArrowLeft className="w-4 h-4 text-emerald-700" />
+                <ArrowLeft className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
                 <span>Back to Hub</span>
               </button>
             </div>

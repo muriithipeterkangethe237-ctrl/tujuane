@@ -104,7 +104,7 @@ service cloud.firestore {
         && data.county is string && data.county.size() <= 50
         && (!('constituency' in data) || (data.constituency is string && data.constituency.size() <= 60))
         && (!('mediaUrl' in data) || (data.mediaUrl is string && data.mediaUrl.size() <= 950000))
-        && (!('mediaType' in data) || (data.mediaType in ['image', 'video']))
+        && (!('mediaType' in data) || (data.mediaType in ['image', 'video', 'audio']))
         && (!('mediaCaption' in data) || (data.mediaCaption is string && data.mediaCaption.size() <= 200))
         && (!('videoThumbnail' in data) || (data.videoThumbnail is string && data.videoThumbnail.size() <= 200000))
         && (!('videoDuration' in data) || (data.videoDuration is number && data.videoDuration >= 0 && data.videoDuration <= 65))
@@ -112,6 +112,9 @@ service cloud.firestore {
         && (!('videoChunkCount' in data) || (data.videoChunkCount is int && data.videoChunkCount >= 0 && data.videoChunkCount <= 40))
         && (!('videoMimeType' in data) || (data.videoMimeType is string && data.videoMimeType.size() <= 100))
         && (!('videoStatus' in data) || (data.videoStatus in ['ready', 'uploading']))
+        && (!('audioDuration' in data) || (data.audioDuration is number && data.audioDuration >= 0 && data.audioDuration <= 32))
+        && (!('audioSizeBytes' in data) || (data.audioSizeBytes is int && data.audioSizeBytes >= 0 && data.audioSizeBytes <= 750000))
+        && (!('audioMimeType' in data) || (data.audioMimeType is string && data.audioMimeType.size() <= 100))
         && (!('backgroundColor' in data) || (data.backgroundColor is string && data.backgroundColor.size() <= 40))
         && (!('reactions' in data) || data.reactions is map)
         && (!('reactionsCount' in data) || data.reactionsCount is map)
@@ -374,9 +377,10 @@ service cloud.firestore {
         && isValidId(groupId)
         && incoming().creatorId == request.auth.uid;
       allow update: if isSignedIn()
+        && isValidId(groupId)
         && (
           (request.auth.uid in existing().members) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['members', 'memberDetails', 'lastMessage', 'lastMessageSenderName', 'lastMessageTimestamp'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['members', 'memberDetails', 'lastMessage', 'lastMessageId', 'lastMessageSenderId', 'lastMessageSenderName', 'lastMessageStatus', 'lastMessageTimestamp', 'unreadBy', 'deliveredBy'])
         );
       allow delete: if isSignedIn() && existing().creatorId == request.auth.uid;
 
@@ -385,7 +389,15 @@ service cloud.firestore {
         allow create: if isSignedIn()
           && isValidId(messageId)
           && incoming().senderId == request.auth.uid;
-        allow update: if isSignedIn() && existing().senderId == request.auth.uid;
+        allow update: if isSignedIn()
+          && isValidId(messageId)
+          && (
+            existing().senderId == request.auth.uid ||
+            (
+              (request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.members) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['deliveredTo', 'readBy', 'status'])
+            )
+          );
         allow delete: if isSignedIn() && existing().senderId == request.auth.uid;
       }
     }

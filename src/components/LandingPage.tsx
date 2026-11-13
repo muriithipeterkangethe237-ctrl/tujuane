@@ -102,7 +102,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
   return (
     <div className="space-y-16 py-4">
       {/* 1. Hero Section */}
-      <section className="bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 rounded-3xl p-6 sm:p-10 lg:p-14 text-white shadow-xl relative overflow-hidden">
+      <section className="bg-gradient-to-br from-slate-900/92 via-emerald-950/90 to-slate-900/92 backdrop-blur-md rounded-3xl p-6 sm:p-10 lg:p-14 text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
@@ -239,10 +239,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
               <div
                 key={p.title}
                 onClick={() => onNavigate(p.tab)}
-                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs hover:border-emerald-400 dark:hover:border-emerald-600 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group space-y-4"
+                className="tujuane-surface rounded-2xl p-6 hover:opacity-95 transition-all cursor-pointer flex flex-col justify-between group space-y-4"
               >
                 <div className="space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform">
                     <Icon className="w-6 h-6" />
                   </div>
                   <h3 className="font-bold text-base text-slate-900 dark:text-white group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
@@ -264,7 +264,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
       </section>
 
       {/* 3. County Circles Exploration */}
-      <section className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-10 shadow-xs space-y-6 transition-colors">
+      <section className="tujuane-surface rounded-3xl p-6 sm:p-10 space-y-6 transition-colors">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
@@ -293,7 +293,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             <button
               key={county.name}
               onClick={() => onNavigate('community', county.name)}
-              className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 hover:bg-emerald-50/60 dark:hover:bg-emerald-950/40 border border-slate-200 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-600 text-left transition-all cursor-pointer group flex flex-col justify-between"
+              className="p-5 rounded-2xl tujuane-surface-soft hover:bg-emerald-500/12 text-left transition-all cursor-pointer group flex flex-col justify-between"
             >
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -301,7 +301,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                     <MapPin className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     <span>{county.name} County</span>
                   </h3>
-                  <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/70 px-2 py-0.5 rounded-full">
+                  <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded-full">
                     Explore
                   </span>
                 </div>
@@ -310,7 +310,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                 </p>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <div className="mt-4 pt-3 border-t tujuane-divider flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                 <span>View local posts</span>
                 <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 text-emerald-600 dark:text-emerald-400 transition-transform" />
               </div>
@@ -320,7 +320,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
       </section>
 
       {/* 4. Community Values & Etiquette */}
-      <section className="bg-slate-900 dark:bg-slate-900 text-white rounded-3xl p-6 sm:p-10 shadow-lg space-y-6 border border-slate-800">
+      <section className="bg-slate-900/88 backdrop-blur-md text-white rounded-3xl p-6 sm:p-10 shadow-lg space-y-6">
         <div className="max-w-2xl space-y-2">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/10 rounded-full text-xs font-semibold text-emerald-400">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
@@ -335,7 +335,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
+          <div className="bg-white/5 rounded-2xl p-4 space-y-2">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center text-xs">
               01
             </div>
@@ -345,7 +345,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             </p>
           </div>
 
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
+          <div className="bg-white/5 rounded-2xl p-4 space-y-2">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center text-xs">
               02
             </div>
@@ -355,7 +355,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             </p>
           </div>
 
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
+          <div className="bg-white/5 rounded-2xl p-4 space-y-2">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center text-xs">
               03
             </div>
@@ -365,7 +365,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             </p>
           </div>
 
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
+          <div className="bg-white/5 rounded-2xl p-4 space-y-2">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center text-xs">
               04
             </div>
@@ -378,7 +378,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
       </section>
 
       {/* 5. FAQs */}
-      <section className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-10 shadow-xs space-y-6 transition-colors">
+      <section className="tujuane-surface rounded-3xl p-6 sm:p-10 space-y-6 transition-colors">
         <div className="max-w-xl space-y-1">
           <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
             <HelpCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -389,7 +389,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
           </h2>
         </div>
 
-        <div className="divide-y divide-slate-100 dark:divide-slate-800">
+        <div className="divide-y divide-slate-900/5 dark:divide-white/5">
           {faqs.map((faq, index) => {
             const isOpen = openFaq === index;
             return (

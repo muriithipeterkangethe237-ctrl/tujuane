@@ -78,7 +78,7 @@
         "category": { "type": "string", "enum": ["general", "discussion", "hustle", "local_news", "meetup", "campus", "question", "speed_report", "hotspot_tip", "outage_alert"] },
         "county": { "type": "string", "maxLength": 50 },
         "mediaUrl": { "type": "string", "maxLength": 950000 },
-        "mediaType": { "type": "string", "enum": ["image", "video"] },
+        "mediaType": { "type": "string", "enum": ["image", "video", "audio"] },
         "mediaCaption": { "type": "string", "maxLength": 200 },
         "videoThumbnail": { "type": "string", "maxLength": 200000 },
         "videoDuration": { "type": "number" },
@@ -86,6 +86,9 @@
         "videoChunkCount": { "type": "integer" },
         "videoMimeType": { "type": "string", "maxLength": 100 },
         "videoStatus": { "type": "string", "enum": ["ready", "uploading"] },
+        "audioDuration": { "type": "number" },
+        "audioSizeBytes": { "type": "integer" },
+        "audioMimeType": { "type": "string", "maxLength": 100 },
         "upvotes": { "type": "integer" },
         "upvoters": { "type": "array" },
         "commentsCount": { "type": "integer" },
@@ -216,6 +219,44 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "authorId", "authorName", "type", "mediaUrl", "createdAt"]
+    },
+    "GroupChat": {
+      "title": "GroupChat",
+      "description": "Community group chat inbox with delivery and read receipt status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 300 },
+        "creatorId": { "type": "string", "maxLength": 128 },
+        "members": { "type": "array" },
+        "lastMessage": { "type": "string", "maxLength": 500 },
+        "lastMessageId": { "type": "string", "maxLength": 128 },
+        "lastMessageSenderId": { "type": "string", "maxLength": 128 },
+        "lastMessageSenderName": { "type": "string", "maxLength": 100 },
+        "lastMessageStatus": { "type": "string", "enum": ["sending", "sent", "delivered", "read"] },
+        "unreadBy": { "type": "array" },
+        "deliveredBy": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "creatorId", "members", "createdAt"]
+    },
+    "GroupMessage": {
+      "title": "GroupMessage",
+      "description": "Message inside a community group chat with delivery and read tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "groupId": { "type": "string", "maxLength": 128 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "senderName": { "type": "string", "maxLength": 100 },
+        "text": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["sending", "sent", "delivered", "read"] },
+        "deliveredTo": { "type": "array" },
+        "readBy": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "groupId", "senderId", "createdAt"]
     }
   },
   "firestore": {
@@ -230,6 +271,14 @@
     "/chats/{chatId}/messages/{messageId}": {
       "schema": "ChatMessage",
       "description": "Messages sent within a specific one-on-one chat conversation"
+    },
+    "/groups/{groupId}": {
+      "schema": "GroupChat",
+      "description": "Community group chat rooms and inbox previews"
+    },
+    "/groups/{groupId}/messages/{messageId}": {
+      "schema": "GroupMessage",
+      "description": "Messages within a community group chat room"
     },
     "/community_posts/{postId}": {
       "schema": "CommunityPost",

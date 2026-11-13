@@ -2,15 +2,16 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   query,
-  where,
   orderBy,
   onSnapshot,
   serverTimestamp,
   arrayUnion,
-  increment
+  arrayRemove,
+  writeBatch
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import {
@@ -154,7 +155,11 @@ export async function createGroupChat(
     },
     isPublic: params.isPublic ?? true,
     lastMessage: 'Group created by ' + creator.displayName,
+    lastMessageSenderId: creator.uid,
     lastMessageSenderName: creator.displayName,
+    lastMessageStatus: 'sent',
+    unreadBy: [],
+    deliveredBy: [creator.uid],
     lastMessageTimestamp: serverTimestamp(),
     createdAt: serverTimestamp()
   };
@@ -194,10 +199,15 @@ export function subscribeToGroups(
           admins: Array.isArray(d.admins) ? d.admins : [],
           memberDetails: d.memberDetails || {},
           lastMessage: d.lastMessage,
+          lastMessageId: d.lastMessageId || undefined,
+          lastMessageSenderId: d.lastMessageSenderId || undefined,
           lastMessageSenderName: d.lastMessageSenderName,
+          lastMessageStatus: d.lastMessageStatus || undefined,
           lastMessageTimestamp: d.lastMessageTimestamp?.toDate
             ? d.lastMessageTimestamp.toDate().toISOString()
             : undefined,
+          unreadBy: Array.isArray(d.unreadBy) ? d.unreadBy : [],
+          deliveredBy: Array.isArray(d.deliveredBy) ? d.deliveredBy : [],
           isPublic: d.isPublic ?? true,
           createdAt: d.createdAt?.toDate
             ? d.createdAt.toDate().toISOString()
@@ -257,6 +267,9 @@ export function subscribeToGroupMessages(
           mediaUrl: d.mediaUrl,
           attachment: d.attachment,
           replyTo: d.replyTo,
+          status: d.status || 'sent',
+          deliveredTo: Array.isArray(d.deliveredTo) ? d.deliveredTo : [],
+          readBy: Array.isArray(d.readBy) ? d.readBy : [],
           isEdited: !!d.isEdited,
           editedAt: d.editedAt?.toDate ? d.editedAt.toDate().toISOString() : undefined,
           createdAt: d.createdAt?.toDate
@@ -295,6 +308,9 @@ export async function sendGroupMessage(
     senderPhoto: sender.photoURL || '',
     senderCounty: sender.county || 'Nairobi',
     text: text.trim().slice(0, 1000),
+    status: 'sent',
+    deliveredTo: [sender.uid],
+    readBy: [sender.uid],
     createdAt: serverTimestamp()
   };
 
@@ -305,12 +321,226 @@ export async function sendGroupMessage(
   try {
     await setDoc(messageRef, payload);
 
+    const groupSnap = await getDoc(groupRef);
+    const groupData = groupSnap.exists() ? groupSnap.data() : null;
+    const members: string[] = Array.isArray(groupData?.members) ? groupData.members : [];
+    const otherMembers = members.filter((uid) => uid !== sender.uid);
+
+    let preview = text.trim().slice(0, 100);
+    if (attachment && !text.trim()) {
+      preview = `📎 Attached file: ${attachment.name}`;
+    } else if (mediaUrl && !text.trim()) {
+      preview = '📷 Shared a photo';
+    } else if (mediaUrl) {
+      preview = `📷 ${text.trim().slice(0, 80)}`;
+    }
+
     await updateDoc(groupRef, {
-      lastMessage: text.slice(0, 80),
+      lastMessage: preview,
+      lastMessageId: messageId,
+      lastMessageSenderId: sender.uid,
       lastMessageSenderName: sender.displayName,
+      lastMessageStatus: 'sent',
+      unreadBy: otherMembers,
+      deliveredBy: [sender.uid],
       lastMessageTimestamp: serverTimestamp()
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `groups/${groupId}/messages/${messageId}`);
+  }
+}
+
+const inFlightGroupDeliveryChecks = new Set<string>();
+const pendingGroupDeliveryRechecks = new Set<string>();
+
+/**
+ * Mark unread group messages as delivered when a group member is online in TUJUANE
+ */
+export async function markGroupUnreadMessagesAsDelivered(
+  groupId: string,
+  userId: string
+): Promise<void> {
+  if (!groupId || !userId) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+
+  const lockKey = `${groupId}:${userId}`;
+  if (inFlightGroupDeliveryChecks.has(lockKey)) {
+    pendingGroupDeliveryRechecks.add(lockKey);
+    return;
+  }
+  inFlightGroupDeliveryChecks.add(lockKey);
+
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    const groupSnap = await getDoc(groupRef);
+    if (!groupSnap.exists()) return;
+    const groupData = groupSnap.data();
+    const members: string[] = Array.isArray(groupData.members) ? groupData.members : [];
+    if (!members.includes(userId)) return;
+
+    const msgsSnap = await getDocs(collection(db, 'groups', groupId, 'messages'));
+    const undeliveredDocs = msgsSnap.docs.filter((docSnap) => {
+      const d = docSnap.data();
+      if (d.senderId === userId) return false;
+      const deliveredTo: string[] = Array.isArray(d.deliveredTo) ? d.deliveredTo : [];
+      return !deliveredTo.includes(userId) && d.status !== 'read';
+    });
+
+    const deliveredBy: string[] = Array.isArray(groupData.deliveredBy) ? groupData.deliveredBy : [];
+    const shouldUpdateGroupDeliveredBy = !deliveredBy.includes(userId);
+    const shouldUpgradeGroupStatus =
+      groupData.lastMessageSenderId !== userId &&
+      groupData.lastMessageStatus !== 'delivered' &&
+      groupData.lastMessageStatus !== 'read';
+
+    if (undeliveredDocs.length === 0 && !shouldUpdateGroupDeliveredBy && !shouldUpgradeGroupStatus) {
+      return;
+    }
+
+    const batch = writeBatch(db);
+    for (const docSnap of undeliveredDocs) {
+      batch.update(docSnap.ref, {
+        deliveredTo: arrayUnion(userId),
+        status: 'delivered'
+      });
+    }
+
+    const groupUpdate: Record<string, any> = {};
+    if (shouldUpdateGroupDeliveredBy) {
+      groupUpdate.deliveredBy = arrayUnion(userId);
+    }
+    if (shouldUpgradeGroupStatus) {
+      groupUpdate.lastMessageStatus = 'delivered';
+    }
+    if (Object.keys(groupUpdate).length > 0) {
+      batch.update(groupRef, groupUpdate);
+    }
+
+    await batch.commit();
+  } catch (err) {
+    console.warn('Could not mark background group messages as delivered:', err);
+  } finally {
+    inFlightGroupDeliveryChecks.delete(lockKey);
+    if (pendingGroupDeliveryRechecks.has(lockKey)) {
+      pendingGroupDeliveryRechecks.delete(lockKey);
+      markGroupUnreadMessagesAsDelivered(groupId, userId);
+    }
+  }
+}
+
+/**
+ * Mark group messages as delivered while viewing or loading the group
+ */
+export async function markGroupMessagesAsDelivered(
+  groupId: string,
+  userId: string,
+  messagesToDeliver: ChannelMessage[]
+): Promise<void> {
+  const eligible = messagesToDeliver.filter(
+    (m) =>
+      m.senderId !== userId &&
+      (!m.deliveredTo || !m.deliveredTo.includes(userId))
+  );
+
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    const groupSnap = await getDoc(groupRef);
+    const groupData = groupSnap.exists() ? groupSnap.data() : null;
+    const deliveredBy: string[] = Array.isArray(groupData?.deliveredBy) ? groupData.deliveredBy : [];
+    const needsDeliveredBy = !!groupData && !deliveredBy.includes(userId);
+    const needsGroupStatusUpgrade =
+      !!groupData &&
+      groupData.lastMessageSenderId !== userId &&
+      (!groupData.lastMessageStatus || groupData.lastMessageStatus === 'sent');
+
+    if (eligible.length === 0 && !needsDeliveredBy && !needsGroupStatusUpgrade) return;
+
+    const batch = writeBatch(db);
+    for (const msg of eligible) {
+      const msgRef = doc(db, 'groups', groupId, 'messages', msg.id);
+      batch.update(msgRef, {
+        deliveredTo: arrayUnion(userId),
+        status: msg.status === 'read' ? 'read' : 'delivered'
+      });
+    }
+
+    const groupUpdate: Record<string, any> = {};
+    if (needsDeliveredBy) groupUpdate.deliveredBy = arrayUnion(userId);
+    if (needsGroupStatusUpgrade) groupUpdate.lastMessageStatus = 'delivered';
+    if (Object.keys(groupUpdate).length > 0) {
+      batch.update(groupRef, groupUpdate);
+    }
+
+    await batch.commit();
+  } catch (err) {
+    console.warn('Could not mark group messages as delivered:', err);
+  }
+}
+
+/**
+ * Mark group messages as read when a group member actively views the thread
+ */
+export async function markGroupMessagesAsRead(
+  groupId: string,
+  userId: string,
+  messagesToRead: ChannelMessage[]
+): Promise<void> {
+  const eligible = messagesToRead.filter(
+    (m) =>
+      m.senderId !== userId &&
+      (!m.readBy || !m.readBy.includes(userId))
+  );
+
+  if (eligible.length === 0 && messagesToRead.length === 0) {
+    return;
+  }
+
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    const groupSnap = await getDoc(groupRef);
+    const groupData = groupSnap.exists() ? groupSnap.data() : null;
+    const viewedIds = new Set(messagesToRead.map((m) => m.id));
+    const lastMsgId = typeof groupData?.lastMessageId === 'string' ? groupData.lastMessageId : undefined;
+    const isLastMsgViewed = !lastMsgId || viewedIds.has(lastMsgId);
+
+    const isUnreadForUser =
+      isLastMsgViewed &&
+      !!groupData &&
+      Array.isArray(groupData.unreadBy) &&
+      groupData.unreadBy.includes(userId);
+    const shouldMarkLastMessageRead =
+      isLastMsgViewed &&
+      !!groupData &&
+      groupData.lastMessageSenderId !== userId &&
+      groupData.lastMessageStatus !== 'read';
+
+    if (eligible.length === 0 && !isUnreadForUser && !shouldMarkLastMessageRead) {
+      return;
+    }
+
+    const batch = writeBatch(db);
+    if (isUnreadForUser || shouldMarkLastMessageRead) {
+      const groupUpdate: Record<string, any> = {
+        unreadBy: arrayRemove(userId),
+        deliveredBy: arrayUnion(userId)
+      };
+      if (shouldMarkLastMessageRead) {
+        groupUpdate.lastMessageStatus = 'read';
+      }
+      batch.update(groupRef, groupUpdate);
+    }
+
+    for (const msg of eligible) {
+      const msgRef = doc(db, 'groups', groupId, 'messages', msg.id);
+      batch.update(msgRef, {
+        readBy: arrayUnion(userId),
+        deliveredTo: arrayUnion(userId),
+        status: 'read'
+      });
+    }
+
+    await batch.commit();
+  } catch (err) {
+    console.warn('Could not mark group messages as read:', err);
   }
 }

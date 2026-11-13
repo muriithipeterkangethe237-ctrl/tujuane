@@ -78,15 +78,33 @@ export async function createCommunityPost(
     if (params.videoSizeBytes !== undefined) postData.videoSizeBytes = Math.round(params.videoSizeBytes);
     if (params.videoMimeType) postData.videoMimeType = params.videoMimeType.slice(0, 100);
   } else if (params.mediaUrl) {
+    if (params.mediaUrl.length > 940000) {
+      throw new Error('Attached media is too large to save. Please keep audio shouts under 30 seconds.');
+    }
     postData.mediaUrl = params.mediaUrl;
     postData.mediaType =
-      params.mediaType || (params.mediaUrl.startsWith('data:video/') ? 'video' : 'image');
+      params.mediaType ||
+      (params.mediaUrl.startsWith('data:video/')
+        ? 'video'
+        : params.mediaUrl.startsWith('data:audio/')
+        ? 'audio'
+        : 'image');
     if (postData.mediaType === 'video') {
       postData.videoStatus = 'ready';
       if (params.videoThumbnail) postData.videoThumbnail = params.videoThumbnail;
       if (params.videoDuration !== undefined) postData.videoDuration = Number(params.videoDuration);
       if (params.videoSizeBytes !== undefined) postData.videoSizeBytes = Math.round(params.videoSizeBytes);
       if (params.videoMimeType) postData.videoMimeType = params.videoMimeType.slice(0, 100);
+    } else if (postData.mediaType === 'audio') {
+      if (params.audioDuration !== undefined) {
+        postData.audioDuration = Math.min(32, Math.max(0, Number(params.audioDuration)));
+      }
+      if (params.audioSizeBytes !== undefined) {
+        postData.audioSizeBytes = Math.round(params.audioSizeBytes);
+      }
+      if (params.audioMimeType) {
+        postData.audioMimeType = params.audioMimeType.slice(0, 100);
+      }
     }
   }
 
@@ -225,10 +243,12 @@ export function subscribeToCommunityPosts(
           speedMbps: d.speedMbps !== undefined ? Number(d.speedMbps) : undefined,
           mediaUrl: d.mediaUrl || undefined,
           mediaType:
-            d.mediaType === 'video' || d.mediaType === 'image'
+            d.mediaType === 'video' || d.mediaType === 'image' || d.mediaType === 'audio'
               ? d.mediaType
               : typeof d.mediaUrl === 'string' && d.mediaUrl.startsWith('data:video/')
               ? 'video'
+              : typeof d.mediaUrl === 'string' && d.mediaUrl.startsWith('data:audio/')
+              ? 'audio'
               : (d.videoChunkCount ?? 0) > 0
               ? 'video'
               : d.mediaUrl
@@ -241,6 +261,9 @@ export function subscribeToCommunityPosts(
           videoChunkCount: typeof d.videoChunkCount === 'number' ? d.videoChunkCount : undefined,
           videoMimeType: d.videoMimeType || undefined,
           videoStatus: d.videoStatus || undefined,
+          audioDuration: typeof d.audioDuration === 'number' ? d.audioDuration : undefined,
+          audioSizeBytes: typeof d.audioSizeBytes === 'number' ? d.audioSizeBytes : undefined,
+          audioMimeType: d.audioMimeType || undefined,
           backgroundColor: d.backgroundColor || undefined,
           upvotes: typeof d.upvotes === 'number' ? d.upvotes : (d.upvoters?.length || 0),
           upvoters: Array.isArray(d.upvoters) ? d.upvoters : [],

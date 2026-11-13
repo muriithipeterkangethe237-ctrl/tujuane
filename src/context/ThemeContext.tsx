@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-export type AppTheme = 'light' | 'dark' | 'system';
+export type AppTheme = 'light' | 'dark' | 'system' | 'kenya';
 
 interface ThemeContextType {
   theme: AppTheme;
   resolvedTheme: 'light' | 'dark';
   isDark: boolean;
+  isKenyaTheme: boolean;
   setTheme: (theme: AppTheme) => void;
   toggleTheme: () => void;
 }
@@ -18,7 +19,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [theme, setThemeState] = useState<AppTheme>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(THEME_STORAGE_KEY) as AppTheme | null;
-      if (saved === 'light' || saved === 'dark' || saved === 'system') {
+      if (saved === 'light' || saved === 'dark' || saved === 'system' || saved === 'kenya') {
         return saved;
       }
     }
@@ -30,8 +31,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Calculate and apply theme
   useEffect(() => {
     const updateTheme = () => {
+      const isKenyaActive = theme === 'kenya';
       let isDarkActive = false;
-      if (theme === 'dark') {
+      if (theme === 'dark' || isKenyaActive) {
         isDarkActive = true;
       } else if (theme === 'light') {
         isDarkActive = false;
@@ -51,6 +53,12 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         root.style.colorScheme = 'light';
       }
 
+      if (isKenyaActive) {
+        root.classList.add('theme-kenya');
+      } else {
+        root.classList.remove('theme-kenya');
+      }
+
       // Update meta theme-color for mobile address bar
       let metaThemeColor = document.querySelector('meta[name="theme-color"]');
       if (!metaThemeColor) {
@@ -58,7 +66,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         metaThemeColor.setAttribute('name', 'theme-color');
         document.head.appendChild(metaThemeColor);
       }
-      metaThemeColor.setAttribute('content', isDarkActive ? '#090d16' : '#ffffff');
+      metaThemeColor.setAttribute(
+        'content',
+        isKenyaActive ? '#060907' : isDarkActive ? '#090d16' : '#ffffff'
+      );
     };
 
     updateTheme();
@@ -100,6 +111,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         theme,
         resolvedTheme,
         isDark: resolvedTheme === 'dark',
+        isKenyaTheme: theme === 'kenya',
         setTheme,
         toggleTheme
       }}

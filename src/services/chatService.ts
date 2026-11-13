@@ -255,6 +255,7 @@ export async function sendChatMessage(
 }
 
 const inFlightDeliveryChecks = new Set<string>();
+const pendingDeliveryRechecks = new Set<string>();
 
 /**
  * Automatically mark incoming unread messages as delivered when the recipient is online in the app
@@ -268,7 +269,10 @@ export async function markChatUnreadMessagesAsDelivered(
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
 
   const lockKey = `${chatId}:${recipientId}`;
-  if (inFlightDeliveryChecks.has(lockKey)) return;
+  if (inFlightDeliveryChecks.has(lockKey)) {
+    pendingDeliveryRechecks.add(lockKey);
+    return;
+  }
   inFlightDeliveryChecks.add(lockKey);
 
   try {
@@ -312,6 +316,10 @@ export async function markChatUnreadMessagesAsDelivered(
     console.warn('Could not mark background chat messages as delivered:', err);
   } finally {
     inFlightDeliveryChecks.delete(lockKey);
+    if (pendingDeliveryRechecks.has(lockKey)) {
+      pendingDeliveryRechecks.delete(lockKey);
+      markChatUnreadMessagesAsDelivered(chatId, recipientId);
+    }
   }
 }
 
@@ -373,15 +381,25 @@ export async function markMessagesAsRead(
       (!m.readBy || !m.readBy.includes(recipientId))
   );
 
+  if (eligible.length === 0 && messagesToRead.length === 0) {
+    return;
+  }
+
   try {
     const chatRef = doc(db, 'chats', chatId);
     const chatSnap = await getDoc(chatRef);
     const chatData = chatSnap.exists() ? chatSnap.data() : null;
+    const viewedIds = new Set(messagesToRead.map((m) => m.id));
+    const lastMsgId = typeof chatData?.lastMessageId === 'string' ? chatData.lastMessageId : undefined;
+    const isLastMsgViewed = !lastMsgId || viewedIds.has(lastMsgId);
+
     const isConversationUnreadForUser =
+      isLastMsgViewed &&
       !!chatData &&
       Array.isArray(chatData.unreadBy) &&
       chatData.unreadBy.includes(recipientId);
     const shouldMarkLastMessageRead =
+      isLastMsgViewed &&
       !!chatData &&
       chatData.lastMessageSenderId !== recipientId &&
       chatData.lastMessageStatus !== 'read';
@@ -391,13 +409,15 @@ export async function markMessagesAsRead(
     }
 
     const batch = writeBatch(db);
-    const chatUpdate: Record<string, any> = {
-      unreadBy: arrayRemove(recipientId)
-    };
-    if (shouldMarkLastMessageRead) {
-      chatUpdate.lastMessageStatus = 'read';
+    if (isConversationUnreadForUser || shouldMarkLastMessageRead) {
+      const chatUpdate: Record<string, any> = {
+        unreadBy: arrayRemove(recipientId)
+      };
+      if (shouldMarkLastMessageRead) {
+        chatUpdate.lastMessageStatus = 'read';
+      }
+      batch.update(chatRef, chatUpdate);
     }
-    batch.update(chatRef, chatUpdate);
 
     for (const msg of eligible) {
       const msgRef = doc(db, 'chats', chatId, 'messages', msg.id);
@@ -696,6 +716,39 @@ export function isDeveloperAccount(email?: string, isDev?: boolean): boolean {
   if (isDev) return true;
   if (!email) return false;
   return email.toLowerCase().trim() === DEVELOPER_EMAIL.toLowerCase().trim();
+}
+
+/**
+ * Subscribe to a lightweight presence map for all users (used to render accurate online/delivered ticks in all inboxes)
+ */
+export function subscribeToAllUserPresenceMap(
+  callback: (presenceMap: Record<string, { isOnline: boolean; lastSeen?: string }>) => void
+): () => void {
+  const path = 'users';
+  const q = query(collection(db, path));
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const map: Record<string, { isOnline: boolean; lastSeen?: string }> = {};
+      for (const docSnap of snapshot.docs) {
+        const d = docSnap.data();
+        const lastSeenIso = d.lastSeen?.toDate
+          ? d.lastSeen.toDate().toISOString()
+          : typeof d.lastSeen === 'string'
+          ? d.lastSeen
+          : undefined;
+        map[docSnap.id] = {
+          isOnline: isUserOnline(!!d.isOnline, lastSeenIso),
+          lastSeen: lastSeenIso
+        };
+      }
+      callback(map);
+    },
+    (error) => {
+      console.warn('Presence map subscription notice:', error);
+    }
+  );
 }
 
 /**

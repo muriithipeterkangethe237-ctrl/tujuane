@@ -4,6 +4,7 @@ import {
   MessageSquare,
   Camera,
   Video,
+  Mic,
   Palette,
   Briefcase,
   Compass,
@@ -18,6 +19,7 @@ export type PostCreationType =
   | 'discussion'
   | 'photo'
   | 'video'
+  | 'audio'
   | 'solid_bg'
   | 'story'
   | 'hustle'
@@ -37,6 +39,7 @@ export interface PostTypeOption {
   solidBg?: PostBackgroundColor;
   requiresImage?: boolean;
   requiresVideo?: boolean;
+  requiresAudio?: boolean;
 }
 
 interface PostTypeSelectorModalProps {
@@ -80,6 +83,18 @@ export const POST_TYPE_OPTIONS: PostTypeOption[] = [
     iconColor: 'text-indigo-600 dark:text-indigo-400',
     category: 'general',
     requiresVideo: true
+  },
+  {
+    type: 'audio',
+    title: 'Voice Shout (30s)',
+    badge: 'Up to 30s · Audio',
+    badgeColor: 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800',
+    description: 'Record a crisp 30-second microphone shoutout, county alert, or audio commentary directly onto the community feed.',
+    icon: <Mic className="w-5 h-5" />,
+    iconBg: 'bg-rose-100 dark:bg-rose-950/60',
+    iconColor: 'text-rose-600 dark:text-rose-400',
+    category: 'general',
+    requiresAudio: true
   },
   {
     type: 'solid_bg',

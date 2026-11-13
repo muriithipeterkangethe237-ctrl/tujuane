@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { KenyanFlagWave } from './KenyanFlagTheme';
 import { ALL_47_COUNTIES, getConstituenciesByCounty } from '../data/kenyaCounties';
 import { notificationService } from '../services/notificationService';
 import { NotificationPreferences } from '../types/notification';
@@ -68,7 +69,7 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
     unmuteUser
   } = useAuth();
 
-  const { theme, setTheme, isDark, toggleTheme } = useTheme();
+  const { theme, setTheme, isDark, isKenyaTheme, toggleTheme } = useTheme();
   const { isInstallable, isInstalled, install: installApp } = usePWAInstall();
 
   // Active settings section
@@ -546,12 +547,20 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                 {/* Quick Toggle Master Switch */}
                 <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 rounded-2xl flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border ${
-                      isDark
-                        ? 'bg-amber-400/20 text-amber-300 border-amber-400/30'
-                        : 'bg-amber-500/10 text-amber-600 border-amber-500/20'
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border overflow-hidden ${
+                      isKenyaTheme
+                        ? 'bg-slate-950 border-emerald-500/40'
+                        : isDark
+                          ? 'bg-amber-400/20 text-amber-300 border-amber-400/30'
+                          : 'bg-amber-500/10 text-amber-600 border-amber-500/20'
                     }`}>
-                      {isDark ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+                      {isKenyaTheme ? (
+                        <KenyanFlagWave className="w-full h-full" />
+                      ) : isDark ? (
+                        <Moon className="w-5 h-5" />
+                      ) : (
+                        <Sun className="w-5 h-5" />
+                      )}
                     </div>
                     <div>
                       <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -561,13 +570,15 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                             ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800'
                             : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                         }`}>
-                          {isDark ? 'Dark Active' : 'Light Active'}
+                          {isKenyaTheme ? 'Kenyan Flag Active' : isDark ? 'Dark Active' : 'Light Active'}
                         </span>
                       </div>
                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                        {isDark
-                          ? 'Deep contrast dark theme active — comfortable for bedtime reading and night shifts.'
-                          : 'Bright daylight theme active — high contrast for outdoor and sunlight readability.'}
+                        {isKenyaTheme
+                          ? 'Animated Kenyan flag heritage backdrop paired with high-contrast dark surfaces.'
+                          : isDark
+                            ? 'Deep contrast dark theme active — comfortable for bedtime reading and night shifts.'
+                            : 'Bright daylight theme active — high contrast for outdoor and sunlight readability.'}
                       </div>
                     </div>
                   </div>
@@ -589,13 +600,13 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                   </button>
                 </div>
 
-                {/* 3 Selectable Theme Cards */}
+                {/* 4 Selectable Theme Cards */}
                 <div className="space-y-3">
                   <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">
                     Select Theme Preference
                   </label>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* OPTION 1: LIGHT THEME */}
                     <button
                       type="button"
@@ -728,6 +739,49 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
 
                       <div className="mt-3 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 text-[10px] font-bold text-slate-600 dark:text-slate-400">
                         Follows device OS
+                      </div>
+                    </button>
+
+                    {/* OPTION 4: KENYAN FLAG (ANIMATED) */}
+                    <button
+                      type="button"
+                      onClick={() => setTheme('kenya')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer relative flex flex-col justify-between h-full group ${
+                        theme === 'kenya'
+                          ? 'bg-emerald-50/60 dark:bg-emerald-950/50 border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/30'
+                          : 'bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                      }`}
+                    >
+                      <div>
+                        {/* Animated Kenyan Flag Preview Box */}
+                        <div className="w-full h-16 rounded-xl border border-slate-300 dark:border-white/15 mb-3 overflow-hidden shadow-2xs relative">
+                          <KenyanFlagWave className="w-full h-full" animated={true} showSheen={true} />
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 font-extrabold text-xs text-slate-900 dark:text-white">
+                            <span
+                              className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm overflow-hidden border border-white/20 shrink-0"
+                              aria-hidden="true"
+                            >
+                              <KenyanFlagWave className="w-full h-full" animated={false} showSheen={false} />
+                            </span>
+                            <span>Kenyan Flag</span>
+                          </div>
+                          {theme === 'kenya' && (
+                            <span className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center">
+                              <Check className="w-2.5 h-2.5 stroke-[3]" />
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+                          Animated waving Kenyan flag backdrop in obsidian black, crimson & Maasai green.
+                        </p>
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                        Animated heritage theme
                       </div>
                     </button>
                   </div>

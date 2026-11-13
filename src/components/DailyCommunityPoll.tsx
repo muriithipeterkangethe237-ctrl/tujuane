@@ -215,8 +215,8 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
 
   if (isLoadingPolls) {
     return (
-      <div className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs text-center transition-colors ${compact ? 'rounded-2xl p-4' : 'rounded-3xl p-6'}`}>
-        <div className={`rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-2 animate-pulse ${compact ? 'w-9 h-9' : 'w-11 h-11'}`}>
+      <div className={`tujuane-surface text-center transition-colors ${compact ? 'rounded-2xl p-4' : 'rounded-3xl p-6'}`}>
+        <div className={`rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-2 animate-pulse ${compact ? 'w-9 h-9' : 'w-11 h-11'}`}>
           <Vote className={compact ? 'w-4 h-4' : 'w-5 h-5'} />
         </div>
         <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">Inapakia Kura za Jamii...</h3>
@@ -229,7 +229,7 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
   const totalVotesSafe = Math.max(1, activePoll?.totalVotes ?? 0);
 
   return (
-    <div className={`relative bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 overflow-hidden transition-all ${compact ? 'rounded-2xl shadow-sm' : 'rounded-3xl shadow-md'}`}>
+    <div className={`relative tujuane-surface overflow-hidden transition-all ${compact ? 'rounded-2xl' : 'rounded-3xl'}`}>
       {/* Toast message */}
       {voteToast && (
         <div className="absolute top-3 right-3 z-30 bg-slate-900 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow-xl flex items-center gap-1.5 animate-bounce">
@@ -250,7 +250,7 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
       </div>
 
       {/* Header section */}
-      <div className={`border-b border-slate-100 dark:border-slate-800 bg-gradient-to-b from-slate-50/70 dark:from-slate-800/40 to-white dark:to-slate-900 ${compact ? 'px-3.5 py-2.5 sm:px-4 sm:py-3' : 'p-4 sm:p-5 pb-3.5'}`}>
+      <div className={`border-b tujuane-divider ${compact ? 'px-3.5 py-2.5 sm:px-4 sm:py-3' : 'p-4 sm:p-5 pb-3.5'}`}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             <span className={`inline-flex items-center gap-1 rounded-full font-bold bg-emerald-600 text-white shadow-xs ${compact ? 'px-2.5 py-0.5 text-[11px]' : 'px-2.5 py-0.5 text-xs'}`}>
@@ -324,7 +324,7 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
               className={`px-2.5 py-0.5 rounded-lg font-medium transition-all cursor-pointer whitespace-nowrap ${
                 selectedCategory === cat.id
                   ? 'bg-slate-900 dark:bg-emerald-600 text-white font-bold shadow-xs'
-                  : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  : 'tujuane-surface-soft text-slate-600 dark:text-slate-300 hover:opacity-85'
               }`}
             >
               {cat.label}
@@ -360,10 +360,10 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
             <div
               key={option.id}
               onClick={() => handleCastVote(option.id)}
-              className={`relative overflow-hidden rounded-xl transition-all cursor-pointer group ${compact ? 'border' : 'border-2'} ${
+              className={`relative overflow-hidden rounded-xl transition-all cursor-pointer group ${
                 isSelected
-                  ? 'border-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/30 shadow-xs'
-                  : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-800/70 hover:bg-slate-50/70 dark:hover:bg-slate-800'
+                  ? 'bg-emerald-500/15 ring-1 ring-emerald-500/60 shadow-2xs'
+                  : 'tujuane-surface-soft hover:opacity-95'
               }`}
             >
               {/* Dynamic live percentage bar fill */}
@@ -424,7 +424,7 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
         })}
 
         {/* Footer Meta: Total votes, live pulse indicator & engagement */}
-        <div className={`border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between text-slate-500 dark:text-slate-400 ${compact ? 'pt-2 mt-2 gap-2 text-[11px]' : 'pt-2.5 mt-2.5 gap-2.5 text-xs'}`}>
+        <div className={`border-t tujuane-divider flex flex-col sm:flex-row items-center justify-between text-slate-500 dark:text-slate-400 ${compact ? 'pt-2 mt-2 gap-2 text-[11px]' : 'pt-2.5 mt-2.5 gap-2.5 text-xs'}`}>
           <div className="flex items-center gap-2.5">
             <span className="flex items-center gap-1 font-bold text-slate-700 dark:text-slate-300">
               <Users className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />

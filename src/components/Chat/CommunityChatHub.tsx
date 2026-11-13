@@ -24,14 +24,17 @@ import {
   deleteMessageForMe,
   isUserOnline,
   formatLastSeen,
-  subscribeToUserPresence
+  subscribeToUserPresence,
+  subscribeToAllUserPresenceMap
 } from '../../services/chatService';
 import {
   createGroupChat,
   subscribeToGroups,
   joinGroupChat,
   subscribeToGroupMessages,
-  sendGroupMessage
+  sendGroupMessage,
+  markGroupMessagesAsDelivered,
+  markGroupMessagesAsRead
 } from '../../services/groupChannelService';
 import { notificationService } from '../../services/notificationService';
 import {
@@ -44,7 +47,6 @@ import {
   ChevronLeft,
   ShieldCheck,
   Check,
-  CheckCheck,
   LogOut,
   X,
   Image as ImageIcon,
@@ -74,6 +76,7 @@ import {
 import { compressImage } from '../../utils/imageCompressor';
 import { ALL_47_COUNTIES, getConstituenciesByCounty } from '../../data/kenyaCounties';
 import { ReportModal } from '../ReportModal';
+import { MessageStatusTicks } from './MessageStatusTicks';
 
 interface CommunityChatHubProps {
   directChatTargetUser?: UserProfile | null;
@@ -141,6 +144,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   const [directMessages, setDirectMessages] = useState<ChatMessage[]>([]);
   const [groupMessages, setGroupMessages] = useState<ChannelMessage[]>([]);
   const [communityUsers, setCommunityUsers] = useState<UserProfile[]>([]);
+  const [userPresenceMap, setUserPresenceMap] = useState<Record<string, { isOnline: boolean; lastSeen?: string }>>({});
   const [communityGroups, setCommunityGroups] = useState<GroupChat[]>([]);
 
   // Notifications state
@@ -232,6 +236,8 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   }, [lightboxImage, isCreateGroupModalOpen, deleteConfirmation, isCountyPickerOpen]);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messageFeedRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef<boolean>(true);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageInputRef = useRef<HTMLInputElement | null>(null);
@@ -313,16 +319,23 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     return () => unsub();
   }, [currentUser]);
 
-  // Subscribe to community members
+  // Subscribe to community members & all-user presence map (for accurate inbox ticks)
   useEffect(() => {
     if (!currentUser) {
       setCommunityUsers([]);
+      setUserPresenceMap({});
       return;
     }
-    const unsub = subscribeToCommunityUsers(currentUser.uid, (users) => {
+    const unsubUsers = subscribeToCommunityUsers(currentUser.uid, (users) => {
       setCommunityUsers(users);
     });
-    return () => unsub();
+    const unsubPresence = subscribeToAllUserPresenceMap((presenceMap) => {
+      setUserPresenceMap(presenceMap);
+    });
+    return () => {
+      unsubUsers();
+      unsubPresence();
+    };
   }, [currentUser]);
 
   // Subscribe to community groups
@@ -336,6 +349,11 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     });
     return () => unsub();
   }, [currentUser]);
+
+  // Reset auto-scroll to bottom when switching threads
+  useEffect(() => {
+    shouldAutoScrollRef.current = true;
+  }, [activeChatId, activeGroup?.id, activeChatMode]);
 
   // Subscribe to direct messages in active direct chat
   useEffect(() => {
@@ -366,39 +384,109 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
       }
 
       setDirectMessages(msgs);
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 50);
+      if (shouldAutoScrollRef.current) {
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 50);
+      }
 
-      // Auto-mark incoming messages as delivered, and as read only while tab is visible
+      // Mark incoming messages as delivered (blue read ticks only happen once actually viewed in viewport)
       if (currentUser) {
         markMessagesAsDelivered(activeChatId, currentUser.uid, msgs);
-        if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-          markMessagesAsRead(activeChatId, currentUser.uid, msgs);
-        }
       }
     });
     return () => unsub();
   }, [activeChatId, activeChatMode, currentUser]);
 
-  // Mark incoming messages as read as soon as the user focuses/views the open chat tab
+  // Mark direct messages as read ONLY when they are actually viewed inside a visible & focused window
   useEffect(() => {
     if (activeChatMode !== 'direct' || !activeChatId || !currentUser || directMessages.length === 0) {
       return;
     }
 
-    const handleMarkReadIfVisible = () => {
-      if (document.visibilityState === 'visible') {
-        markMessagesAsRead(activeChatId, currentUser.uid, directMessages);
+    const unreadIncoming = directMessages.filter(
+      (m) => m.recipientId === currentUser.uid && (!m.readBy || !m.readBy.includes(currentUser.uid))
+    );
+    if (unreadIncoming.length === 0) return;
+
+    const visibleMsgIds = new Set<string>();
+    const flushedIds = new Set<string>();
+
+    const isActivelyViewing = () => {
+      if (typeof document === 'undefined') return false;
+      if (document.visibilityState !== 'visible') return false;
+      if (typeof document.hasFocus === 'function' && !document.hasFocus()) return false;
+      return true;
+    };
+
+    const flushViewedMessages = () => {
+      if (!isActivelyViewing()) return;
+      const container = messageFeedRef.current;
+      if (container) {
+        const cRect = container.getBoundingClientRect();
+        if (cRect.width > 0 && cRect.height > 0) {
+          for (const m of unreadIncoming) {
+            const el = document.getElementById(`msg-${m.id}`);
+            if (!el) continue;
+            const rect = el.getBoundingClientRect();
+            const isIntersecting = rect.bottom > cRect.top + 8 && rect.top < cRect.bottom - 8;
+            if (isIntersecting) {
+              visibleMsgIds.add(m.id);
+            }
+          }
+        }
+      }
+
+      const toMark = unreadIncoming.filter(
+        (m) => visibleMsgIds.has(m.id) && !flushedIds.has(m.id)
+      );
+      if (toMark.length > 0) {
+        toMark.forEach((m) => flushedIds.add(m.id));
+        markMessagesAsRead(activeChatId, currentUser.uid, toMark);
       }
     };
 
-    handleMarkReadIfVisible();
-    document.addEventListener('visibilitychange', handleMarkReadIfVisible);
-    window.addEventListener('focus', handleMarkReadIfVisible);
+    const container = messageFeedRef.current;
+    let observer: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== 'undefined' && container) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const id = entry.target.id.replace(/^msg-/, '');
+            if (entry.isIntersecting) {
+              visibleMsgIds.add(id);
+            } else {
+              visibleMsgIds.delete(id);
+            }
+          }
+          flushViewedMessages();
+        },
+        { root: container, threshold: 0.15 }
+      );
+      for (const m of unreadIncoming) {
+        const el = document.getElementById(`msg-${m.id}`);
+        if (el) observer.observe(el);
+      }
+    }
+
+    const rafId = window.requestAnimationFrame(() => flushViewedMessages());
+    const delayedId = window.setTimeout(() => flushViewedMessages(), 120);
+
+    document.addEventListener('visibilitychange', flushViewedMessages);
+    window.addEventListener('focus', flushViewedMessages);
+    window.addEventListener('pointerdown', flushViewedMessages);
+    window.addEventListener('keydown', flushViewedMessages);
+    container?.addEventListener('scroll', flushViewedMessages, { passive: true });
+
     return () => {
-      document.removeEventListener('visibilitychange', handleMarkReadIfVisible);
-      window.removeEventListener('focus', handleMarkReadIfVisible);
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(delayedId);
+      observer?.disconnect();
+      document.removeEventListener('visibilitychange', flushViewedMessages);
+      window.removeEventListener('focus', flushViewedMessages);
+      window.removeEventListener('pointerdown', flushViewedMessages);
+      window.removeEventListener('keydown', flushViewedMessages);
+      container?.removeEventListener('scroll', flushViewedMessages);
     };
   }, [activeChatId, activeChatMode, currentUser, directMessages]);
 
@@ -410,12 +498,116 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     }
     const unsub = subscribeToGroupMessages(activeGroup.id, (msgs) => {
       setGroupMessages(msgs);
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 50);
+      if (shouldAutoScrollRef.current) {
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 50);
+      }
+
+      if (currentUser && activeGroup.members.includes(currentUser.uid)) {
+        markGroupMessagesAsDelivered(activeGroup.id, currentUser.uid, msgs);
+      }
     });
     return () => unsub();
-  }, [activeGroup, activeChatMode]);
+  }, [activeGroup, activeChatMode, currentUser]);
+
+  // Mark incoming group messages as read ONLY when actually viewed inside a visible & focused window
+  useEffect(() => {
+    if (
+      activeChatMode !== 'group' ||
+      !activeGroup ||
+      !currentUser ||
+      !activeGroup.members.includes(currentUser.uid) ||
+      groupMessages.length === 0
+    ) {
+      return;
+    }
+
+    const unreadIncoming = groupMessages.filter(
+      (m) => m.senderId !== currentUser.uid && (!m.readBy || !m.readBy.includes(currentUser.uid))
+    );
+    if (unreadIncoming.length === 0) return;
+
+    const visibleMsgIds = new Set<string>();
+    const flushedIds = new Set<string>();
+
+    const isActivelyViewing = () => {
+      if (typeof document === 'undefined') return false;
+      if (document.visibilityState !== 'visible') return false;
+      if (typeof document.hasFocus === 'function' && !document.hasFocus()) return false;
+      return true;
+    };
+
+    const flushViewedGroupMessages = () => {
+      if (!isActivelyViewing()) return;
+      const container = messageFeedRef.current;
+      if (container) {
+        const cRect = container.getBoundingClientRect();
+        if (cRect.width > 0 && cRect.height > 0) {
+          for (const m of unreadIncoming) {
+            const el = document.getElementById(`msg-${m.id}`);
+            if (!el) continue;
+            const rect = el.getBoundingClientRect();
+            const isIntersecting = rect.bottom > cRect.top + 8 && rect.top < cRect.bottom - 8;
+            if (isIntersecting) {
+              visibleMsgIds.add(m.id);
+            }
+          }
+        }
+      }
+
+      const toMark = unreadIncoming.filter(
+        (m) => visibleMsgIds.has(m.id) && !flushedIds.has(m.id)
+      );
+      if (toMark.length > 0) {
+        toMark.forEach((m) => flushedIds.add(m.id));
+        markGroupMessagesAsRead(activeGroup.id, currentUser.uid, toMark);
+      }
+    };
+
+    const container = messageFeedRef.current;
+    let observer: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== 'undefined' && container) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const id = entry.target.id.replace(/^msg-/, '');
+            if (entry.isIntersecting) {
+              visibleMsgIds.add(id);
+            } else {
+              visibleMsgIds.delete(id);
+            }
+          }
+          flushViewedGroupMessages();
+        },
+        { root: container, threshold: 0.15 }
+      );
+      for (const m of unreadIncoming) {
+        const el = document.getElementById(`msg-${m.id}`);
+        if (el) observer.observe(el);
+      }
+    }
+
+    const rafId = window.requestAnimationFrame(() => flushViewedGroupMessages());
+    const delayedId = window.setTimeout(() => flushViewedGroupMessages(), 120);
+
+    document.addEventListener('visibilitychange', flushViewedGroupMessages);
+    window.addEventListener('focus', flushViewedGroupMessages);
+    window.addEventListener('pointerdown', flushViewedGroupMessages);
+    window.addEventListener('keydown', flushViewedGroupMessages);
+    container?.addEventListener('scroll', flushViewedGroupMessages, { passive: true });
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(delayedId);
+      observer?.disconnect();
+      document.removeEventListener('visibilitychange', flushViewedGroupMessages);
+      window.removeEventListener('focus', flushViewedGroupMessages);
+      window.removeEventListener('pointerdown', flushViewedGroupMessages);
+      window.removeEventListener('keydown', flushViewedGroupMessages);
+      container?.removeEventListener('scroll', flushViewedGroupMessages);
+    };
+  }, [activeGroup, activeChatMode, currentUser, groupMessages]);
 
   // Close menus on outside click
   useEffect(() => {
@@ -699,6 +891,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     setAttachedFile(null);
     setReplyingToMessage(null);
 
+    shouldAutoScrollRef.current = true;
     setIsSending(true);
     try {
       if (activeChatMode === 'direct' && activeChatId && activePartner) {
@@ -996,7 +1189,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   }
 
   return (
-    <div className="bg-white dark:bg-slate-900 border-0 sm:border border-slate-200 dark:border-slate-800 shadow-none sm:shadow-xs overflow-hidden flex flex-col md:flex-row h-full w-full flex-1 min-h-0 relative transition-colors">
+    <div className="tujuane-surface border-0 overflow-hidden flex flex-col md:flex-row h-full w-full flex-1 min-h-0 relative transition-colors">
       {/* Top Floating Push Notification Prompt Banner */}
       {showPermissionPromptBanner && desktopPermission === 'default' && (
         <div className="absolute top-0 inset-x-0 z-40 bg-gradient-to-r from-emerald-600 to-teal-700 text-white px-4 py-2 flex items-center justify-between text-xs shadow-md animate-in slide-in-from-top duration-300">
@@ -1025,13 +1218,13 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
       {/* LEFT COLUMN: Navigation Tabs & List Feed */}
       <div
-        className={`w-full md:w-80 lg:w-96 border-r border-slate-200 dark:border-slate-800 flex flex-col bg-slate-50/50 dark:bg-slate-950/50 h-full min-h-0 overflow-hidden ${
+        className={`w-full md:w-80 lg:w-96 border-r tujuane-divider flex flex-col tujuane-surface-soft h-full min-h-0 overflow-hidden ${
           isThreadOpen ? 'hidden md:flex' : 'flex'
         }`}
       >
 
         {/* User Profile Mini Header & Notification Bell - Pinned sticky so it never disappears during list scrolling */}
-        <div className="p-3 sm:p-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2.5 transition-colors sticky top-0 z-30 shrink-0 shadow-2xs">
+        <div className="p-3 sm:p-3.5 tujuane-surface-elevated border-b tujuane-divider flex items-center justify-between gap-2.5 transition-colors sticky top-0 z-30 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             {/* Back Button to leave inboxes and return to Community Hub */}
             {onGoBack && (
@@ -1291,8 +1484,12 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 const partnerId = conv.participants.find((p) => p !== currentUser.uid);
                 const partner = partnerId ? conv.participantDetails?.[partnerId] : null;
                 const partnerUser = partnerId ? communityUsers.find((u) => u.uid === partnerId) : null;
-                const isOnline = isUserOnline(partnerUser?.isOnline, partnerUser?.lastSeen);
-                const lastSeenText = formatLastSeen(partnerUser?.lastSeen, isOnline);
+                const partnerPresenceEntry = partnerId ? userPresenceMap[partnerId] : undefined;
+                const isOnline = partnerPresenceEntry
+                  ? partnerPresenceEntry.isOnline
+                  : isUserOnline(partnerUser?.isOnline, partnerUser?.lastSeen);
+                const lastSeenIso = partnerPresenceEntry?.lastSeen ?? partnerUser?.lastSeen;
+                const lastSeenText = formatLastSeen(lastSeenIso, isOnline);
                 const isSelected = activeChatMode === 'direct' && activeChatId === conv.id;
                 const isTyping =
                   partnerId &&
@@ -1312,7 +1509,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           photoURL: partner.photoURL,
                           county: partner.county || 'Nairobi',
                           isOnline,
-                          lastSeen: partnerUser?.lastSeen,
+                          lastSeen: lastSeenIso,
                           createdAt: ''
                         }, conv.id);
                       }
@@ -1379,38 +1576,13 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           </span>
                         ) : (
                           <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate flex-1 flex items-center gap-1">
-                            {conv.lastMessageSenderId === currentUser.uid && (() => {
-                              const isLastMsgRead =
-                                conv.lastMessageStatus === 'read' ||
-                                (!conv.lastMessageStatus &&
-                                  !!partnerId &&
-                                  Array.isArray(conv.unreadBy) &&
-                                  !conv.unreadBy.includes(partnerId) &&
-                                  conv.lastMessage !== 'Conversation started');
-                              const isLastMsgDelivered =
-                                !isLastMsgRead &&
-                                (conv.lastMessageStatus === 'delivered' || isOnline);
-
-                              if (isLastMsgRead) {
-                                return (
-                                  <span title="Read" className="inline-flex shrink-0">
-                                    <CheckCheck className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400 stroke-[2.5]" />
-                                  </span>
-                                );
-                              }
-                              if (isLastMsgDelivered) {
-                                return (
-                                  <span title={isOnline ? 'Delivered (Online)' : 'Delivered'} className="inline-flex shrink-0">
-                                    <CheckCheck className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 stroke-[2]" />
-                                  </span>
-                                );
-                              }
-                              return (
-                                <span title="Sent (Offline)" className="inline-flex shrink-0">
-                                  <Check className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 stroke-[2]" />
-                                </span>
-                              );
-                            })()}
+                            {conv.lastMessageSenderId === currentUser.uid &&
+                              conv.lastMessage !== 'Conversation started' && (
+                                <MessageStatusTicks
+                                  status={conv.lastMessageStatus}
+                                  variant="inbox"
+                                />
+                              )}
                             <span className="truncate">{conv.lastMessage || 'Say hello...'}</span>
                           </div>
                         )}
@@ -1455,6 +1627,14 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 filteredGroups.map((grp) => {
                   const isSelected = activeChatMode === 'group' && activeGroup?.id === grp.id;
                   const isMember = grp.members.includes(currentUser.uid);
+                  const hasOtherMemberOnline = grp.members.some(
+                    (uid) => uid !== currentUser.uid && userPresenceMap[uid]?.isOnline
+                  );
+                  const isLastGroupMsgByMe =
+                    grp.lastMessageSenderId === currentUser.uid ||
+                    (!grp.lastMessageSenderId && grp.lastMessageSenderName === userProfile?.displayName);
+                  const isGroupUnreadForMe =
+                    isMember && Array.isArray(grp.unreadBy) && grp.unreadBy.includes(currentUser.uid);
 
                   return (
                     <button
@@ -1466,21 +1646,40 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                           : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/80 border border-transparent'
                       }`}
                     >
-                      <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 flex items-center justify-center text-lg shrink-0 border border-emerald-200 dark:border-emerald-800 shadow-2xs">
-                        {grp.icon || '👥'}
+                      <div className="relative w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 flex items-center justify-center text-lg shrink-0 border border-emerald-200 dark:border-emerald-800 shadow-2xs">
+                        <span>{grp.icon || '👥'}</span>
+                        {hasOtherMemberOnline && (
+                          <span
+                            className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900"
+                            title="Member online now"
+                          />
+                        )}
                       </div>
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1">
-                          <div className="font-bold text-xs text-slate-900 dark:text-white truncate">
-                            {grp.name}
+                          <div className="font-bold text-xs text-slate-900 dark:text-white truncate flex items-center gap-1.5">
+                            <span className="truncate">{grp.name}</span>
+                            {isGroupUnreadForMe && (
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Unread group messages" />
+                            )}
                           </div>
                           <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
                             {grp.members.length} members
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                          {grp.lastMessage || grp.description || 'Join the group chat'}
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5 flex items-center gap-1">
+                          {isLastGroupMsgByMe &&
+                            grp.lastMessage &&
+                            !grp.lastMessage.startsWith('Group created by ') && (
+                              <MessageStatusTicks
+                                status={grp.lastMessageStatus}
+                                deliveredTo={grp.deliveredBy}
+                                senderId={currentUser.uid}
+                                variant="inbox"
+                              />
+                            )}
+                          <span className="truncate">{grp.lastMessage || grp.description || 'Join the group chat'}</span>
                         </div>
                       </div>
 
@@ -1577,14 +1776,14 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
       {/* RIGHT COLUMN: Active Conversation Window (Direct or Group) */}
       <div
-        className={`flex-1 flex flex-col bg-white dark:bg-slate-900 h-full min-h-0 overflow-hidden ${
+        className={`flex-1 flex flex-col bg-transparent h-full min-h-0 overflow-hidden ${
           isThreadOpen ? 'flex' : 'hidden md:flex'
         }`}
       >
         {isThreadOpen ? (
           <>
             {/* Header: Displays info based on active chat mode - Pinned sticky so user profile and back button never disappear during scrolling */}
-            <div className="p-3 sm:p-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2.5 sm:gap-3 shadow-2xs shrink-0 sticky top-0 z-30">
+            <div className="p-3 sm:p-3.5 tujuane-surface-elevated border-b tujuane-divider flex items-center justify-between gap-2.5 sm:gap-3 shrink-0 sticky top-0 z-30">
               <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                 <button
                   type="button"
@@ -1812,7 +2011,15 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
             </div>
 
             {/* Message Feed Area */}
-            <div className="flex-1 min-h-0 p-3 sm:p-4 overflow-y-auto space-y-3.5 bg-slate-50/50 dark:bg-slate-950/40">
+            <div
+              ref={messageFeedRef}
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                shouldAutoScrollRef.current =
+                  el.scrollHeight - el.scrollTop - el.clientHeight < 140;
+              }}
+              className="flex-1 min-h-0 p-3 sm:p-4 overflow-y-auto space-y-3.5 bg-transparent"
+            >
               {/* Blocked Partner Warning Banner */}
               {activeChatMode === 'direct' && activePartner && blockedUserIds.includes(activePartner.uid) && (
                 <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-2xl text-xs text-rose-800 dark:text-rose-200 flex items-center justify-between shadow-2xs">
@@ -1878,17 +2085,6 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                         </div>
                       );
                     }
-
-                    const isRead =
-                      msg.status === 'read' ||
-                      !!(msg.readBy && activePartner && msg.readBy.includes(activePartner.uid));
-                    const isDelivered =
-                      !isRead &&
-                      (msg.status === 'delivered' ||
-                        !!(msg.deliveredTo &&
-                          activePartner &&
-                          msg.deliveredTo.includes(activePartner.uid)) ||
-                        partnerPresence.isOnline);
 
                     return (
                       <div
@@ -2021,26 +2217,14 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                               </span>
 
                               {isMe && (
-                                <span
-                                  className="flex items-center"
-                                  title={
-                                    isRead
-                                      ? 'Read'
-                                      : isDelivered
-                                      ? partnerPresence.isOnline
-                                        ? 'Delivered (Online)'
-                                        : 'Delivered'
-                                      : 'Sent (Offline)'
-                                  }
-                                >
-                                  {isRead ? (
-                                    <CheckCheck className="w-3.5 h-3.5 text-sky-400 dark:text-sky-300 stroke-[2.5]" />
-                                  ) : isDelivered ? (
-                                    <CheckCheck className="w-3.5 h-3.5 text-slate-300 dark:text-emerald-100/80 stroke-[2]" />
-                                  ) : (
-                                    <Check className="w-3.5 h-3.5 text-slate-400 dark:text-emerald-200/75 stroke-[2]" />
-                                  )}
-                                </span>
+                                <MessageStatusTicks
+                                  status={msg.status}
+                                  readBy={msg.readBy}
+                                  deliveredTo={msg.deliveredTo}
+                                  senderId={msg.senderId}
+                                  recipientId={activePartner?.uid}
+                                  variant="bubble"
+                                />
                               )}
                             </div>
                           </div>
@@ -2156,6 +2340,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 ) : (
                   groupMessages.map((msg) => {
                     const isMe = msg.senderId === currentUser.uid;
+
                     return (
                       <div
                         id={`msg-${msg.id}`}
@@ -2224,6 +2409,26 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                             )}
 
                             <div className="text-xs sm:text-sm whitespace-pre-wrap">{msg.text}</div>
+
+                            {isMe && (
+                              <div className="text-[10px] flex items-center justify-end gap-1.5 pt-0.5 text-slate-400 dark:text-emerald-200">
+                                <span>
+                                  {msg.createdAt
+                                    ? new Date(msg.createdAt).toLocaleTimeString([], {
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })
+                                    : ''}
+                                </span>
+                                <MessageStatusTicks
+                                  status={msg.status}
+                                  readBy={msg.readBy}
+                                  deliveredTo={msg.deliveredTo}
+                                  senderId={msg.senderId}
+                                  variant="bubble"
+                                />
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2363,7 +2568,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 </button>
               </div>
             ) : (
-              <form onSubmit={handleSendMessage} className="shrink-0 p-2.5 sm:p-3.5 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky bottom-0 z-20 shadow-xs pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+              <form onSubmit={handleSendMessage} className="shrink-0 p-2.5 sm:p-3.5 border-t tujuane-divider tujuane-surface-elevated sticky bottom-0 z-20 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
 
                 <input
                   type="file"

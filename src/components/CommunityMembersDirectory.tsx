@@ -340,7 +340,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
   return (
     <div className="space-y-6 sm:space-y-8">
       {/* Hero Banner */}
-      <section className="bg-gradient-to-br from-emerald-900 via-slate-900 to-emerald-950 text-white rounded-3xl p-6 sm:p-10 shadow-lg relative overflow-hidden">
+      <section className="bg-gradient-to-br from-emerald-900/92 via-slate-900/90 to-emerald-950/92 backdrop-blur-md text-white rounded-3xl p-6 sm:p-10 shadow-lg relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 max-w-2xl space-y-4">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-xs font-semibold text-emerald-300 border border-white/10">
@@ -372,7 +372,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
       </section>
 
       {/* Social Navigation Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-slate-200 dark:border-slate-800">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b tujuane-divider">
         <button
           onClick={() => setActiveSubTab('all')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
@@ -461,7 +461,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
 
       {/* Filter and Search Bar (Visible for All, Friends, Following, Followers) */}
       {activeSubTab !== 'requests' && (
-        <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4 transition-colors">
+        <div className="tujuane-surface p-4 sm:p-5 rounded-2xl space-y-4 transition-colors">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
             {/* Search Input */}
             <div className="md:col-span-4 relative">
@@ -471,7 +471,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by name, county, constituency..."
-                className="w-full pl-9 pr-3.5 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                className="w-full pl-9 pr-3.5 py-2 text-xs sm:text-sm tujuane-surface-soft rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
               />
             </div>
 
@@ -480,7 +480,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
               <select
                 value={selectedCounty}
                 onChange={(e) => handleCountyChange(e.target.value)}
-                className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer"
+                className="w-full px-3 py-2 text-xs sm:text-sm tujuane-surface-soft rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer"
               >
                 <option value="All">All 47 Counties</option>
                 {ALL_47_COUNTIES.map((c) => (
@@ -497,7 +497,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                 value={selectedConstituency}
                 onChange={(e) => setSelectedConstituency(e.target.value)}
                 disabled={selectedCounty === 'All' || availableConstituencies.length === 0}
-                className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer disabled:opacity-50"
+                className="w-full px-3 py-2 text-xs sm:text-sm tujuane-surface-soft rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 cursor-pointer disabled:opacity-50"
               >
                 <option value="All">
                   {selectedCounty === 'All' ? 'All Constituencies' : `All ${selectedCounty} Constituencies`}
@@ -514,10 +514,10 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
             <div className="md:col-span-2 flex items-center justify-between sm:justify-end gap-2">
               <button
                 onClick={() => setOnlyOnline(!onlyOnline)}
-                className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border ${
+                className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
                   onlyOnline
-                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                    ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500/50'
+                    : 'tujuane-surface-soft text-slate-700 dark:text-slate-300 hover:opacity-85'
                 }`}
               >
                 <Circle className={`w-2.5 h-2.5 ${onlyOnline ? 'fill-emerald-500 text-emerald-500' : 'text-slate-400 dark:text-slate-500'}`} />
@@ -531,7 +531,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
       {/* Incoming Requests View */}
       {activeSubTab === 'requests' && (
         <div className="space-y-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs">
+          <div className="tujuane-surface rounded-2xl p-5">
             <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Inbox className="w-5 h-5 text-emerald-700 dark:text-emerald-400" />
               <span>Incoming Friend Requests ({incomingRequests.length})</span>
@@ -542,8 +542,8 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
           </div>
 
           {incomingRequests.length === 0 ? (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center space-y-3 shadow-xs">
-              <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400 dark:text-slate-500">
+            <div className="tujuane-surface rounded-2xl p-12 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full tujuane-surface-soft flex items-center justify-center mx-auto text-slate-400 dark:text-slate-500">
                 <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
               </div>
               <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">No pending friend requests</h3>
@@ -562,7 +562,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
               {incomingRequests.map((req) => (
                 <div
                   key={req.id}
-                  className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs hover:border-emerald-300 dark:hover:border-emerald-700 transition-all space-y-4 flex flex-col justify-between"
+                  className="tujuane-surface rounded-2xl p-5 transition-all space-y-4 flex flex-col justify-between"
                 >
                   <div className="flex items-start gap-3.5">
                     {req.senderPhoto ? (
@@ -623,8 +623,8 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
       {activeSubTab !== 'requests' && (
         <>
           {!currentUser ? (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 sm:p-12 text-center space-y-4 max-w-lg mx-auto shadow-xs">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center mx-auto">
+            <div className="tujuane-surface rounded-2xl p-8 sm:p-12 text-center space-y-4 max-w-lg mx-auto">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 flex items-center justify-center mx-auto">
                 <Users className="w-7 h-7" />
               </div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">Sign in to Connect & Follow</h2>
@@ -646,8 +646,8 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
               <p className="text-xs font-semibold">Loading Kenyan community members across 47 counties...</p>
             </div>
           ) : displayedMembers.length === 0 ? (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center space-y-3 shadow-xs">
-              <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400 dark:text-slate-500">
+            <div className="tujuane-surface rounded-2xl p-12 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full tujuane-surface-soft flex items-center justify-center mx-auto text-slate-400 dark:text-slate-500">
                 <Search className="w-6 h-6" />
               </div>
               <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base">
@@ -676,7 +676,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                   setSelectedConstituency('All');
                   setOnlyOnline(false);
                 }}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                className="px-4 py-2 tujuane-surface-soft hover:opacity-85 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
               >
                 View All Citizens
               </button>
@@ -693,7 +693,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                 return (
                   <div
                     key={member.uid}
-                    className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+                    className="tujuane-surface rounded-2xl p-4 sm:p-5 hover:opacity-95 transition-all flex flex-col justify-between space-y-4"
                   >
                     <div>
                       {/* Member Info Header */}
@@ -709,7 +709,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
                             <img
                               src={member.photoURL}
                               alt={member.displayName}
-                              className="w-12 h-12 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 group-hover:ring-2 group-hover:ring-emerald-500 transition-all"
+                              className="w-12 h-12 rounded-2xl object-cover group-hover:ring-2 group-hover:ring-emerald-500 transition-all"
                             />
                           ) : (
                             <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-base group-hover:bg-emerald-200 transition-colors">
