@@ -385,6 +385,10 @@ export async function addCommunityComment(
     await updateDoc(postRef, {
       commentsCount: increment(1),
     });
+    // Track authored comment counter on user profile for achievement badges
+    updateDoc(doc(db, 'users', author.uid), {
+      feedCommentsCount: increment(1),
+    }).catch(() => {});
     return commentId;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `${POSTS_COLLECTION}/${postId}/comments/${commentId}`);

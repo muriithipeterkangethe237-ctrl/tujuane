@@ -27,7 +27,9 @@ import {
   Sliders,
   CheckCircle2,
   Info,
-  Radio
+  Radio,
+  Wifi,
+  RefreshCw
 } from 'lucide-react';
 import {
   UserNotification,
@@ -43,6 +45,11 @@ import {
   clearAllUserNotifications
 } from '../services/userNotificationService';
 import { notificationService } from '../services/notificationService';
+import {
+  registerBackgroundNotificationTasks,
+  triggerImmediateSWNotificationCheck,
+  BackgroundSyncCapabilities
+} from '../services/backgroundNotificationSync';
 import { acceptFriendRequest } from '../services/socialService';
 import { useAuth } from '../context/AuthContext';
 
@@ -65,7 +72,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   onViewUserProfile,
   onStartDirectChat
 }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, updateFullProfile } = useAuth();
   const [activeFilter, setActiveFilter] = useState<NotificationFilterType>('all');
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -77,6 +84,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   const [showPreferences, setShowPreferences] = useState(false);
   const [testNotificationFeedback, setTestNotificationFeedback] = useState<string | null>(null);
   const [acceptedRequests, setAcceptedRequests] = useState<Record<string, boolean>>({});
+  const [bgCapabilities, setBgCapabilities] = useState<BackgroundSyncCapabilities | null>(null);
 
   // Initialize permission and audio preferences
   useEffect(() => {
@@ -85,6 +93,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
       const currentPrefs = notificationService.getNotificationPreferences();
       setPreferences(currentPrefs);
       setSoundEnabled(currentPrefs.soundEnabled);
+      void registerBackgroundNotificationTasks().then(setBgCapabilities);
     }
   }, [isOpen]);
 
@@ -188,11 +197,51 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
     const status = await notificationService.requestDesktopPermission();
     setPermissionStatus(status);
     if (status === 'granted') {
-      const updated = notificationService.saveNotificationPreferences({ pushEnabled: true });
+      const caps = await notificationService.enableAlwaysOnBackgroundAlerts();
+      setBgCapabilities(caps);
+      const updated = notificationService.saveNotificationPreferences({
+        pushEnabled: true,
+        backgroundAlertsEnabled: true
+      });
       setPreferences(updated);
-      setTestNotificationFeedback('Push notifications activated successfully!');
+      if (currentUser) {
+        void updateFullProfile({ backgroundAlertsEnabled: true }).catch(() => {});
+      }
+      setTestNotificationFeedback('Always-on background notifications activated!');
       setTimeout(() => setTestNotificationFeedback(null), 4000);
     }
+  };
+
+  const handleToggleAlwaysOnAlerts = async () => {
+    const next = !preferences.backgroundAlertsEnabled;
+    if (next) {
+      const caps = await notificationService.enableAlwaysOnBackgroundAlerts();
+      setBgCapabilities(caps);
+      setPermissionStatus(caps.permission);
+      const updated = notificationService.saveNotificationPreferences({
+        backgroundAlertsEnabled: true,
+        pushEnabled: caps.permission === 'granted' ? true : preferences.pushEnabled
+      });
+      setPreferences(updated);
+      if (currentUser) {
+        void updateFullProfile({ backgroundAlertsEnabled: true }).catch(() => {});
+      }
+      setTestNotificationFeedback(
+        caps.permission === 'granted'
+          ? 'Always-on online alerts armed! You will receive alerts even when the app is closed.'
+          : 'Grant browser notification permission above to receive alerts when app is closed.'
+      );
+    } else {
+      const updated = notificationService.saveNotificationPreferences({
+        backgroundAlertsEnabled: false
+      });
+      setPreferences(updated);
+      if (currentUser) {
+        void updateFullProfile({ backgroundAlertsEnabled: false }).catch(() => {});
+      }
+      setTestNotificationFeedback('Background online alerts paused while app is closed.');
+    }
+    setTimeout(() => setTestNotificationFeedback(null), 4500);
   };
 
   const handleToggleSound = () => {
@@ -216,10 +265,11 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   const handleTestNotification = async () => {
     const res = await notificationService.testPushNotification();
     setPermissionStatus(res.permission);
+    await triggerImmediateSWNotificationCheck();
     if (res.permission === 'granted') {
-      setTestNotificationFeedback('Chime sounded & desktop push alert dispatched!');
+      setTestNotificationFeedback('Chime sounded, desktop push alert dispatched & SW background sync verified!');
     } else {
-      setTestNotificationFeedback('Audio chime played! Enable push above for desktop banners.');
+      setTestNotificationFeedback('Audio chime played! Enable push above for background & desktop banners.');
     }
     setTimeout(() => setTestNotificationFeedback(null), 4000);
   };
@@ -557,10 +607,12 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                 </div>
                 <p className="text-[11px] text-slate-300">
                   {permissionStatus === 'granted'
-                    ? 'Instant desktop banners and melodic audio will chime on direct messages & interactions.'
+                    ? preferences.backgroundAlertsEnabled
+                      ? 'Always-on mode active: receives alerts whenever your device is online, even without launching TUJUANE.'
+                      : 'Desktop banners active while a tab is open. Turn on Always-On below for closed-app alerts.'
                     : permissionStatus === 'denied'
                     ? 'Push blocked in browser settings. Click the lock icon in the URL bar to enable.'
-                    : 'Enable push alerts to be notified instantly even when browsing other tabs.'}
+                    : 'Enable push alerts to be notified instantly even when the app is not open.'}
                 </p>
               </div>
             </div>
@@ -577,6 +629,21 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                   <span>Enable Push</span>
                 </button>
               )}
+
+              {/* Always-On Closed-App Alerts Toggle */}
+              <button
+                type="button"
+                onClick={handleToggleAlwaysOnAlerts}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border ${
+                  preferences.backgroundAlertsEnabled && permissionStatus === 'granted'
+                    ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/50 hover:bg-emerald-900/80'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                }`}
+                title="Receive alerts whenever your device is online even when TUJUANE is closed"
+              >
+                <Wifi className={`w-3.5 h-3.5 ${preferences.backgroundAlertsEnabled && permissionStatus === 'granted' ? 'text-emerald-400' : 'text-slate-400'}`} />
+                <span>{preferences.backgroundAlertsEnabled ? 'Always-On: On' : 'Always-On: Off'}</span>
+              </button>
 
               {/* Sound chime toggle */}
               <button
@@ -607,8 +674,9 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
                 type="button"
                 onClick={handleTestNotification}
                 className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-white text-xs font-medium transition-all cursor-pointer border border-white/10 flex items-center gap-1"
-                title="Send a sample test push alert to verify"
+                title="Send a sample test push alert & verify background sync"
               >
+                <RefreshCw className="w-3 h-3" />
                 <span>Test Alert</span>
               </button>
 
@@ -628,6 +696,20 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               </button>
             </div>
           </div>
+
+          {bgCapabilities && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
+              <span>SW: {bgCapabilities.swReady ? 'Ready' : 'Pending'}</span>
+              <span>•</span>
+              <span>Online Sync: {bgCapabilities.backgroundSyncRegistered ? 'Armed' : 'Standby'}</span>
+              {bgCapabilities.periodicSyncSupported && (
+                <>
+                  <span>•</span>
+                  <span>Background Wake: {bgCapabilities.periodicSyncRegistered ? 'Active' : 'Ready (PWA)'}</span>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Test notification feedback toast */}
           {testNotificationFeedback && (

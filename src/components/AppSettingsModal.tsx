@@ -27,13 +27,21 @@ import {
   Trash2,
   Sun,
   Moon,
-  Monitor
+  Monitor,
+  Radio,
+  CheckCircle2,
+  Wifi
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { KenyanFlagWave } from './KenyanFlagTheme';
 import { ALL_47_COUNTIES, getConstituenciesByCounty } from '../data/kenyaCounties';
 import { notificationService } from '../services/notificationService';
+import {
+  registerBackgroundNotificationTasks,
+  triggerImmediateSWNotificationCheck,
+  BackgroundSyncCapabilities
+} from '../services/backgroundNotificationSync';
 import { NotificationPreferences } from '../types/notification';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
@@ -63,6 +71,7 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
     switchAccount,
     openAuthModal,
     updateUserLocation,
+    updateFullProfile,
     blockedUserIds,
     mutedUserIds,
     unblockUser,
@@ -93,6 +102,9 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
   const [notifSoundEnabled, setNotifSoundEnabled] = useState<boolean>(
     notificationService.getNotificationPreferences().soundEnabled
   );
+  const [bgCapabilities, setBgCapabilities] = useState<BackgroundSyncCapabilities | null>(null);
+  const [isUpdatingBgAlerts, setIsUpdatingBgAlerts] = useState(false);
+  const [bgSyncFeedback, setBgSyncFeedback] = useState<string | null>(null);
 
   // Data saver setting (persisted locally)
   const [dataSaverEnabled, setDataSaverEnabled] = useState<boolean>(() => {
@@ -128,6 +140,12 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
       setNotifSoundEnabled(notificationService.getNotificationPreferences().soundEnabled);
     }
   }, [isOpen, initialTab]);
+
+  useEffect(() => {
+    if (isOpen && activeTab === 'notifications') {
+      void registerBackgroundNotificationTasks().then(setBgCapabilities);
+    }
+  }, [isOpen, activeTab]);
 
   // Handle escape key
   useEffect(() => {
@@ -182,6 +200,60 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
       }
     });
     setNotifPrefs(updated);
+  };
+
+  // Toggle Always-On Background Alerts (even without launching the app)
+  const handleToggleBackgroundAlerts = async () => {
+    setIsUpdatingBgAlerts(true);
+    try {
+      const nextEnabled = !notifPrefs.backgroundAlertsEnabled;
+      if (nextEnabled) {
+        const caps = await notificationService.enableAlwaysOnBackgroundAlerts();
+        setBgCapabilities(caps);
+        const updated = notificationService.saveNotificationPreferences({
+          backgroundAlertsEnabled: true,
+          pushEnabled: caps.permission === 'granted' ? true : notifPrefs.pushEnabled
+        });
+        setNotifPrefs(updated);
+        if (currentUser) {
+          void updateFullProfile({ backgroundAlertsEnabled: true }).catch(() => {});
+        }
+        setBgSyncFeedback(
+          caps.permission === 'granted'
+            ? 'Always-on background alerts activated! Your device will check for updates whenever online.'
+            : 'Notification permission is required by your browser to show alerts when the app is closed.'
+        );
+      } else {
+        const updated = notificationService.saveNotificationPreferences({
+          backgroundAlertsEnabled: false
+        });
+        setNotifPrefs(updated);
+        if (currentUser) {
+          void updateFullProfile({ backgroundAlertsEnabled: false }).catch(() => {});
+        }
+        setBgSyncFeedback('Background online alerts paused while app is closed.');
+      }
+      setTimeout(() => setBgSyncFeedback(null), 5000);
+    } finally {
+      setIsUpdatingBgAlerts(false);
+    }
+  };
+
+  const handleRunBackgroundSyncCheck = async () => {
+    setIsUpdatingBgAlerts(true);
+    try {
+      const caps = await registerBackgroundNotificationTasks();
+      setBgCapabilities(caps);
+      const triggered = await triggerImmediateSWNotificationCheck();
+      setBgSyncFeedback(
+        triggered
+          ? 'Service Worker background sync triggered! Any unread alerts will chime in.'
+          : 'Service Worker unavailable in this browser session.'
+      );
+      setTimeout(() => setBgSyncFeedback(null), 4000);
+    } finally {
+      setIsUpdatingBgAlerts(false);
+    }
   };
 
   // Switch account action
@@ -910,6 +982,119 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                 </div>
 
                 <div className="space-y-3">
+                  {/* Always-On Background Device Notifications (Even Without Launching App) */}
+                  <div className="p-4 bg-slate-900 text-white border border-slate-800 rounded-2xl space-y-3 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 flex items-center justify-center shrink-0 mt-0.5">
+                          <Radio className={`w-5 h-5 ${notifPrefs.backgroundAlertsEnabled && bgCapabilities?.permission === 'granted' ? 'animate-pulse' : ''}`} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-extrabold flex items-center gap-2 flex-wrap">
+                            <span>Always-On Online Notifications</span>
+                            <span
+                              className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${
+                                notifPrefs.backgroundAlertsEnabled && bgCapabilities?.permission === 'granted'
+                                  ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/40'
+                                  : 'bg-amber-500/25 text-amber-300 border border-amber-400/40'
+                              }`}
+                            >
+                              {notifPrefs.backgroundAlertsEnabled && bgCapabilities?.permission === 'granted'
+                                ? 'Active'
+                                : 'Setup Needed'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                            Receive device notifications for messages, replies, and civic updates whenever your phone or computer is online — even without launching TUJUANE.
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={isUpdatingBgAlerts}
+                        onClick={handleToggleBackgroundAlerts}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 ${
+                          notifPrefs.backgroundAlertsEnabled ? 'bg-emerald-500' : 'bg-slate-700'
+                        }`}
+                        aria-label="Toggle always-on background alerts"
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition duration-200 ease-in-out ${
+                            notifPrefs.backgroundAlertsEnabled ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Capability Pills */}
+                    {bgCapabilities && (
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                        <span
+                          className={`px-2 py-0.5 rounded-full font-bold inline-flex items-center gap-1 ${
+                            bgCapabilities.permission === 'granted'
+                              ? 'bg-emerald-950/90 text-emerald-300 border border-emerald-700/60'
+                              : 'bg-rose-950/80 text-rose-300 border border-rose-700/60'
+                          }`}
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          Permission: {bgCapabilities.permission}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full font-bold inline-flex items-center gap-1 ${
+                            bgCapabilities.swReady
+                              ? 'bg-emerald-950/90 text-emerald-300 border border-emerald-700/60'
+                              : 'bg-slate-800 text-slate-300 border border-slate-700'
+                          }`}
+                        >
+                          <Wifi className="w-3 h-3" />
+                          {bgCapabilities.swReady ? 'Service Worker Ready' : 'SW Initializing'}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full font-bold ${
+                            bgCapabilities.backgroundSyncRegistered
+                              ? 'bg-sky-950/90 text-sky-300 border border-sky-700/60'
+                              : 'bg-slate-800 text-slate-300 border border-slate-700'
+                          }`}
+                        >
+                          Online Sync: {bgCapabilities.backgroundSyncRegistered ? 'Armed' : bgCapabilities.backgroundSyncSupported ? 'Ready' : 'Fallback'}
+                        </span>
+                        {bgCapabilities.periodicSyncSupported && (
+                          <span
+                            className={`px-2 py-0.5 rounded-full font-bold ${
+                              bgCapabilities.periodicSyncRegistered
+                                ? 'bg-purple-950/90 text-purple-300 border border-purple-700/60'
+                                : 'bg-slate-800 text-slate-300 border border-slate-700'
+                            }`}
+                          >
+                            Periodic Wake: {bgCapabilities.periodicSyncRegistered ? 'Active' : 'Install PWA for max frequency'}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/10">
+                      <span className="text-[10px] text-slate-400">
+                        Tip: Install TUJUANE to your home screen for highest OS background priority.
+                      </span>
+                      <button
+                        type="button"
+                        disabled={isUpdatingBgAlerts}
+                        onClick={handleRunBackgroundSyncCheck}
+                        className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${isUpdatingBgAlerts ? 'animate-spin' : ''}`} />
+                        <span>Run Background Check</span>
+                      </button>
+                    </div>
+
+                    {bgSyncFeedback && (
+                      <div className="p-2 rounded-lg bg-emerald-950/90 border border-emerald-500/40 text-emerald-200 text-[11px] font-medium">
+                        {bgSyncFeedback}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Master Sound Chime Toggle */}
                   <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 rounded-2xl flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">

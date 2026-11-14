@@ -48,6 +48,10 @@ service cloud.firestore {
         && (!('banReason' in data) || (data.banReason is string && data.banReason.size() <= 500))
         && (!('statusUpdatedAt' in data) || data.statusUpdatedAt is timestamp || data.statusUpdatedAt is string)
         && (!('statusUpdatedBy' in data) || (data.statusUpdatedBy is string && data.statusUpdatedBy.size() <= 128))
+        && (!('backgroundAlertsEnabled' in data) || data.backgroundAlertsEnabled is bool)
+        && (!('profileCompleted' in data) || data.profileCompleted is bool)
+        && (!('pollVotesCount' in data) || (data.pollVotesCount is int && data.pollVotesCount >= 0))
+        && (!('feedCommentsCount' in data) || (data.feedCommentsCount is int && data.feedCommentsCount >= 0))
         && (!('createdAt' in data) || data.createdAt is timestamp || data.createdAt is string);
     }
 
@@ -68,6 +72,26 @@ service cloud.firestore {
         && (!('typingUsers' in data) || data.typingUsers is map);
     }
 
+    // Validation for VoiceNote payload inside messaging
+    function isValidVoiceNote(vn) {
+      return vn is map
+        && vn.keys().hasAll(['dataUrl', 'duration', 'mimeType', 'sizeBytes'])
+        && vn.keys().hasOnly(['dataUrl', 'duration', 'mimeType', 'sizeBytes', 'waveform'])
+        && vn.dataUrl is string
+        && vn.dataUrl.size() > 0
+        && vn.dataUrl.size() <= 700000
+        && vn.duration is number
+        && vn.duration >= 0
+        && vn.duration <= 65
+        && vn.mimeType is string
+        && vn.mimeType.size() > 0
+        && vn.mimeType.size() <= 100
+        && vn.sizeBytes is int
+        && vn.sizeBytes > 0
+        && vn.sizeBytes <= 520000
+        && (!('waveform' in vn) || (vn.waveform is list && vn.waveform.size() <= 48));
+    }
+
     // Validation for ChatMessage
     function isValidChatMessage(data) {
       return data.id is string && data.id.size() > 0 && data.id.size() <= 128
@@ -77,6 +101,7 @@ service cloud.firestore {
         && data.text is string && data.text.size() <= 1000
         && (!('mediaUrl' in data) || (data.mediaUrl is string && data.mediaUrl.size() <= 600000))
         && (!('attachment' in data) || data.attachment is map)
+        && (!('voiceNote' in data) || isValidVoiceNote(data.voiceNote))
         && (!('replyTo' in data) || data.replyTo is map)
         && (!('status' in data) || (data.status is string && data.status.size() <= 20))
         && (!('readBy' in data) || data.readBy is list)
@@ -388,7 +413,12 @@ service cloud.firestore {
         allow read: if isSignedIn();
         allow create: if isSignedIn()
           && isValidId(messageId)
-          && incoming().senderId == request.auth.uid;
+          && incoming().groupId == groupId
+          && incoming().senderId == request.auth.uid
+          && incoming().text is string && incoming().text.size() <= 1000
+          && (!('mediaUrl' in incoming()) || (incoming().mediaUrl is string && incoming().mediaUrl.size() <= 600000))
+          && (!('attachment' in incoming()) || incoming().attachment is map)
+          && (!('voiceNote' in incoming()) || isValidVoiceNote(incoming().voiceNote));
         allow update: if isSignedIn()
           && isValidId(messageId)
           && (

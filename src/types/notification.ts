@@ -33,6 +33,7 @@ export interface NotificationPreferences {
   pushEnabled: boolean;
   soundEnabled: boolean;
   inAppBannerEnabled: boolean;
+  backgroundAlertsEnabled: boolean;
   typePreferences: {
     post_like: boolean;
     post_comment: boolean;

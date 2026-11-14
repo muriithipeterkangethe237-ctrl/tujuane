@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   X,
   MapPin,
@@ -24,8 +24,15 @@ import {
   VolumeX,
   Volume2,
   Flag,
-  AlertTriangle
+  AlertTriangle,
+  Mail,
+  Building2,
+  Compass,
+  CheckCircle2,
+  Users
 } from 'lucide-react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { UserProfile } from '../types/chat';
 import { CommunityPost } from '../types/community';
@@ -44,30 +51,30 @@ import {
 import { subscribeToCommunityPosts } from '../services/communityService';
 import { ALL_47_COUNTIES, getConstituenciesByCounty } from '../data/kenyaCounties';
 import { compressImage } from '../utils/imageCompressor';
+import { PRESET_AVATARS, getProfileCompleteness } from '../utils/profileUtils';
+import {
+  computeUserAchievementBadges,
+  deriveFeedMetricsFromPosts,
+  UserActivityMetrics
+} from '../utils/achievementBadges';
+import { fetchUserCommunityActivityMetrics } from '../services/activityMetricsService';
+import { AchievementBadgesSection } from './AchievementBadgesSection';
 import { ReportModal } from './ReportModal';
 
 interface UserProfileModalProps {
   user: UserProfile;
   isOpen: boolean;
+  initialEditMode?: boolean;
   onClose: () => void;
   onStartDirectChat: (targetUser: UserProfile) => void;
   onSelectPost?: (postId: string) => void;
   onProfileUpdated?: (updated: UserProfile) => void;
 }
 
-// Preset citizen avatar suggestions
-const PRESET_AVATARS = [
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=250&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=250&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=250&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=250&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=250&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=250&auto=format&fit=crop&q=80'
-];
-
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   user,
   isOpen,
+  initialEditMode = false,
   onClose,
   onStartDirectChat,
   onSelectPost,
@@ -76,6 +83,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const {
     currentUser,
     userProfile,
+    usersById,
     updateFullProfile,
     blockedUserIds,
     mutedUserIds,
@@ -85,30 +93,77 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     unmuteUser
   } = useAuth();
   const isOwnProfile = currentUser?.uid === user.uid;
-  const currentTargetUser = isOwnProfile && userProfile ? userProfile : user;
+  const cachedDirectoryUser = usersById?.[user.uid];
+  const currentTargetUser = isOwnProfile && userProfile ? userProfile : (cachedDirectoryUser || user);
   const [localUser, setLocalUser] = useState<UserProfile>(currentTargetUser);
 
+  // Subscribe directly to Firestore users/{uid} so all profile details (bio, occupation, constituency, email, joined) stay live
   useEffect(() => {
-    const fresh = isOwnProfile && userProfile ? userProfile : user;
-    setLocalUser(fresh);
-  }, [user, userProfile, isOwnProfile]);
+    if (!isOpen || !user?.uid) return;
+    const base = isOwnProfile && userProfile ? userProfile : (usersById?.[user.uid] || user);
+    setLocalUser(base);
+
+    const userDocRef = doc(db, 'users', user.uid);
+    const unsubDoc = onSnapshot(
+      userDocRef,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        setLocalUser((prev) => ({
+          ...prev,
+          uid: user.uid,
+          displayName: data.displayName || prev.displayName || 'Citizen Member',
+          email: data.email || prev.email || '',
+          photoURL: data.photoURL !== undefined ? (String(data.photoURL).trim() ? data.photoURL : undefined) : prev.photoURL,
+          county: data.county || prev.county || 'Nairobi',
+          constituency: data.constituency !== undefined ? (data.constituency || undefined) : prev.constituency,
+          bio: data.bio !== undefined ? (data.bio || undefined) : prev.bio,
+          occupation: data.occupation !== undefined ? (data.occupation || undefined) : prev.occupation,
+          isOnline: data.isOnline !== undefined ? Boolean(data.isOnline) : prev.isOnline,
+          lastSeen: data.lastSeen?.toDate
+            ? data.lastSeen.toDate().toISOString()
+            : typeof data.lastSeen === 'string'
+            ? data.lastSeen
+            : prev.lastSeen,
+          isDeveloper: data.isDeveloper !== undefined ? Boolean(data.isDeveloper) : prev.isDeveloper,
+          accountStatus: (data.accountStatus as 'active' | 'suspended' | 'banned') || prev.accountStatus || 'active',
+          pollVotesCount: typeof data.pollVotesCount === 'number' ? data.pollVotesCount : prev.pollVotesCount,
+          feedCommentsCount: typeof data.feedCommentsCount === 'number' ? data.feedCommentsCount : prev.feedCommentsCount,
+          createdAt: data.createdAt?.toDate
+            ? data.createdAt.toDate().toISOString()
+            : typeof data.createdAt === 'string' && data.createdAt
+            ? data.createdAt
+            : prev.createdAt
+        }));
+      },
+      () => {
+        // ignore offline/guest permission notice
+      }
+    );
+
+    return () => unsubDoc();
+  }, [isOpen, user?.uid, isOwnProfile, userProfile]);
 
   // Social states
   const [followingList, setFollowingList] = useState<FollowRelationship[]>([]);
+  const [targetFollowingList, setTargetFollowingList] = useState<FollowRelationship[]>([]);
   const [followersList, setFollowersList] = useState<FollowRelationship[]>([]);
   const [allFriendRequests, setAllFriendRequests] = useState<FriendRequest[]>([]);
+  const [allFeedPosts, setAllFeedPosts] = useState<CommunityPost[]>([]);
   const [userPosts, setUserPosts] = useState<CommunityPost[]>([]);
+  const [remoteActivityMetrics, setRemoteActivityMetrics] = useState<UserActivityMetrics | null>(null);
   const [isLoadingPosts, setIsLoadingPosts] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
 
   // Edit Mode state (only for own profile)
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(isOwnProfile && initialEditMode);
   const [editName, setEditName] = useState(currentTargetUser.displayName || '');
   const [editPhotoURL, setEditPhotoURL] = useState<string>(currentTargetUser.photoURL || '');
   const [editCounty, setEditCounty] = useState(currentTargetUser.county || 'Nairobi');
   const [editConstituency, setEditConstituency] = useState(currentTargetUser.constituency || '');
   const [editBio, setEditBio] = useState(currentTargetUser.bio || '');
   const [editOccupation, setEditOccupation] = useState(currentTargetUser.occupation || '');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -150,9 +205,19 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync edit form with localUser changes only when switching users or entering edit mode
+  // Initialize edit mode when modal opens
   useEffect(() => {
     if (isOpen) {
+      setIsEditing(isOwnProfile && initialEditMode);
+      setFieldErrors({});
+      setSaveError(null);
+      setSaveSuccess(false);
+    }
+  }, [isOpen, user.uid, isOwnProfile, initialEditMode]);
+
+  // Keep edit form fields synchronized with localUser while not actively editing
+  useEffect(() => {
+    if (isOpen && !isEditing) {
       setEditName(localUser.displayName || '');
       setEditPhotoURL(localUser.photoURL || '');
       setEditCounty(localUser.county || 'Nairobi');
@@ -161,10 +226,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       setEditOccupation(localUser.occupation || '');
       setPhotoError(null);
     }
-  }, [isOpen, localUser.uid]);
+  }, [isOpen, isEditing, localUser]);
 
   // Available constituencies for selected county
   const availableConstituencies = getConstituenciesByCounty(editCounty);
+  const completeness = getProfileCompleteness(localUser);
 
   // Subscribe to social data for target user / current user
   useEffect(() => {
@@ -173,6 +239,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     const unsubFollowing = subscribeToFollowing(currentUser.uid, (data) => {
       setFollowingList(data);
     });
+
+    const unsubTargetFollowing =
+      user.uid === currentUser.uid
+        ? () => {}
+        : subscribeToFollowing(user.uid, (data) => {
+            setTargetFollowingList(data);
+          });
 
     const unsubFollowers = subscribeToFollowers(user.uid, (data) => {
       setFollowersList(data);
@@ -184,14 +257,16 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
     return () => {
       unsubFollowing();
+      unsubTargetFollowing();
       unsubFollowers();
       unsubRequests();
     };
   }, [currentUser, user.uid]);
 
-  // Load recent posts by this author
+  // Load CommunityFeed posts and derive live author posts + feed activity
   useEffect(() => {
     const unsub = subscribeToCommunityPosts({}, (posts) => {
+      setAllFeedPosts(posts);
       const authored = posts.filter((p) => p.authorId === user.uid);
       setUserPosts(authored);
       setIsLoadingPosts(false);
@@ -199,6 +274,52 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
     return () => unsub();
   }, [user.uid]);
+
+  // Fetch deeper CommunityFeed comments, polls, and stories metrics when modal opens
+  useEffect(() => {
+    if (!isOpen || !user?.uid) return;
+    let isCancelled = false;
+    setRemoteActivityMetrics(null);
+
+    void fetchUserCommunityActivityMetrics(
+      user.uid,
+      allFeedPosts,
+      localUser,
+      followersList.length,
+      { isOwnProfile }
+    ).then((metrics) => {
+      if (!isCancelled) {
+        setRemoteActivityMetrics(metrics);
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, user?.uid, allFeedPosts.length, followersList.length, isOwnProfile]);
+
+  const effectiveActivityMetrics = useMemo<UserActivityMetrics>(() => {
+    const syncMetrics = deriveFeedMetricsFromPosts(
+      user.uid,
+      allFeedPosts,
+      localUser,
+      followersList.length
+    );
+    if (!remoteActivityMetrics) return syncMetrics;
+    return {
+      ...syncMetrics,
+      storiesCount: remoteActivityMetrics.storiesCount,
+      pollsCreatedCount: remoteActivityMetrics.pollsCreatedCount,
+      pollVotesCount: Math.max(syncMetrics.pollVotesCount, remoteActivityMetrics.pollVotesCount),
+      commentsAuthored: Math.max(syncMetrics.commentsAuthored, remoteActivityMetrics.commentsAuthored),
+      isLoadingRemote: false
+    };
+  }, [user.uid, allFeedPosts, localUser, followersList.length, remoteActivityMetrics]);
+
+  const achievementBadges = useMemo(
+    () => computeUserAchievementBadges(localUser, effectiveActivityMetrics),
+    [localUser, effectiveActivityMetrics]
+  );
 
   // Handle ESC key to close modal reliably
   useEffect(() => {
@@ -369,20 +490,45 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     }
   };
 
-  // Save full profile edits
+  // Validate and save full profile edits with enforced required fields
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isOwnProfile) return;
+
+    const finalName = editName.trim();
+    const finalPhoto = editPhotoURL;
+    const finalCounty = editCounty.trim();
+    const finalConstituency = editConstituency.trim();
+    const finalBio = editBio.trim();
+    const finalOccupation = editOccupation.trim();
+
+    const errors: Record<string, string> = {};
+    if (finalName.length < 2) {
+      errors.displayName = 'Enter your full name or citizen handle (at least 2 characters).';
+    }
+    if (!finalCounty) {
+      errors.county = 'Please select your home county.';
+    }
+    if (availableConstituencies.length > 0 && !finalConstituency) {
+      errors.constituency = `Please select your constituency in ${finalCounty}.`;
+    }
+    if (finalBio.length < 10) {
+      errors.bio = 'Please write a short About / Bio (at least 10 characters) so citizens know who you are.';
+    }
+    if (finalOccupation.length < 2) {
+      errors.occupation = 'Please enter your occupation, hustle, or community role.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setSaveError('Please complete all required citizen profile fields highlighted below.');
+      return;
+    }
+
+    setFieldErrors({});
     setIsSaving(true);
     setSaveError(null);
     try {
-      const finalName = editName.trim() || localUser.displayName;
-      const finalPhoto = editPhotoURL;
-      const finalCounty = editCounty;
-      const finalConstituency = editConstituency;
-      const finalBio = editBio.trim();
-      const finalOccupation = editOccupation.trim();
-
       await updateFullProfile({
         displayName: finalName,
         photoURL: finalPhoto,
@@ -399,15 +545,16 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         photoURL: finalPhoto ? finalPhoto : undefined,
         county: finalCounty,
         constituency: finalConstituency || undefined,
-        bio: finalBio || undefined,
-        occupation: finalOccupation || undefined
+        bio: finalBio,
+        occupation: finalOccupation,
+        profileCompleted: true
       };
 
       setLocalUser(updatedUser);
       onProfileUpdated?.(updatedUser);
 
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      setTimeout(() => setSaveSuccess(false), 3500);
       setIsEditing(false);
     } catch (err: any) {
       console.error('Failed to update profile:', err);
@@ -437,51 +584,52 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           className="hidden"
         />
 
-        {/* Top Header Banner with Kenyan Gradient Theme */}
-        <div className="h-32 sm:h-36 bg-gradient-to-r from-emerald-800 via-slate-900 to-emerald-950 relative p-4 flex items-start justify-between">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-[11px] font-semibold text-emerald-300 border border-white/10">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Verified Citizen of Kenya</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleShareProfile}
-              className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer"
-              title="Share citizen profile"
-            >
-              {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose();
-              }}
-              className="p-2 bg-white/10 hover:bg-white/20 active:bg-white/30 text-white rounded-full transition-colors cursor-pointer"
-              title="Close modal (Esc)"
-              aria-label="Close"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+        {/* Pinned Top-Right Modal Controls */}
+        <div className="absolute top-3.5 right-3.5 z-20 flex items-center gap-2">
+          <button
+            onClick={handleShareProfile}
+            className="p-2 bg-slate-950/45 hover:bg-slate-950/70 backdrop-blur-md text-white rounded-full border border-white/15 transition-colors cursor-pointer shadow-sm"
+            title="Share citizen profile"
+          >
+            {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="p-2 bg-slate-950/45 hover:bg-slate-950/70 active:bg-slate-950/85 backdrop-blur-md text-white rounded-full border border-white/15 transition-colors cursor-pointer shadow-sm"
+            title="Close modal (Esc)"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Scrollable Content Body */}
-        <div className="p-5 sm:p-6 overflow-y-auto space-y-6 flex-1">
-          {/* Avatar & Main Identity Row */}
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-16 sm:-mt-20">
-            <div className="flex items-end gap-3.5">
+        {/* Scrollable Banner + Content Body (prevents negative-margin avatar/name clipping) */}
+        <div className="overflow-y-auto flex-1">
+          {/* Top Header Banner with Kenyan Gradient Theme */}
+          <div className="h-28 sm:h-32 bg-gradient-to-r from-emerald-800 via-slate-900 to-emerald-950 relative p-4 pr-24 flex items-start">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-[11px] font-semibold text-emerald-300 border border-white/10">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Verified Citizen of Kenya</span>
+            </div>
+          </div>
+
+          <div className="px-5 sm:px-6 pb-6 space-y-5">
+            {/* Avatar & Primary Action Row */}
+            <div className="flex items-end justify-between gap-3 -mt-11 sm:-mt-12 relative z-10">
               <div className="relative shrink-0 group">
                 {activePhoto ? (
                   <img
                     src={activePhoto}
-                    alt={localUser.displayName}
-                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl object-cover border-4 border-white dark:border-slate-850 shadow-md bg-white dark:bg-slate-900"
+                    alt={localUser.displayName || 'Citizen Member'}
+                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl object-cover border-4 border-white dark:border-slate-900 shadow-lg bg-white dark:bg-slate-900"
                   />
                 ) : (
-                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-extrabold flex items-center justify-center text-3xl border-4 border-white dark:border-slate-850 shadow-md">
-                    {localUser.displayName.charAt(0).toUpperCase()}
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-emerald-100 dark:bg-emerald-950/90 text-emerald-800 dark:text-emerald-300 font-extrabold flex items-center justify-center text-3xl border-4 border-white dark:border-slate-900 shadow-lg">
+                    {(localUser.displayName || 'C').charAt(0).toUpperCase()}
                   </div>
                 )}
 
@@ -493,7 +641,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       if (!isEditing) setIsEditing(true);
                       fileInputRef.current?.click();
                     }}
-                    className="absolute -bottom-1 -right-1 p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl border-2 border-white dark:border-slate-800 shadow-md transition-transform group-hover:scale-105 cursor-pointer"
+                    className="absolute -bottom-1 -right-1 p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl border-2 border-white dark:border-slate-900 shadow-md transition-transform group-hover:scale-105 cursor-pointer"
                     title="Change Profile Picture"
                   >
                     <Camera className="w-3.5 h-3.5" />
@@ -503,109 +651,188 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 {!isOwnProfile && (
                   livePresence.isOnline ? (
                     <span
-                      className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-800 ring-2 ring-emerald-400/50 animate-pulse"
+                      className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900 ring-2 ring-emerald-400/50 animate-pulse"
                       title="Active online now"
                     />
                   ) : (
                     <span
-                      className="absolute bottom-1 right-1 w-4 h-4 bg-slate-400 rounded-full border-2 border-white dark:border-slate-800"
+                      className="absolute bottom-1 right-1 w-4 h-4 bg-slate-400 rounded-full border-2 border-white dark:border-slate-900"
                       title={livePresence.lastSeenText}
                     />
                   )
                 )}
               </div>
 
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                    {isEditing ? editName || 'Citizen Member' : localUser.displayName}
-                  </h2>
-                  {isOwnProfile && (
-                    <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
-                      You
-                    </span>
-                  )}
-                </div>
+              {/* Quick Action or Edit Toggle */}
+              <div className="flex items-center gap-2 pt-12 sm:pt-14 shrink-0">
+                {isOwnProfile ? (
+                  <button
+                    onClick={() => setIsEditing(!isEditing)}
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-2 font-bold text-xs rounded-xl transition-all cursor-pointer border shadow-2xs ${
+                      isEditing
+                        ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/40'
+                        : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+                    }`}
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+                    <span>{isEditing ? 'Cancel Edit' : 'Edit Profile'}</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      onStartDirectChat(localUser);
+                      onClose();
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shadow-xs"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Direct Message</span>
+                  </button>
+                )}
+              </div>
+            </div>
 
-                <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 font-medium">
+            {/* Dedicated Full-Width Citizen Name & Headline Identity */}
+            <div className="space-y-2 pt-0.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-2xl sm:text-[26px] font-black text-slate-950 dark:text-white tracking-tight leading-snug break-words">
+                  {isEditing ? editName.trim() || 'Citizen Member' : localUser.displayName || 'Citizen Member'}
+                </h2>
+                {isOwnProfile && (
+                  <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                    You
+                  </span>
+                )}
+                {!isOwnProfile && (
+                  <span
+                    className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      livePresence.isOnline
+                        ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        livePresence.isOnline ? 'bg-emerald-500' : 'bg-slate-400'
+                      }`}
+                    />
+                    <span>{livePresence.isOnline ? 'Online' : livePresence.lastSeenText}</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap text-xs text-slate-600 dark:text-slate-400 font-medium">
+                <div className="inline-flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
                   <span>
-                    {(isEditing ? editConstituency : localUser.constituency) ? `${isEditing ? editConstituency : localUser.constituency}, ` : ''}
-                    {(isEditing ? editCounty : localUser.county) || 'National'}
+                    {(isEditing ? editConstituency : localUser.constituency)
+                      ? `${isEditing ? editConstituency : localUser.constituency}, `
+                      : ''}
+                    {(isEditing ? editCounty : localUser.county) || 'National'} County
                   </span>
                 </div>
+
+                {(isEditing ? editOccupation : localUser.occupation) && (
+                  <div className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                    <Briefcase className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
+                    <span>{isEditing ? editOccupation : localUser.occupation}</span>
+                  </div>
+                )}
               </div>
             </div>
-
-            {/* Quick Action or Edit Toggle */}
-            <div className="flex items-center gap-2">
-              {isOwnProfile ? (
-                <button
-                  onClick={() => setIsEditing(!isEditing)}
-                  className={`inline-flex items-center gap-1.5 px-3.5 py-2 font-bold text-xs rounded-xl transition-all cursor-pointer border shadow-2xs ${
-                    isEditing
-                      ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/40'
-                      : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
-                  }`}
-                >
-                  <Edit3 className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
-                  <span>{isEditing ? 'Cancel Edit' : 'Edit Profile'}</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => {
-                    onStartDirectChat(localUser);
-                    onClose();
-                  }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shadow-xs"
-                >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  <span>Direct Message</span>
-                </button>
-              )}
-            </div>
-          </div>
 
           {/* Social Stats Strip */}
-          <div className="grid grid-cols-3 gap-2 py-3 px-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 text-center">
+          <div className="grid grid-cols-4 gap-2 py-3 px-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 text-center">
             <div>
-              <div className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white">
+              <div className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white tabular-nums">
                 {userPosts.length}
               </div>
-              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Discussions</div>
+              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Posts</div>
             </div>
             <div>
-              <div className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white">
+              <div className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white tabular-nums">
                 {followersList.length}
               </div>
               <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Followers</div>
             </div>
             <div>
-              <div className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white">
-                {localUser.county || 'All Kenya'}
+              <div className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white tabular-nums">
+                {isOwnProfile ? followingList.length : targetFollowingList.length}
               </div>
-              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">Home Base</div>
+              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Following</div>
+            </div>
+            <div>
+              <div className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate pt-0.5">
+                {localUser.county || 'Kenya'}
+              </div>
+              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">County</div>
             </div>
           </div>
 
-          {/* VIEW MODE: About & Details Display (When NOT Editing) */}
+          {/* Save Success Feedback Banner in View Mode */}
+          {saveSuccess && !isEditing && (
+            <div className="p-3 bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 text-xs font-bold rounded-2xl flex items-center gap-2 border border-emerald-300 dark:border-emerald-800">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>Profile saved & synced across your posts, stories, chats, and directory!</span>
+            </div>
+          )}
+
+          {/* Profile Completion Enforcement Card on Own Profile */}
+          {isOwnProfile && !isEditing && !completeness.isComplete && (
+            <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-extrabold text-amber-900 dark:text-amber-200">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>Complete Your Citizen Profile ({completeness.percentage}%)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] rounded-xl transition-colors cursor-pointer shrink-0"
+                >
+                  Complete Now
+                </button>
+              </div>
+              <div className="w-full h-2 bg-amber-200/70 dark:bg-amber-900/60 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-amber-600 dark:bg-amber-400 transition-all duration-300"
+                  style={{ width: `${completeness.percentage}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                Missing required details:{' '}
+                <span className="font-bold">
+                  {completeness.missingRequired.map((f) => f.label).join(', ')}
+                </span>
+              </p>
+            </div>
+          )}
+
+          {/* VIEW MODE: All Profile Details Clearly Visible */}
           {!isEditing && (
             <div className="space-y-5">
+              {/* Visual Achievement Badges (CommunityFeed, Polls, Stories & Verified Residency) */}
+              <AchievementBadgesSection
+                badges={achievementBadges}
+                metrics={effectiveActivityMetrics}
+                isOwnProfile={isOwnProfile}
+              />
+
               {/* About Section */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Info className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
                     <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
-                      About Me
+                      About / Bio
                     </span>
                   </div>
-                  {isOwnProfile && !localUser.bio && (
+                  {isOwnProfile && (
                     <button
                       onClick={() => setIsEditing(true)}
                       className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
                     >
-                      + Add About Info
+                      {localUser.bio ? 'Edit Bio' : '+ Add About Info'}
                     </button>
                   )}
                 </div>
@@ -616,51 +843,140 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       {localUser.bio}
                     </p>
                   ) : (
-                    <p className="text-slate-400 italic">
+                    <p className="text-slate-500 dark:text-slate-400 italic">
                       {isOwnProfile
-                        ? 'You haven\'t added an About section yet. Tell fellow citizens about your background, hustles, or community interests!'
-                        : 'No about description provided yet.'}
+                        ? 'Your About / Bio is not filled yet. Click "Edit Profile" to introduce yourself across all 47 counties.'
+                        : 'No bio provided yet.'}
                     </p>
-                  )}
-
-                  {localUser.occupation && (
-                    <div className="pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center gap-1.5 text-[11px] text-emerald-800 dark:text-emerald-300 font-bold">
-                      <Briefcase className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                      <span>{localUser.occupation}</span>
-                    </div>
                   )}
                 </div>
               </div>
 
-              {/* Citizen Details Metadata */}
-              <div className="grid grid-cols-2 gap-3 text-xs text-slate-600 dark:text-slate-400">
-                <div className="p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 flex items-center gap-2.5">
-                  <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
-                  <div>
-                    <div className="text-[10px] text-slate-400 font-semibold uppercase">Joined TUJUANE</div>
-                    <div className="font-bold text-slate-800 dark:text-slate-200">
-                      {localUser.createdAt ? new Date(localUser.createdAt).toLocaleDateString([], { month: 'short', year: 'numeric' }) : 'Verified Member'}
-                    </div>
-                  </div>
+              {/* Complete Structured Citizen Details Grid */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+                    <span>All Profile Details</span>
+                  </span>
+                  {isOwnProfile && (
+                    <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      {completeness.percentage}% Complete
+                    </span>
+                  )}
                 </div>
 
-                <div className="p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 flex items-center gap-2.5">
-                  <Clock className="w-4 h-4 text-slate-400 shrink-0" />
-                  <div>
-                    <div className="text-[10px] text-slate-400 font-semibold uppercase">Presence</div>
-                    <div className="font-bold text-slate-800 dark:text-slate-200 truncate text-xs sm:text-sm">
-                      {livePresence.isOnline ? (
-                        <span className="text-emerald-700 dark:text-emerald-400 flex items-center gap-1 font-bold">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block shadow-[0_0_6px_#10b981]" />
-                          Online Now
-                        </span>
-                      ) : (
-                        <span className="text-slate-600 dark:text-slate-400 font-medium">
-                          {livePresence.lastSeenText}
-                        </span>
-                      )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-slate-600 dark:text-slate-400">
+                  {/* Display Name */}
+                  <div className="p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 flex items-center gap-2.5">
+                    <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-slate-400 font-semibold uppercase">Full Name</div>
+                      <div className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                        {localUser.displayName || 'Not set'}
+                      </div>
                     </div>
                   </div>
+
+                  {/* Occupation / Role */}
+                  <div className="p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 flex items-center gap-2.5">
+                    <Briefcase className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-slate-400 font-semibold uppercase">Occupation / Role</div>
+                      <div className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                        {localUser.occupation ? (
+                          localUser.occupation
+                        ) : (
+                          <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                            {isOwnProfile ? 'Required — Tap Edit' : 'Not specified'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Home County */}
+                  <div className="p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 flex items-center gap-2.5">
+                    <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-slate-400 font-semibold uppercase">Home County</div>
+                      <div className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                        {localUser.county ? `${localUser.county} County` : 'Not set'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Constituency */}
+                  <div className="p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 flex items-center gap-2.5">
+                    <Compass className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-slate-400 font-semibold uppercase">Constituency</div>
+                      <div className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                        {localUser.constituency ? (
+                          localUser.constituency
+                        ) : (
+                          <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                            {isOwnProfile ? 'Required — Tap Edit' : 'Not specified'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Joined Date */}
+                  <div className="p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 flex items-center gap-2.5">
+                    <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-slate-400 font-semibold uppercase">Joined TUJUANE</div>
+                      <div className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                        {localUser.createdAt
+                          ? new Date(localUser.createdAt).toLocaleDateString([], {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric'
+                            })
+                          : 'Verified Member'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Presence */}
+                  <div className="p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 flex items-center gap-2.5">
+                    <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-slate-400 font-semibold uppercase">Presence</div>
+                      <div className="font-bold text-slate-800 dark:text-slate-200 truncate text-xs">
+                        {livePresence.isOnline ? (
+                          <span className="text-emerald-700 dark:text-emerald-400 flex items-center gap-1 font-bold">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block shadow-[0_0_6px_#10b981]" />
+                            Online Now
+                          </span>
+                        ) : (
+                          <span className="text-slate-600 dark:text-slate-400 font-medium">
+                            {livePresence.lastSeenText}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Own Account Email & Standing */}
+                  {isOwnProfile && (
+                    <div className="sm:col-span-2 p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Mail className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-[10px] text-slate-400 font-semibold uppercase">Account Email</div>
+                          <div className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                            {localUser.email || currentUser?.email || 'Authenticated Citizen'}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shrink-0 capitalize">
+                        {localUser.accountStatus || 'active'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -948,18 +1264,26 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 <input
                   type="text"
                   value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
+                  onChange={(e) => {
+                    setEditName(e.target.value);
+                    if (fieldErrors.displayName) setFieldErrors((p) => ({ ...p, displayName: '' }));
+                  }}
                   maxLength={60}
-                  className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
+                  className={`w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white ${
+                    fieldErrors.displayName ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
+                  }`}
                   required
                 />
+                {fieldErrors.displayName && (
+                  <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{fieldErrors.displayName}</p>
+                )}
               </div>
 
               {/* 3. About / Bio */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    About / Bio
+                    About / Bio *
                   </label>
                   <span className="text-[11px] text-slate-400 font-medium">
                     {editBio.length} / 500
@@ -967,41 +1291,63 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 </div>
                 <textarea
                   value={editBio}
-                  onChange={(e) => setEditBio(e.target.value)}
+                  onChange={(e) => {
+                    setEditBio(e.target.value);
+                    if (fieldErrors.bio) setFieldErrors((p) => ({ ...p, bio: '' }));
+                  }}
                   rows={4}
                   maxLength={500}
-                  placeholder="Share a short bio about yourself, your hustles, your community passions, or what you care about in your constituency..."
-                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white resize-none leading-relaxed"
+                  placeholder="Share a short bio about yourself, your hustles, your community passions, or what you care about in your constituency (min 10 characters)..."
+                  className={`w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white resize-none leading-relaxed ${
+                    fieldErrors.bio ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
+                  }`}
+                  required
                 />
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  This description will appear on your public citizen card and discussions.
-                </p>
+                {fieldErrors.bio ? (
+                  <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{fieldErrors.bio}</p>
+                ) : (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    This description immediately updates on your public citizen card, feed posts, and chats.
+                  </p>
+                )}
               </div>
 
               {/* 4. Occupation / Hustle */}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200">Occupation / Hustle / Community Role</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200">Occupation / Hustle / Community Role *</label>
                 <input
                   type="text"
                   value={editOccupation}
-                  onChange={(e) => setEditOccupation(e.target.value)}
+                  onChange={(e) => {
+                    setEditOccupation(e.target.value);
+                    if (fieldErrors.occupation) setFieldErrors((p) => ({ ...p, occupation: '' }));
+                  }}
                   placeholder="e.g. Software Hustler, Dairy Farmer, Student, Youth Representative"
                   maxLength={80}
-                  className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
+                  className={`w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white ${
+                    fieldErrors.occupation ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
+                  }`}
+                  required
                 />
+                {fieldErrors.occupation && (
+                  <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{fieldErrors.occupation}</p>
+                )}
               </div>
 
               {/* 5. County & Constituency Representation */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">Home County</label>
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">Home County *</label>
                   <select
                     value={editCounty}
                     onChange={(e) => {
                       setEditCounty(e.target.value);
                       setEditConstituency('');
+                      if (fieldErrors.county) setFieldErrors((p) => ({ ...p, county: '' }));
                     }}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white cursor-pointer"
+                    className={`w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white cursor-pointer ${
+                      fieldErrors.county ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
+                    }`}
                   >
                     {ALL_47_COUNTIES.map((c) => (
                       <option key={c} value={c}>
@@ -1009,14 +1355,25 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       </option>
                     ))}
                   </select>
+                  {fieldErrors.county && (
+                    <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{fieldErrors.county}</p>
+                  )}
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">Constituency (Optional)</label>
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Constituency {availableConstituencies.length > 0 ? '*' : ''}
+                  </label>
                   <select
                     value={editConstituency}
-                    onChange={(e) => setEditConstituency(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white cursor-pointer"
+                    onChange={(e) => {
+                      setEditConstituency(e.target.value);
+                      if (fieldErrors.constituency) setFieldErrors((p) => ({ ...p, constituency: '' }));
+                    }}
+                    className={`w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white cursor-pointer ${
+                      fieldErrors.constituency ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
+                    }`}
+                    required={availableConstituencies.length > 0}
                   >
                     <option value="">Select Constituency</option>
                     {availableConstituencies.map((con) => (
@@ -1025,6 +1382,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       </option>
                     ))}
                   </select>
+                  {fieldErrors.constituency && (
+                    <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{fieldErrors.constituency}</p>
+                  )}
                 </div>
               </div>
 
@@ -1067,6 +1427,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               </div>
             </form>
           )}
+          </div>
         </div>
 
         {/* Modal Footer with Explicit Functional Close Button */}

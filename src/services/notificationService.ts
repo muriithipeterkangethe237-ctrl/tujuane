@@ -1,5 +1,10 @@
 import { InAppNotification } from '../types/chat';
 import { NotificationPreferences, NotificationType } from '../types/notification';
+import {
+  syncPreferencesToServiceWorker,
+  registerBackgroundNotificationTasks,
+  BackgroundSyncCapabilities
+} from './backgroundNotificationSync';
 
 const STORAGE_KEY_NOTIFS = 'tujuane_in_app_notifications';
 const STORAGE_KEY_PREFS = 'tujuane_notification_preferences';
@@ -9,6 +14,7 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   pushEnabled: true,
   soundEnabled: true,
   inAppBannerEnabled: true,
+  backgroundAlertsEnabled: true,
   typePreferences: {
     post_like: true,
     post_comment: true,
@@ -69,7 +75,7 @@ class NotificationService {
   }
 
   /**
-   * Update notification preferences
+   * Update notification preferences and synchronize to background Service Worker
    */
   public saveNotificationPreferences(newPrefs: Partial<NotificationPreferences>): NotificationPreferences {
     this.preferences = {
@@ -90,6 +96,11 @@ class NotificationService {
       }
     }
 
+    void syncPreferencesToServiceWorker(this.preferences);
+    if (this.preferences.backgroundAlertsEnabled && this.getPermissionStatus() === 'granted') {
+      void registerBackgroundNotificationTasks();
+    }
+
     return this.preferences;
   }
 
@@ -106,7 +117,7 @@ class NotificationService {
   }
 
   /**
-   * Request browser Web Push notification permission
+   * Request browser Web Push notification permission and register background sync tasks
    */
   public async requestDesktopPermission(): Promise<NotificationPermission> {
     if (typeof window === 'undefined' || !('Notification' in window)) {
@@ -116,11 +127,15 @@ class NotificationService {
     try {
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
-        this.saveNotificationPreferences({ pushEnabled: true });
+        this.saveNotificationPreferences({
+          pushEnabled: true,
+          backgroundAlertsEnabled: true
+        });
+        await registerBackgroundNotificationTasks();
         // Send a celebratory welcome push
         this.sendNativePush({
-          title: '🟢 TUJUANE Push Notifications Enabled',
-          body: 'You will now receive instant real-time alerts for discussions, mentions, direct chats, and county updates.',
+          title: 'TUJUANE Always-On Alerts Enabled',
+          body: 'You will receive alerts for messages, replies, and county updates whenever your device is online.',
           tag: 'tujuane_push_welcome'
         });
       }
@@ -129,6 +144,21 @@ class NotificationService {
       console.warn('Failed to request notification permission:', err);
       return 'denied';
     }
+  }
+
+  /**
+   * Enable Always-On Background Alerts and return browser sync capability details
+   */
+  public async enableAlwaysOnBackgroundAlerts(): Promise<BackgroundSyncCapabilities> {
+    if (this.getPermissionStatus() === 'default') {
+      await this.requestDesktopPermission();
+    } else if (this.getPermissionStatus() === 'granted') {
+      this.saveNotificationPreferences({
+        pushEnabled: true,
+        backgroundAlertsEnabled: true
+      });
+    }
+    return registerBackgroundNotificationTasks();
   }
 
   /**

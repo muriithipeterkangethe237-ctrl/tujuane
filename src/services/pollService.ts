@@ -6,7 +6,9 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
-  runTransaction
+  runTransaction,
+  updateDoc,
+  increment
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { CommunityPoll, CreatePollParams } from '../types/poll';
@@ -146,6 +148,12 @@ export async function castPollVote(
         votedAt: serverTimestamp()
       });
     });
+
+    if (!previousOptionId) {
+      updateDoc(doc(db, 'users', userId), {
+        pollVotesCount: increment(1)
+      }).catch(() => {});
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${POLLS_COLLECTION}/${pollId}`);
   }

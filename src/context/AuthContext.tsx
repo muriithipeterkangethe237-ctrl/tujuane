@@ -1,13 +1,13 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged } from 'firebase/auth';
+import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import { User, onAuthStateChanged, onIdTokenChanged } from 'firebase/auth';
 import {
+  collection,
   doc,
   getDoc,
   setDoc,
   updateDoc,
   onSnapshot,
-  serverTimestamp,
-  Timestamp
+  serverTimestamp
 } from 'firebase/firestore';
 import {
   auth,
@@ -32,10 +32,21 @@ import {
   getCachedMutedUsers,
   subscribeBlockedAndMuted
 } from '../services/blockMuteService';
+import { propagateUserProfileUpdates } from '../services/profileSyncService';
+import { getProfileCompleteness, ProfileCompletenessReport } from '../utils/profileUtils';
+import {
+  syncAuthToServiceWorker,
+  clearServiceWorkerSession,
+  registerBackgroundNotificationTasks
+} from '../services/backgroundNotificationSync';
+import { notificationService } from '../services/notificationService';
 
 interface AuthContextType {
   currentUser: User | null;
   userProfile: UserProfile | null;
+  usersById: Record<string, UserProfile>;
+  isProfileComplete: boolean;
+  profileCompleteness: ProfileCompletenessReport;
   loading: boolean;
   blockedUserIds: string[];
   mutedUserIds: string[];
@@ -64,6 +75,7 @@ interface AuthContextType {
     constituency?: string;
     bio?: string;
     occupation?: string;
+    backgroundAlertsEnabled?: boolean;
   }) => Promise<void>;
   isAuthModalOpen: boolean;
   openAuthModal: (mode?: 'signin' | 'register') => void;
@@ -107,9 +119,13 @@ function setCachedSession(profile: UserProfile | null) {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(() => auth.currentUser || null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(() => getCachedSession());
+  const [usersById, setUsersById] = useState<Record<string, UserProfile>>({});
   const [loading, setLoading] = useState<boolean>(() => !auth.currentUser && !getCachedSession());
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState<'signin' | 'register'>('signin');
+
+  const profileCompleteness = useMemo(() => getProfileCompleteness(userProfile), [userProfile]);
+  const isProfileComplete = profileCompleteness.isComplete;
 
   // Blocked and Muted lists
   const [blockedUserIds, setBlockedUserIds] = useState<string[]>(() => {
@@ -182,6 +198,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ? data.statusUpdatedAt
             : undefined,
           statusUpdatedBy: data.statusUpdatedBy || undefined,
+          pollVotesCount: typeof data.pollVotesCount === 'number' ? data.pollVotesCount : 0,
+          feedCommentsCount: typeof data.feedCommentsCount === 'number' ? data.feedCommentsCount : 0,
           isOnline: true,
           lastSeen: new Date().toISOString(),
           createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString()
@@ -271,12 +289,80 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentUser(null);
         setUserProfile(null);
         setCachedSession(null);
+        setUsersById({});
+        void clearServiceWorkerSession();
       }
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    // Keep Service Worker background notification session tokens fresh
+    const unsubToken = onIdTokenChanged(auth, (user) => {
+      if (user) {
+        void syncAuthToServiceWorker(user, notificationService.getNotificationPreferences());
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          void registerBackgroundNotificationTasks();
+        }
+      } else {
+        void clearServiceWorkerSession();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      unsubToken();
+    };
   }, []);
+
+  // Real-time live user directory map so profile edits propagate instantaneously everywhere in the UI
+  useEffect(() => {
+    if (!currentUser) {
+      setUsersById({});
+      return;
+    }
+
+    const unsubUsers = onSnapshot(
+      collection(db, 'users'),
+      (snapshot) => {
+        const nextMap: Record<string, UserProfile> = {};
+        snapshot.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          nextMap[docSnap.id] = {
+            uid: docSnap.id,
+            displayName: data.displayName || 'Citizen Member',
+            email: data.email || '',
+            photoURL: data.photoURL && String(data.photoURL).trim() ? data.photoURL : undefined,
+            county: data.county || 'Nairobi',
+            constituency: data.constituency || undefined,
+            bio: data.bio || undefined,
+            occupation: data.occupation || undefined,
+            isOnline: Boolean(data.isOnline),
+            lastSeen: data.lastSeen?.toDate
+              ? data.lastSeen.toDate().toISOString()
+              : typeof data.lastSeen === 'string'
+              ? data.lastSeen
+              : undefined,
+            isDeveloper: Boolean(data.isDeveloper),
+            accountStatus: (data.accountStatus as 'active' | 'suspended' | 'banned') || 'active',
+            backgroundAlertsEnabled: data.backgroundAlertsEnabled !== undefined ? Boolean(data.backgroundAlertsEnabled) : undefined,
+            profileCompleted: data.profileCompleted !== undefined ? Boolean(data.profileCompleted) : undefined,
+            pollVotesCount: typeof data.pollVotesCount === 'number' ? data.pollVotesCount : 0,
+            feedCommentsCount: typeof data.feedCommentsCount === 'number' ? data.feedCommentsCount : 0,
+            createdAt: data.createdAt?.toDate
+              ? data.createdAt.toDate().toISOString()
+              : typeof data.createdAt === 'string'
+              ? data.createdAt
+              : ''
+          };
+        });
+        setUsersById(nextMap);
+      },
+      () => {
+        // non-fatal directory listener notice
+      }
+    );
+
+    return () => unsubUsers();
+  }, [currentUser]);
 
   // Real-time snapshot subscription to own user document in Firestore to prevent stale/reverting edits
   useEffect(() => {
@@ -319,6 +405,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ? data.statusUpdatedAt
               : prev?.statusUpdatedAt,
             statusUpdatedBy: data.statusUpdatedBy !== undefined ? data.statusUpdatedBy : prev?.statusUpdatedBy,
+            pollVotesCount: typeof data.pollVotesCount === 'number' ? data.pollVotesCount : (prev?.pollVotesCount ?? 0),
+            feedCommentsCount: typeof data.feedCommentsCount === 'number' ? data.feedCommentsCount : (prev?.feedCommentsCount ?? 0),
             isOnline: data.isOnline !== undefined ? Boolean(data.isOnline) : true,
             lastSeen: data.lastSeen?.toDate ? data.lastSeen.toDate().toISOString() : (typeof data.lastSeen === 'string' ? data.lastSeen : new Date().toISOString()),
             createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (typeof data.createdAt === 'string' ? data.createdAt : prev?.createdAt || new Date().toISOString())
@@ -434,8 +522,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
       await signOut(auth);
+      await clearServiceWorkerSession();
       setCurrentUser(null);
       setUserProfile(null);
+      setUsersById({});
     } catch (error) {
       console.error('Logout error:', error);
     }
@@ -459,14 +549,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!currentUser || !userProfile) return;
     const userDocRef = doc(db, 'users', currentUser.uid);
     try {
-      const payload: any = { county };
-      if (constituency) {
-        payload.constituency = constituency;
-      }
+      const updated: UserProfile = { ...userProfile, county, constituency: constituency || undefined };
+      const completeness = getProfileCompleteness(updated);
+      const payload: any = {
+        county,
+        constituency: constituency || '',
+        profileCompleted: completeness.isComplete
+      };
       await updateDoc(userDocRef, payload);
-      const updated = { ...userProfile, county, constituency };
+      updated.profileCompleted = completeness.isComplete;
       setUserProfile(updated);
       setCachedSession(updated);
+      setUsersById((prev) => ({ ...prev, [currentUser.uid]: updated }));
+      void propagateUserProfileUpdates(currentUser.uid, updated);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.uid}`);
     }
@@ -479,6 +574,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     constituency?: string;
     bio?: string;
     occupation?: string;
+    backgroundAlertsEnabled?: boolean;
   }) => {
     if (!currentUser) return;
     const userDocRef = doc(db, 'users', currentUser.uid);
@@ -494,9 +590,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (updates.constituency !== undefined) payload.constituency = updates.constituency;
       if (updates.bio !== undefined) payload.bio = updates.bio.trim();
       if (updates.occupation !== undefined) payload.occupation = updates.occupation.trim();
-
-      // Use setDoc with merge: true so it never throws if the document doesn't exist
-      await setDoc(userDocRef, payload, { merge: true });
+      if (updates.backgroundAlertsEnabled !== undefined) {
+        payload.backgroundAlertsEnabled = Boolean(updates.backgroundAlertsEnabled);
+      }
 
       const baseProfile: UserProfile = userProfile || {
         uid: currentUser.uid,
@@ -515,22 +611,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         displayName: payload.displayName !== undefined && payload.displayName ? payload.displayName : baseProfile.displayName,
         photoURL: payload.photoURL !== undefined ? (payload.photoURL.trim() ? payload.photoURL : undefined) : baseProfile.photoURL,
         county: payload.county !== undefined ? payload.county : baseProfile.county,
-        constituency: payload.constituency !== undefined ? payload.constituency : baseProfile.constituency,
+        constituency: payload.constituency !== undefined ? (payload.constituency || undefined) : baseProfile.constituency,
         bio: payload.bio !== undefined ? payload.bio : baseProfile.bio,
-        occupation: payload.occupation !== undefined ? payload.occupation : baseProfile.occupation
+        occupation: payload.occupation !== undefined ? payload.occupation : baseProfile.occupation,
+        backgroundAlertsEnabled:
+          payload.backgroundAlertsEnabled !== undefined
+            ? payload.backgroundAlertsEnabled
+            : baseProfile.backgroundAlertsEnabled
       };
 
+      const completeness = getProfileCompleteness(updated);
+      payload.profileCompleted = completeness.isComplete;
+      updated.profileCompleted = completeness.isComplete;
+
+      // Persist to Firestore users/{uid}
+      await setDoc(userDocRef, payload, { merge: true });
+
+      // Update React states & persistent cache immediately
       setUserProfile(updated);
       setCachedSession(updated);
+      setUsersById((prev) => ({ ...prev, [currentUser.uid]: updated }));
 
-      // Only sync displayName to Firebase Auth if it changed
+      // Sync Firebase Auth profile (displayName + short HTTP photoURL if applicable)
+      const authUpdates: { displayName?: string; photoURL?: string } = {};
       if (payload.displayName && currentUser.displayName !== payload.displayName) {
+        authUpdates.displayName = payload.displayName;
+      }
+      if (
+        updates.photoURL !== undefined &&
+        (updates.photoURL === '' || (updates.photoURL.startsWith('http') && updates.photoURL.length < 1500))
+      ) {
+        authUpdates.photoURL = updates.photoURL;
+      }
+      if (Object.keys(authUpdates).length > 0) {
         try {
-          await updateProfile(currentUser, { displayName: payload.displayName });
+          await updateProfile(currentUser, authUpdates);
         } catch (authErr) {
-          console.warn('Firebase Auth user display name sync notice (non-fatal):', authErr);
+          console.warn('Firebase Auth profile sync notice (non-fatal):', authErr);
         }
       }
+
+      // Actively propagate updated details across posts, stories, direct chats, and groups
+      await propagateUserProfileUpdates(currentUser.uid, updated);
     } catch (err) {
       console.error('Failed to update full profile:', err);
       handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.uid}`);
@@ -630,6 +752,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         currentUser,
         userProfile,
+        usersById,
+        isProfileComplete,
+        profileCompleteness,
         loading,
         blockedUserIds,
         mutedUserIds,

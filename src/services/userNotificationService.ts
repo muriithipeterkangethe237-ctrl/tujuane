@@ -15,6 +15,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserNotification, AccountStandingSummary } from '../types/notification';
 import { CommunityPost } from '../types/community';
 import { notificationService } from './notificationService';
+import { markNotificationIdsSeenInSW } from './backgroundNotificationSync';
 
 const NOTIFICATIONS_COLLECTION = 'user_notifications';
 
@@ -130,6 +131,15 @@ export function subscribeToUserNotifications(
       }
 
       previousUnreadIds = new Set(list.filter((n) => !n.read).map((n) => n.id));
+      if (list.length > 0) {
+        const alreadyHandledIds = list
+          .filter((n) => n.read || initialLoad)
+          .slice(0, 80)
+          .map((n) => n.id);
+        if (alreadyHandledIds.length > 0) {
+          void markNotificationIdsSeenInSW(alreadyHandledIds);
+        }
+      }
       initialLoad = false;
       callback(list);
     },
@@ -146,6 +156,7 @@ export async function markNotificationAsRead(notificationId: string): Promise<vo
   const notifRef = doc(db, NOTIFICATIONS_COLLECTION, notificationId);
   try {
     await updateDoc(notifRef, { read: true });
+    void markNotificationIdsSeenInSW([notificationId]);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `${NOTIFICATIONS_COLLECTION}/${notificationId}`);
   }

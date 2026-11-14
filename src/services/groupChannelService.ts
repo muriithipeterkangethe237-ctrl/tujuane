@@ -20,7 +20,8 @@ import {
   ChannelMessage,
   UserProfile,
   MessageAttachment,
-  MessageReplyReference
+  MessageReplyReference,
+  VoiceNoteData
 } from '../types/chat';
 
 // Predefined sample channels removed — chats use real 1-on-1 conversations and user-created groups
@@ -266,6 +267,7 @@ export function subscribeToGroupMessages(
           text: d.text || '',
           mediaUrl: d.mediaUrl,
           attachment: d.attachment,
+          voiceNote: d.voiceNote && d.voiceNote.dataUrl ? d.voiceNote : undefined,
           replyTo: d.replyTo,
           status: d.status || 'sent',
           deliveredTo: Array.isArray(d.deliveredTo) ? d.deliveredTo : [],
@@ -294,7 +296,8 @@ export async function sendGroupMessage(
   text: string,
   mediaUrl?: string,
   attachment?: MessageAttachment,
-  replyTo?: MessageReplyReference
+  replyTo?: MessageReplyReference,
+  voiceNote?: VoiceNoteData
 ): Promise<void> {
   const messageId = `gmsg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const messageRef = doc(db, 'groups', groupId, 'messages', messageId);
@@ -317,6 +320,21 @@ export async function sendGroupMessage(
   if (mediaUrl) payload.mediaUrl = mediaUrl;
   if (attachment) payload.attachment = attachment;
   if (replyTo) payload.replyTo = replyTo;
+  if (voiceNote && voiceNote.dataUrl) {
+    payload.voiceNote = {
+      dataUrl: voiceNote.dataUrl,
+      duration: Math.max(0, Math.min(60, Number(voiceNote.duration) || 1)),
+      mimeType: (voiceNote.mimeType || 'audio/webm').slice(0, 100),
+      sizeBytes: Math.max(1, Math.round(voiceNote.sizeBytes || 1)),
+      ...(Array.isArray(voiceNote.waveform) && voiceNote.waveform.length > 0
+        ? {
+            waveform: voiceNote.waveform
+              .slice(0, 32)
+              .map((n) => Math.max(12, Math.min(100, Math.round(n))))
+          }
+        : {})
+    };
+  }
 
   try {
     await setDoc(messageRef, payload);
@@ -327,7 +345,14 @@ export async function sendGroupMessage(
     const otherMembers = members.filter((uid) => uid !== sender.uid);
 
     let preview = text.trim().slice(0, 100);
-    if (attachment && !text.trim()) {
+    if (voiceNote && !text.trim()) {
+      const safeSec = Math.max(1, Math.round(voiceNote.duration || 1));
+      const mins = Math.floor(safeSec / 60);
+      const secs = safeSec % 60;
+      preview = `🎤 Voice note (${mins}:${secs.toString().padStart(2, '0')})`;
+    } else if (voiceNote) {
+      preview = `🎤 ${text.trim().slice(0, 80)}`;
+    } else if (attachment && !text.trim()) {
       preview = `📎 Attached file: ${attachment.name}`;
     } else if (mediaUrl && !text.trim()) {
       preview = '📷 Shared a photo';

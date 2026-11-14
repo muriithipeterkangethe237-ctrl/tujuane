@@ -23,6 +23,8 @@ import {
   getRealStoryViewers
 } from '../../services/storyService';
 import { getOrCreateDirectChat, sendChatMessage } from '../../services/chatService';
+import { useAuth } from '../../context/AuthContext';
+import { resolveLiveAuthor } from '../../utils/profileUtils';
 
 interface StoryViewerModalProps {
   isOpen: boolean;
@@ -60,6 +62,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   onStoryDeleted,
   onViewUserProfile
 }) => {
+  const { usersById } = useAuth();
   const [activeAuthorId, setActiveAuthorId] = useState<string | null>(null);
   const [currentStoryIndex, setCurrentStoryIndex] = useState<number>(0);
   const [progress, setProgress] = useState<number>(0);
@@ -272,7 +275,16 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
 
   const isOwnStory = Boolean(currentUser && currentUser.uid === activeStory.authorId);
   const isVideo = activeStory.type === 'video';
-  const authorDisplayName = activeStory.authorName || 'Citizen Member';
+  const liveStoryAuthor = resolveLiveAuthor(
+    activeStory.authorId,
+    {
+      displayName: activeStory.authorName || 'Citizen Member',
+      photoURL: activeStory.authorPhotoUrl,
+      county: activeStory.authorCounty || 'Kenya'
+    },
+    usersById
+  );
+  const authorDisplayName = liveStoryAuthor.displayName;
   const realViewers = getRealStoryViewers(activeStory);
   const realViewsCount = realViewers.length;
 
@@ -425,17 +437,22 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                   uid: activeStory.authorId,
                   displayName: authorDisplayName,
                   email: '',
-                  photoURL: activeStory.authorPhotoUrl,
-                  county: activeStory.authorCounty || 'Kenya',
+                  photoURL: liveStoryAuthor.photoURL,
+                  county: liveStoryAuthor.county || 'Kenya',
+                  constituency: liveStoryAuthor.constituency,
+                  bio: liveStoryAuthor.bio,
+                  occupation: liveStoryAuthor.occupation,
+                  isOnline: liveStoryAuthor.isOnline,
+                  lastSeen: liveStoryAuthor.lastSeen,
                   createdAt: ''
                 });
               }
             }}
             className="flex items-center gap-2.5 cursor-pointer group min-w-0"
           >
-            {activeStory.authorPhotoUrl ? (
+            {liveStoryAuthor.photoURL ? (
               <img
-                src={activeStory.authorPhotoUrl}
+                src={liveStoryAuthor.photoURL}
                 alt={authorDisplayName}
                 className="w-9 h-9 rounded-full object-cover border-2 border-emerald-400 group-hover:scale-105 transition-transform shrink-0"
               />
@@ -451,10 +468,10 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                   · {formatRelativeTime(activeStory.createdAt)}
                 </span>
               </div>
-              {activeStory.authorCounty && (
+              {liveStoryAuthor.county && (
                 <div className="text-[10px] text-emerald-300 font-medium flex items-center gap-0.5">
                   <MapPin className="w-2.5 h-2.5" />
-                  <span>{activeStory.authorCounty} County</span>
+                  <span>{liveStoryAuthor.county} County</span>
                 </div>
               )}
             </div>

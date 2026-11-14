@@ -41,7 +41,12 @@ import {
   subscribeToUserNotifications,
   calculateAccountStanding
 } from './services/userNotificationService';
-import { Check, ArrowLeft, Home, Sparkles, ShieldAlert, Bell, Ban, Clock, AlertTriangle } from 'lucide-react';
+import {
+  registerBackgroundNotificationTasks,
+  triggerImmediateSWNotificationCheck
+} from './services/backgroundNotificationSync';
+import { notificationService } from './services/notificationService';
+import { Check, ArrowLeft, Home, Sparkles, ShieldAlert, Bell, Ban, Clock, AlertTriangle, Edit3, UserCheck } from 'lucide-react';
 
 const DEVELOPER_EMAIL = 'muriithipeterkangethe237@gmail.com';
 
@@ -49,6 +54,10 @@ function AppContent() {
   const {
     currentUser,
     userProfile,
+    usersById,
+    isProfileComplete,
+    profileCompleteness,
+    loading,
     isAuthModalOpen,
     openAuthModal,
     closeAuthModal,
@@ -67,8 +76,10 @@ function AppContent() {
     (!userProfile.suspendedUntil || new Date(userProfile.suspendedUntil).getTime() > Date.now());
   const isRestricted = isBanned || isSuspended;
 
-  // Profile Viewing state
+  // Profile Viewing & Editing state
   const [viewingProfileUser, setViewingProfileUser] = useState<UserProfile | null>(null);
+  const [isViewingProfileInEditMode, setIsViewingProfileInEditMode] = useState(false);
+  const [dismissedProfileBanner, setDismissedProfileBanner] = useState(false);
 
   // Badge counters for safety reports, friend requests, and unread chat messages
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
@@ -83,6 +94,7 @@ function AppContent() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [userNotifications, setUserNotifications] = useState<UserNotification[]>([]);
   const [accountStanding, setAccountStanding] = useState<AccountStandingSummary | null>(null);
+  const [isFullScreenVideoOpen, setIsFullScreenVideoOpen] = useState(false);
 
   // Subscribe to real-time pending safety reports only for verified developer
   useEffect(() => {
@@ -219,12 +231,134 @@ function AppContent() {
     (n) => !n.read && n.category !== 'direct_chat'
   ).length;
 
-  // Keep viewingProfileUser in sync if own profile was updated
+  // Keep viewingProfileUser in sync if own profile or directory entry was updated
   useEffect(() => {
-    if (viewingProfileUser && currentUser && viewingProfileUser.uid === currentUser.uid && userProfile) {
+    if (!viewingProfileUser) return;
+    if (currentUser && viewingProfileUser.uid === currentUser.uid && userProfile) {
       setViewingProfileUser(userProfile);
+    } else if (usersById[viewingProfileUser.uid]) {
+      setViewingProfileUser(usersById[viewingProfileUser.uid]);
     }
-  }, [userProfile]);
+  }, [userProfile, usersById]);
+
+  // Enforce profile completion for signed-in users whose profile is missing required details (once per session)
+  useEffect(() => {
+    if (loading || !currentUser || !userProfile || isAuthModalOpen || isRestricted) return;
+    if (isProfileComplete) {
+      setDismissedProfileBanner(false);
+      return;
+    }
+    try {
+      const promptKey = `tujuane_profile_enforced_${currentUser.uid}`;
+      if (!sessionStorage.getItem(promptKey)) {
+        sessionStorage.setItem(promptKey, '1');
+        setIsViewingProfileInEditMode(true);
+        setViewingProfileUser(userProfile);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [loading, currentUser, userProfile, isProfileComplete, isAuthModalOpen, isRestricted]);
+
+  // Sync Always-On background notification tasks when online or backgrounding the app
+  useEffect(() => {
+    if (!currentUser) return;
+    const syncTasks = () => {
+      const prefs = notificationService.getNotificationPreferences();
+      if (prefs.backgroundAlertsEnabled && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        void registerBackgroundNotificationTasks();
+      }
+    };
+
+    syncTasks();
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        syncTasks();
+      }
+    };
+    const handleOnline = () => {
+      syncTasks();
+      const prefs = notificationService.getNotificationPreferences();
+      if (prefs.backgroundAlertsEnabled && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        void triggerImmediateSWNotificationCheck();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [currentUser]);
+
+  // Handle deep-links from Service Worker OS notifications (both when app was closed and when already open)
+  useEffect(() => {
+    const routeFromNotificationPayload = (payload: {
+      notifType?: string;
+      postId?: string;
+      actorId?: string;
+      actorName?: string;
+      openNotifications?: boolean;
+    }) => {
+      if (!payload) return;
+      if (payload.notifType === 'direct_message' && payload.actorId) {
+        const known = usersById[payload.actorId];
+        setDirectChatTargetUser(
+          known || {
+            uid: payload.actorId,
+            displayName: payload.actorName || 'Citizen Member',
+            email: '',
+            county: 'Nairobi',
+            createdAt: ''
+          }
+        );
+        setActiveTabState('chat');
+      } else if (payload.postId) {
+        setActiveTabState('community');
+      } else if (payload.openNotifications) {
+        setIsNotificationsOpen(true);
+      }
+    };
+
+    if (typeof window !== 'undefined' && window.location.search) {
+      const params = new URLSearchParams(window.location.search);
+      const openNotifs = params.get('openNotifications') === '1';
+      const notifType = params.get('notifType') || undefined;
+      const postId = params.get('postId') || undefined;
+      const actorId = params.get('actorId') || undefined;
+      const actorName = params.get('actorName') || undefined;
+
+      if (openNotifs || notifType || postId || actorId) {
+        routeFromNotificationPayload({
+          openNotifications: openNotifs,
+          notifType,
+          postId,
+          actorId,
+          actorName
+        });
+        try {
+          const cleanUrl = window.location.pathname + window.location.hash;
+          window.history.replaceState(window.history.state, '', cleanUrl);
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const handleSwMessage = (event: MessageEvent) => {
+        if (event.data?.type === 'TUJUANE_NOTIFICATION_CLICK' && event.data?.payload) {
+          routeFromNotificationPayload(event.data.payload);
+        }
+      };
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+      return () => {
+        navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+      };
+    }
+  }, [usersById]);
 
   // Subscribe to real-time incoming friend requests for current user
   useEffect(() => {
@@ -404,13 +538,18 @@ function AppContent() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const openUserProfileModal = (user: UserProfile) => {
+  const openUserProfileModal = (user: UserProfile, editMode = false) => {
+    const resolved =
+      currentUser && user.uid === currentUser.uid && userProfile
+        ? userProfile
+        : usersById[user.uid] || user;
     if (typeof window !== 'undefined') {
       try {
-        window.history.pushState({ type: 'modal', modal: 'profile', uid: user.uid }, '');
+        window.history.pushState({ type: 'modal', modal: 'profile', uid: resolved.uid }, '');
       } catch {}
     }
-    setViewingProfileUser(user);
+    setIsViewingProfileInEditMode(editMode);
+    setViewingProfileUser(resolved);
   };
 
   const openNotificationsModal = () => {
@@ -517,8 +656,8 @@ function AppContent() {
         </div>
       )}
 
-      {/* Top Header with Back Button, Dev Panel and Notification Center (hidden in chat for true full-screen inboxes) */}
-      {activeTab !== 'chat' && (
+      {/* Top Header with Back Button, Dev Panel and Notification Center (hidden in chat and full-screen video) */}
+      {activeTab !== 'chat' && !isFullScreenVideoOpen && (
         <Header
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -529,18 +668,21 @@ function AppContent() {
           unreadNotificationsCount={unreadNotificationsCount}
           unreadMessagesCount={unreadMessagesCount}
           onOpenNotifications={openNotificationsModal}
-          onViewOwnProfile={() => {
+          onViewOwnProfile={(editMode = false) => {
             if (userProfile) {
-              openUserProfileModal(userProfile);
+              openUserProfileModal(userProfile, editMode);
             } else if (currentUser) {
-              openUserProfileModal({
-                uid: currentUser.uid,
-                displayName: currentUser.displayName || 'Citizen Member',
-                email: currentUser.email || '',
-                photoURL: currentUser.photoURL || undefined,
-                county: 'Nairobi',
-                createdAt: new Date().toISOString()
-              });
+              openUserProfileModal(
+                {
+                  uid: currentUser.uid,
+                  displayName: currentUser.displayName || 'Citizen Member',
+                  email: currentUser.email || '',
+                  photoURL: currentUser.photoURL || undefined,
+                  county: 'Nairobi',
+                  createdAt: new Date().toISOString()
+                },
+                editMode
+              );
             }
           }}
           onOpenCreatePost={() => {
@@ -549,8 +691,8 @@ function AppContent() {
         />
       )}
 
-      {/* Contextual Top Back Bar for non-landing pages (omitted on chat for full-screen experience) */}
-      {activeTab !== 'landing' && activeTab !== 'chat' && (
+      {/* Contextual Top Back Bar for non-landing pages (omitted on chat and full-screen video) */}
+      {activeTab !== 'landing' && activeTab !== 'chat' && !isFullScreenVideoOpen && (
         <div className="border-b tujuane-divider px-4 sm:px-6 lg:px-8 py-2 sticky top-16 z-30 tujuane-surface-elevated transition-colors">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -662,6 +804,70 @@ function AppContent() {
           </div>
         )}
 
+        {/* Enforced Citizen Profile Completion Prompt */}
+        {currentUser && !loading && !isProfileComplete && !isRestricted && !dismissedProfileBanner && activeTab !== 'chat' && (
+          <div className="mb-6 p-4 rounded-2xl tujuane-surface border border-amber-400/50 dark:border-amber-500/40 shadow-sm animate-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-extrabold text-slate-900 dark:text-white">
+                      Complete Your TUJUANE Citizen Profile
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200">
+                      {profileCompleteness.percentage}% Complete
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                    Add your missing profile details so citizens across all 47 counties recognize you:{' '}
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      {profileCompleteness.missingRequired.map((m) => m.label).join(' • ')}
+                    </span>
+                    .
+                  </p>
+                  <div className="w-full max-w-xs h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                    <div
+                      className="h-full bg-amber-500 rounded-full transition-all duration-300"
+                      style={{ width: `${profileCompleteness.percentage}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = userProfile || {
+                      uid: currentUser.uid,
+                      displayName: currentUser.displayName || 'Citizen Member',
+                      email: currentUser.email || '',
+                      photoURL: currentUser.photoURL || undefined,
+                      county: 'Nairobi',
+                      createdAt: new Date().toISOString()
+                    };
+                    openUserProfileModal(target, true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Complete Profile</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDismissedProfileBanner(true)}
+                  className="px-2.5 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Later
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Landing / Community Hub View */}
         {activeTab === 'landing' && (
           <LandingPage onNavigate={handleLandingNavigate} />
@@ -703,6 +909,7 @@ function AppContent() {
             onViewUserProfile={(user) => openUserProfileModal(user)}
             externalCreateRequest={feedCreateRequest}
             onClearExternalCreateRequest={() => setFeedCreateRequest(null)}
+            onFullScreenVideoChange={setIsFullScreenVideoOpen}
           />
         )}
 
@@ -762,13 +969,19 @@ function AppContent() {
         <UserProfileModal
           user={viewingProfileUser.uid === userProfile?.uid && userProfile ? userProfile : viewingProfileUser}
           isOpen={!!viewingProfileUser}
-          onClose={() => setViewingProfileUser(null)}
+          initialEditMode={isViewingProfileInEditMode}
+          onClose={() => {
+            setViewingProfileUser(null);
+            setIsViewingProfileInEditMode(false);
+          }}
           onStartDirectChat={handleStartChatWithUser}
           onSelectPost={(_postId) => {
             setActiveTab('community');
           }}
           onProfileUpdated={(updatedProfile) => {
             setViewingProfileUser(updatedProfile);
+            setIsViewingProfileInEditMode(false);
+            showToast('✓ Profile updated across TUJUANE!');
           }}
         />
       )}
@@ -803,8 +1016,8 @@ function AppContent() {
         initialMode={authModalInitialMode}
       />
 
-      {/* Desktop & Mobile Footer - Completely hidden in chat and feed for true distraction-free browsing */}
-      {activeTab !== 'chat' && activeTab !== 'community' && (
+      {/* Desktop & Mobile Footer - Completely hidden in chat, feed, and full-screen video */}
+      {activeTab !== 'chat' && activeTab !== 'community' && !isFullScreenVideoOpen && (
         <Footer
           onSelectTab={(tab) => {
             setActiveTab(tab);
@@ -812,8 +1025,8 @@ function AppContent() {
         />
       )}
 
-      {/* Mobile-First Bottom Navigation Bar (Hidden when in chat so messaging inboxes are true full screen) */}
-      {activeTab !== 'chat' && (
+      {/* Mobile-First Bottom Navigation Bar (Hidden in chat and full-screen video) */}
+      {activeTab !== 'chat' && !isFullScreenVideoOpen && (
         <MobileBottomNav
           activeTab={activeTab}
           pendingFriendRequestsCount={pendingFriendRequestsCount}
@@ -828,7 +1041,7 @@ function AppContent() {
       )}
 
       {/* Offline Status Badge for PWA Resilience */}
-      <OfflineIndicator />
+      {!isFullScreenVideoOpen && <OfflineIndicator />}
 
       {/* Post Type Selector Modal (triggered from top Header Plus button) */}
       {isPostTypeSelectorOpen && (

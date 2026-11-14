@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   CommunityPost,
@@ -26,6 +26,7 @@ import { CitizenStoriesBar } from './Stories/CitizenStoriesBar';
 import { PostTypeSelectorModal, PostCreationType, PostTypeOption } from './PostTypeSelectorModal';
 import { CreateStoryModal } from './Stories/CreateStoryModal';
 import { FeedVideoPlayer } from './FeedVideoPlayer';
+import { ShortVideoTheatreModal } from './ShortVideoTheatreModal';
 import { FeedAudioPlayer } from './FeedAudioPlayer';
 import {
   VoiceShoutRecorder,
@@ -50,6 +51,7 @@ import {
 } from '../services/socialService';
 import { sendUserNotification } from '../services/userNotificationService';
 import { UserProfile } from '../types/chat';
+import { resolveLiveAuthor } from '../utils/profileUtils';
 import {
   MessageSquare,
   Sparkles,
@@ -111,17 +113,20 @@ interface CommunityFeedProps {
   onViewUserProfile?: (user: UserProfile) => void;
   externalCreateRequest?: ExternalCreateRequest | null;
   onClearExternalCreateRequest?: () => void;
+  onFullScreenVideoChange?: (isOpen: boolean) => void;
 }
 
 export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   onOpenDirectChatWithUser,
   onViewUserProfile,
   externalCreateRequest,
-  onClearExternalCreateRequest
+  onClearExternalCreateRequest,
+  onFullScreenVideoChange
 }) => {
   const {
     currentUser,
     userProfile,
+    usersById,
     openAuthModal,
     blockedUserIds,
     mutedUserIds,
@@ -229,6 +234,20 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     mimeType?: string;
   } | null>(null);
 
+  // Full-Screen Short Video Reels Scroller Modal state
+  const [videoTheatreState, setVideoTheatreState] = useState<{
+    postId: string;
+    resolvedUrls: Record<string, string>;
+  } | null>(null);
+  const commentUnsubsRef = useRef<Record<string, () => void>>({});
+
+  useEffect(() => {
+    onFullScreenVideoChange?.(!!videoTheatreState);
+    return () => {
+      onFullScreenVideoChange?.(false);
+    };
+  }, [videoTheatreState, onFullScreenVideoChange]);
+
   // Toast notice
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -312,6 +331,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     return () => {
       unsubFollowing();
       unsubFollowers();
+      Object.values(commentUnsubsRef.current).forEach((unsub) => {
+        try {
+          unsub();
+        } catch {
+          // ignore
+        }
+      });
+      commentUnsubsRef.current = {};
     };
   }, [currentUser]);
 
@@ -878,6 +905,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     handleReactToPost(post, 'like');
   };
 
+  const ensureCommentsLoaded = useCallback((postId: string) => {
+    if (commentUnsubsRef.current[postId]) return;
+    commentUnsubsRef.current[postId] = subscribeToPostComments(postId, (comments) => {
+      setCommentsMap((prev) => ({ ...prev, [postId]: comments }));
+    });
+  }, []);
+
   // Expand / collapse comments
   const handleToggleComments = (postId: string) => {
     if (expandedCommentsPostId === postId) {
@@ -886,60 +920,55 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
 
     setExpandedCommentsPostId(postId);
-
-    if (!commentsMap[postId]) {
-      subscribeToPostComments(postId, (comments) => {
-        setCommentsMap((prev) => ({ ...prev, [postId]: comments }));
-      });
-    }
+    ensureCommentsLoaded(postId);
   };
 
-  // Submit comment with Safety Screening
-  const handleSubmitComment = async (postId: string) => {
+  // Reusable comment submit with Safety Screening (used by both inline comments and Full-Screen Video Modal)
+  const submitCommentForPost = async (
+    postId: string,
+    rawContent: string,
+    mediaUrl?: string,
+    replyTo?: { commentId: string; authorName: string; authorId: string } | null
+  ): Promise<boolean> => {
     if (!currentUser || !userProfile) {
       openAuthModal();
-      return;
+      return false;
     }
 
     if (isBanned) {
       triggerToast(`⛔ Account permanently banned: ${userProfile.banReason || 'Policy violation'}`);
-      return;
+      return false;
     }
     if (isSuspended) {
-      const untilStr = userProfile.suspendedUntil ? new Date(userProfile.suspendedUntil).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : 'temporary duration';
+      const untilStr = userProfile.suspendedUntil
+        ? new Date(userProfile.suspendedUntil).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' })
+        : 'temporary duration';
       triggerToast(`⚠️ Account suspended until ${untilStr}: ${userProfile.banReason || 'Policy violation'}`);
-      return;
+      return false;
     }
 
-    if (!commentInput.trim() && !commentImage) return;
+    const commentText = rawContent.trim();
+    if (!commentText && !mediaUrl) return false;
 
-    // Safety pre-validation on comments
-    const commentSafety = analyzeContentSafety(commentInput.trim());
+    const commentSafety = analyzeContentSafety(commentText);
     if (commentSafety.severity === 'high') {
       setBlockedSafetyResult(commentSafety);
-      return;
+      return false;
     }
 
-    setIsSubmittingComment(true);
-    const commentText = commentInput.trim();
     try {
       await addCommunityComment(
         postId,
         userProfile,
         commentText,
-        commentImage || undefined,
-        replyingToComment?.commentId,
-        replyingToComment?.authorName
+        mediaUrl,
+        replyTo?.commentId,
+        replyTo?.authorName
       );
-      
-      // Notify comment author if replying to a specific comment
-      if (
-        replyingToComment &&
-        replyingToComment.authorId &&
-        replyingToComment.authorId !== currentUser.uid
-      ) {
+
+      if (replyTo && replyTo.authorId && replyTo.authorId !== currentUser.uid) {
         sendUserNotification({
-          userId: replyingToComment.authorId,
+          userId: replyTo.authorId,
           category: 'post_interaction',
           type: 'post_comment',
           title: 'Reply to your Comment',
@@ -952,13 +981,12 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         }).catch(() => {});
       }
 
-      // Notify post author
       const targetPost = posts.find((p) => p.id === postId);
       if (
         targetPost &&
         targetPost.authorId &&
         targetPost.authorId !== currentUser.uid &&
-        (!replyingToComment || replyingToComment.authorId !== targetPost.authorId)
+        (!replyTo || replyTo.authorId !== targetPost.authorId)
       ) {
         sendUserNotification({
           userId: targetPost.authorId,
@@ -974,16 +1002,48 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           actorCounty: userProfile.county
         }).catch(() => {});
       }
-
-      setCommentInput('');
-      setCommentImage(null);
-      setReplyingToComment(null);
-      if (commentFileInputRef.current) commentFileInputRef.current.value = '';
+      return true;
     } catch (err) {
       console.error('Error posting comment:', err);
       triggerToast('Failed to post reply.');
+      return false;
+    }
+  };
+
+  // Submit inline feed comment
+  const handleSubmitComment = async (postId: string) => {
+    if (!commentInput.trim() && !commentImage) return;
+    setIsSubmittingComment(true);
+    try {
+      const ok = await submitCommentForPost(
+        postId,
+        commentInput,
+        commentImage || undefined,
+        replyingToComment
+      );
+      if (ok) {
+        setCommentInput('');
+        setCommentImage(null);
+        setReplyingToComment(null);
+        if (commentFileInputRef.current) commentFileInputRef.current.value = '';
+      }
     } finally {
       setIsSubmittingComment(false);
+    }
+  };
+
+  const handleSharePost = (post: CommunityPost) => {
+    if (navigator.share) {
+      navigator
+        .share({
+          title: post.title,
+          text: `${post.title}: ${post.content} (via TUJUANE)`,
+          url: window.location.href
+        })
+        .catch(() => {});
+    } else {
+      navigator.clipboard.writeText(`${post.title}: ${post.content} - TUJUANE Community Hub`);
+      triggerToast('Post copied to clipboard!');
     }
   };
 
@@ -1147,6 +1207,17 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     const countyMatch = post.county ? post.county.toLowerCase().includes(q) : false;
     return titleMatch || contentMatch || authorMatch || countyMatch;
   });
+
+  const videoPosts = useMemo(
+    () =>
+      filteredPosts.filter(
+        (post) =>
+          post.mediaType === 'video' ||
+          (post.mediaUrl?.startsWith('data:video/') ?? false) ||
+          (post.videoChunkCount ?? 0) > 0
+      ),
+    [filteredPosts]
+  );
 
   // Category visual styles helper
   const getCategoryMeta = (cat: PostCategory) => {
@@ -1833,6 +1904,18 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             const isAuthor = currentUser?.uid === post.authorId;
             const isExpanded = expandedCommentsPostId === post.id;
             const comments = commentsMap[post.id] || [];
+            const liveAuthor = resolveLiveAuthor(
+              post.authorId,
+              {
+                displayName: post.authorName,
+                photoURL: post.authorPhotoUrl,
+                county: post.authorCounty || post.county || 'Nairobi',
+                constituency: post.constituency
+              },
+              usersById
+            );
+            const resolvedPostAuthorCounty = liveAuthor.county || post.county;
+            const resolvedPostAuthorConstituency = liveAuthor.constituency || post.constituency;
 
             return (
               <article
@@ -1848,27 +1931,31 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           if (onViewUserProfile) {
                             onViewUserProfile({
                               uid: post.authorId,
-                              displayName: post.authorName,
+                              displayName: liveAuthor.displayName,
                               email: '',
-                              photoURL: post.authorPhotoUrl,
-                              county: post.authorCounty || post.county || 'Nairobi',
-                              constituency: post.constituency,
+                              photoURL: liveAuthor.photoURL,
+                              county: resolvedPostAuthorCounty || 'Nairobi',
+                              constituency: resolvedPostAuthorConstituency,
+                              bio: liveAuthor.bio,
+                              occupation: liveAuthor.occupation,
+                              isOnline: liveAuthor.isOnline,
+                              lastSeen: liveAuthor.lastSeen,
                               createdAt: ''
                             });
                           }
                         }}
                         className="cursor-pointer group relative shrink-0"
-                        title={`View ${post.authorName}'s Profile`}
+                        title={`View ${liveAuthor.displayName}'s Profile`}
                       >
-                        {post.authorPhotoUrl ? (
+                        {liveAuthor.photoURL ? (
                           <img
-                            src={post.authorPhotoUrl}
-                            alt={post.authorName}
+                            src={liveAuthor.photoURL}
+                            alt={liveAuthor.displayName}
                             className="w-10 h-10 rounded-full object-cover group-hover:ring-2 group-hover:ring-emerald-500 transition-all"
                           />
                         ) : (
                           <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-sm group-hover:bg-emerald-200 transition-colors">
-                            {post.authorName.charAt(0).toUpperCase()}
+                            {liveAuthor.displayName.charAt(0).toUpperCase()}
                           </div>
                         )}
                       </div>
@@ -1880,20 +1967,30 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                               if (onViewUserProfile) {
                                 onViewUserProfile({
                                   uid: post.authorId,
-                                  displayName: post.authorName,
+                                  displayName: liveAuthor.displayName,
                                   email: '',
-                                  photoURL: post.authorPhotoUrl,
-                                  county: post.authorCounty || post.county || 'Nairobi',
-                                  constituency: post.constituency,
+                                  photoURL: liveAuthor.photoURL,
+                                  county: resolvedPostAuthorCounty || 'Nairobi',
+                                  constituency: resolvedPostAuthorConstituency,
+                                  bio: liveAuthor.bio,
+                                  occupation: liveAuthor.occupation,
+                                  isOnline: liveAuthor.isOnline,
+                                  lastSeen: liveAuthor.lastSeen,
                                   createdAt: ''
                                 });
                               }
                             }}
                             className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline cursor-pointer text-left"
-                            title={`View ${post.authorName}'s Profile`}
+                            title={`View ${liveAuthor.displayName}'s Profile`}
                           >
-                            {post.authorName}
+                            {liveAuthor.displayName}
                           </button>
+
+                          {liveAuthor.occupation && (
+                            <span className="hidden sm:inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded-md tujuane-surface-soft text-slate-600 dark:text-slate-300 truncate max-w-[140px]">
+                              {liveAuthor.occupation}
+                            </span>
+                          )}
 
                           {/* Follow / Following / Follow Back button */}
                           {currentUser && !isAuthor && (
@@ -1901,9 +1998,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                               onClick={() =>
                                 handleToggleFollow(
                                   post.authorId,
-                                  post.authorName,
-                                  post.authorCounty,
-                                  post.authorPhotoUrl
+                                  liveAuthor.displayName,
+                                  resolvedPostAuthorCounty,
+                                  liveAuthor.photoURL
                                 )
                               }
                               className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
@@ -1937,9 +2034,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           {/* Direct message button */}
                           {currentUser && !isAuthor && onOpenDirectChatWithUser && (
                             <button
-                              onClick={() => onOpenDirectChatWithUser(post.authorId, post.authorName)}
+                              onClick={() => onOpenDirectChatWithUser(post.authorId, liveAuthor.displayName)}
                               className="text-[11px] text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300 font-semibold inline-flex items-center gap-1 hover:underline cursor-pointer"
-                              title={`Start 1-on-1 chat with ${post.authorName}`}
+                              title={`Start 1-on-1 chat with ${liveAuthor.displayName}`}
                             >
                               <MessageSquare className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                               <span>Chat</span>
@@ -1948,16 +2045,16 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         </div>
 
                         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                          {post.county ? (
+                          {resolvedPostAuthorCounty ? (
                             <>
                               <span className="inline-flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300">
                                 <MapPin className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                <span>{post.county}</span>
+                                <span>{resolvedPostAuthorCounty}</span>
                               </span>
-                              {post.constituency && (
+                              {resolvedPostAuthorConstituency && (
                                 <>
                                   <span>·</span>
-                                  <span className="text-slate-500 dark:text-slate-400">{post.constituency}</span>
+                                  <span className="text-slate-500 dark:text-slate-400">{resolvedPostAuthorConstituency}</span>
                                 </>
                               )}
                               <span>·</span>
@@ -2172,12 +2269,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           <FeedVideoPlayer
                             post={post}
                             onOpenTheatre={(resolvedUrl) =>
-                              setLightboxImage({
-                                url: resolvedUrl,
-                                title: post.title,
-                                author: post.authorName,
-                                mediaType: 'video',
-                                mimeType: post.videoMimeType
+                              setVideoTheatreState({
+                                postId: post.id,
+                                resolvedUrls: resolvedUrl ? { [post.id]: resolvedUrl } : {}
                               })
                             }
                           />
@@ -2329,20 +2423,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
                     {/* Share button */}
                     <button
-                      onClick={() => {
-                        if (navigator.share) {
-                          navigator.share({
-                            title: post.title,
-                            text: `${post.title}: ${post.content} (via TUJUANE)`,
-                            url: window.location.href
-                          });
-                        } else {
-                          navigator.clipboard.writeText(
-                            `${post.title}: ${post.content} - TUJUANE Community Hub`
-                          );
-                          triggerToast('Post copied to clipboard!');
-                        }
-                      }}
+                      onClick={() => handleSharePost(post)}
                       className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100/70 dark:hover:bg-white/10 transition-colors cursor-pointer"
                       title="Share post"
                     >
@@ -2369,6 +2450,15 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           const userCommentReaction = currentUser ? comment.reactions?.[currentUser.uid] : null;
                           const userCommentReactionMeta = REACTION_TYPES.find((r) => r.key === userCommentReaction);
                           const isCommentPickerOpen = activeReactionPickerCommentId === comment.id;
+                          const liveCommentAuthor = resolveLiveAuthor(
+                            comment.authorId,
+                            {
+                              displayName: comment.authorName,
+                              photoURL: comment.authorPhotoUrl,
+                              county: 'Kenya Citizen'
+                            },
+                            usersById
+                          );
 
                           return (
                             <div
@@ -2382,30 +2472,35 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                   onClick={() =>
                                     onViewUserProfile?.({
                                       uid: comment.authorId,
-                                      displayName: comment.authorName,
-                                      photoURL: comment.authorPhotoUrl,
+                                      displayName: liveCommentAuthor.displayName,
+                                      photoURL: liveCommentAuthor.photoURL,
                                       email: '',
-                                      county: 'Kenya Citizen',
+                                      county: liveCommentAuthor.county || 'Kenya Citizen',
+                                      constituency: liveCommentAuthor.constituency,
+                                      bio: liveCommentAuthor.bio,
+                                      occupation: liveCommentAuthor.occupation,
+                                      isOnline: liveCommentAuthor.isOnline,
+                                      lastSeen: liveCommentAuthor.lastSeen,
                                       createdAt: ''
                                     })
                                   }
                                   className="flex items-center gap-2 hover:opacity-85 transition-opacity text-left cursor-pointer group"
-                                  title={`View ${comment.authorName}'s citizen profile`}
+                                  title={`View ${liveCommentAuthor.displayName}'s citizen profile`}
                                 >
-                                  {comment.authorPhotoUrl ? (
+                                  {liveCommentAuthor.photoURL ? (
                                     <img
-                                      src={comment.authorPhotoUrl}
-                                      alt={comment.authorName}
+                                      src={liveCommentAuthor.photoURL}
+                                      alt={liveCommentAuthor.displayName}
                                       className="w-6 h-6 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"
                                     />
                                   ) : (
                                     <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-center text-[10px]">
-                                      {comment.authorName.charAt(0)}
+                                      {liveCommentAuthor.displayName.charAt(0)}
                                     </div>
                                   )}
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <span className="font-bold text-xs text-slate-900 dark:text-slate-100 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
-                                      {comment.authorName}
+                                      {liveCommentAuthor.displayName}
                                     </span>
                                     {comment.replyToAuthorName && (
                                       <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded-md font-medium">
@@ -2433,13 +2528,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                       onClick={() => {
                                         setReplyingToComment({
                                           commentId: comment.id,
-                                          authorName: comment.authorName,
+                                          authorName: liveCommentAuthor.displayName,
                                           authorId: comment.authorId
                                         });
-                                        setCommentInput(`@${comment.authorName} `);
+                                        setCommentInput(`@${liveCommentAuthor.displayName} `);
                                       }}
                                       className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300 hover:underline cursor-pointer flex items-center gap-0.5"
-                                      title={`Reply to ${comment.authorName}`}
+                                      title={`Reply to ${liveCommentAuthor.displayName}`}
                                     >
                                       <CornerUpLeft className="w-3 h-3" />
                                       <span>Reply</span>
@@ -3252,6 +3347,37 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* Full-Screen Short Video Reels Scroller with Side Interaction Panel */}
+      {videoTheatreState && videoPosts.length > 0 && (
+        <ShortVideoTheatreModal
+          isOpen={!!videoTheatreState}
+          videoPosts={videoPosts}
+          initialPostId={videoTheatreState.postId}
+          initialResolvedUrls={videoTheatreState.resolvedUrls}
+          currentUser={currentUser}
+          userProfile={userProfile}
+          followingIds={followingIds}
+          followerIds={followerIds}
+          commentsMap={commentsMap}
+          onEnsureCommentsLoaded={ensureCommentsLoaded}
+          onReactToPost={handleReactToPost}
+          onReactToComment={handleReactToComment}
+          onSubmitComment={submitCommentForPost}
+          onToggleFollow={handleToggleFollow}
+          onSharePost={handleSharePost}
+          onViewUserProfile={(user) => {
+            setVideoTheatreState(null);
+            onViewUserProfile?.(user);
+          }}
+          onOpenDirectChatWithUser={onOpenDirectChatWithUser}
+          onOpenAuthModal={(mode) => {
+            setVideoTheatreState(null);
+            openAuthModal(mode);
+          }}
+          onClose={() => setVideoTheatreState(null)}
+        />
       )}
 
       {/* MODAL 1: IN-APP POST DELETION CONFIRMATION */}

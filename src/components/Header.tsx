@@ -44,7 +44,7 @@ interface HeaderProps {
   unreadNotificationsCount?: number;
   unreadMessagesCount?: number;
   onOpenNotifications?: () => void;
-  onViewOwnProfile?: () => void;
+  onViewOwnProfile?: (editMode?: boolean) => void;
   onOpenSettings?: () => void;
 }
 
@@ -64,7 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
   onViewOwnProfile,
   onOpenSettings
 }) => {
-  const { currentUser, userProfile, openAuthModal, logout, switchAccount, blockedUserIds } = useAuth();
+  const { currentUser, userProfile, isProfileComplete, openAuthModal, logout, switchAccount, blockedUserIds } = useAuth();
   const { theme, setTheme, isDark, isKenyaTheme, toggleTheme } = useTheme();
   const isDev = !!currentUser?.email && currentUser.email.toLowerCase().trim() === DEVELOPER_EMAIL.toLowerCase();
 
@@ -341,11 +341,11 @@ export const Header: React.FC<HeaderProps> = ({
             {currentUser ? (
               <button
                 onClick={() => {
-                  if (onViewOwnProfile) onViewOwnProfile();
+                  if (onViewOwnProfile) onViewOwnProfile(!isProfileComplete);
                   else setActiveTab('chat');
                 }}
                 className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 transition-colors cursor-pointer"
-                title="View & Edit Your Citizen Profile"
+                title={!isProfileComplete ? 'Complete Your Citizen Profile' : 'View & Edit Your Citizen Profile'}
               >
                 {userProfile?.photoURL ? (
                   <img
@@ -359,7 +359,11 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="hidden sm:inline truncate max-w-[90px]">
                   {userProfile?.displayName.split(' ')[0]}
                 </span>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span
+                  className={`w-2 h-2 rounded-full animate-pulse ${
+                    isProfileComplete ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`}
+                />
               </button>
             ) : (
               <div className="flex items-center gap-1.5">
@@ -621,7 +625,7 @@ export const Header: React.FC<HeaderProps> = ({
                         type="button"
                         onClick={() => {
                           setIsMenuOpen(false);
-                          onViewOwnProfile();
+                          onViewOwnProfile(!isProfileComplete);
                         }}
                         className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors text-left cursor-pointer group"
                       >
@@ -629,7 +633,14 @@ export const Header: React.FC<HeaderProps> = ({
                           <User className="w-4 h-4 text-sky-600 dark:text-sky-400" />
                           <span>View & Edit Profile</span>
                         </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                        <div className="flex items-center gap-1.5">
+                          {!isProfileComplete && (
+                            <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.2 rounded-md">
+                              Incomplete
+                            </span>
+                          )}
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                        </div>
                       </button>
                     )}
 
@@ -758,7 +769,7 @@ export const Header: React.FC<HeaderProps> = ({
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
         initialTab={settingsInitialTab}
-        onOpenProfile={onViewOwnProfile}
+        onOpenProfile={onViewOwnProfile ? () => onViewOwnProfile(true) : undefined}
         onNavigateToDevPanel={() => setActiveTab('dev-panel')}
       />
 

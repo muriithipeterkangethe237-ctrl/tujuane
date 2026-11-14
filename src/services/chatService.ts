@@ -12,7 +12,8 @@ import {
   serverTimestamp,
   arrayUnion,
   arrayRemove,
-  writeBatch
+  writeBatch,
+  deleteField
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import {
@@ -21,7 +22,8 @@ import {
   ChatMessage,
   HotspotReference,
   MessageAttachment,
-  MessageReplyReference
+  MessageReplyReference,
+  VoiceNoteData
 } from '../types/chat';
 import { sendUserNotification } from './userNotificationService';
 
@@ -146,7 +148,8 @@ export async function sendChatMessage(
   hotspotRef?: HotspotReference,
   mediaUrl?: string,
   attachment?: MessageAttachment,
-  replyTo?: MessageReplyReference
+  replyTo?: MessageReplyReference,
+  voiceNote?: VoiceNoteData
 ): Promise<void> {
   const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const messageRef = doc(db, 'chats', chatId, 'messages', messageId);
@@ -192,6 +195,22 @@ export async function sendChatMessage(
     };
   }
 
+  if (voiceNote && voiceNote.dataUrl) {
+    payload.voiceNote = {
+      dataUrl: voiceNote.dataUrl,
+      duration: Math.max(0, Math.min(60, Number(voiceNote.duration) || 1)),
+      mimeType: (voiceNote.mimeType || 'audio/webm').slice(0, 100),
+      sizeBytes: Math.max(1, Math.round(voiceNote.sizeBytes || 1)),
+      ...(Array.isArray(voiceNote.waveform) && voiceNote.waveform.length > 0
+        ? {
+            waveform: voiceNote.waveform
+              .slice(0, 32)
+              .map((n) => Math.max(12, Math.min(100, Math.round(n))))
+          }
+        : {})
+    };
+  }
+
   if (replyTo) {
     payload.replyTo = {
       messageId: replyTo.messageId,
@@ -211,6 +230,13 @@ export async function sendChatMessage(
     let preview = text.trim().slice(0, 100);
     if (hotspotRef) {
       preview = `📍 Shared Hotspot: ${hotspotRef.name}`;
+    } else if (voiceNote && !text.trim()) {
+      const safeSec = Math.max(1, Math.round(voiceNote.duration || 1));
+      const mins = Math.floor(safeSec / 60);
+      const secs = safeSec % 60;
+      preview = `🎤 Voice note (${mins}:${secs.toString().padStart(2, '0')})`;
+    } else if (voiceNote) {
+      preview = `🎤 ${text.trim().slice(0, 80)}`;
     } else if (attachment && !text.trim()) {
       preview = `📎 Attached file: ${attachment.name}`;
     } else if (mediaUrl && !text.trim()) {
@@ -466,7 +492,8 @@ export async function deleteMessageForEveryone(
       isDeletedForEveryone: true,
       text: 'This message was deleted',
       mediaUrl: '',
-      attachment: {}
+      attachment: {},
+      voiceNote: deleteField()
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `chats/${chatId}/messages/${messageId}`);
@@ -566,6 +593,7 @@ export function subscribeToChatMessages(
           text: d.text,
           mediaUrl: d.mediaUrl || undefined,
           attachment: d.attachment && d.attachment.name ? d.attachment : undefined,
+          voiceNote: d.voiceNote && d.voiceNote.dataUrl ? d.voiceNote : undefined,
           hotspotReference: d.hotspotReference,
           replyTo: d.replyTo && d.replyTo.messageId ? d.replyTo : undefined,
           status: d.status || 'sent',

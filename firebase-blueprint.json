@@ -23,6 +23,10 @@
         "banReason": { "type": "string", "maxLength": 500 },
         "statusUpdatedAt": { "type": "string" },
         "statusUpdatedBy": { "type": "string", "maxLength": 128 },
+        "backgroundAlertsEnabled": { "type": "boolean" },
+        "profileCompleted": { "type": "boolean" },
+        "pollVotesCount": { "type": "integer" },
+        "feedCommentsCount": { "type": "integer" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "displayName", "createdAt"]
@@ -58,6 +62,7 @@
         "recipientId": { "type": "string", "maxLength": 128 },
         "text": { "type": "string", "maxLength": 1000 },
         "mediaUrl": { "type": "string", "maxLength": 600000 },
+        "voiceNote": { "type": "object" },
         "hotspotReference": { "type": "object" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
@@ -251,6 +256,7 @@
         "senderId": { "type": "string", "maxLength": 128 },
         "senderName": { "type": "string", "maxLength": 100 },
         "text": { "type": "string", "maxLength": 1000 },
+        "voiceNote": { "type": "object" },
         "status": { "type": "string", "enum": ["sending", "sent", "delivered", "read"] },
         "deliveredTo": { "type": "array" },
         "readBy": { "type": "array" },

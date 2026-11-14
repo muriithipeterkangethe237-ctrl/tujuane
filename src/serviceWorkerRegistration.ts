@@ -1,6 +1,9 @@
+import { registerBackgroundNotificationTasks } from './services/backgroundNotificationSync';
+
 /**
  * Service Worker Registration for TUJUANE
- * Registers service worker and forces update checks to guarantee the latest app icon and assets.
+ * Registers service worker, registers background notification sync tasks,
+ * and checks for updates to guarantee latest app assets and offline/background resilience.
  */
 
 export function registerServiceWorker(): void {
@@ -9,8 +12,10 @@ export function registerServiceWorker(): void {
       navigator.serviceWorker
         .register('/sw.js')
         .then((registration) => {
-          // Immediately check for service worker update
           registration.update().catch(() => {});
+          if ('Notification' in window && Notification.permission === 'granted') {
+            void registerBackgroundNotificationTasks();
+          }
         })
         .catch((error) => {
           console.warn('TUJUANE Service Worker registration failed:', error);

@@ -17,6 +17,10 @@ export interface UserProfile {
   banReason?: string;
   statusUpdatedAt?: string;
   statusUpdatedBy?: string;
+  backgroundAlertsEnabled?: boolean;
+  profileCompleted?: boolean;
+  pollVotesCount?: number;
+  feedCommentsCount?: number;
   createdAt: string;
 }
 
@@ -37,6 +41,14 @@ export interface MessageAttachment {
   type: string;
   dataUrl: string;
   isDocument?: boolean;
+}
+
+export interface VoiceNoteData {
+  dataUrl: string;
+  duration: number;
+  mimeType: string;
+  sizeBytes: number;
+  waveform?: number[];
 }
 
 export interface MessageReplyReference {
@@ -89,6 +101,7 @@ export interface ChatMessage {
   text: string;
   mediaUrl?: string; // compressed base64 image data URI
   attachment?: MessageAttachment; // generic document/file attachment
+  voiceNote?: VoiceNoteData; // recorded audio voice note
   hotspotReference?: HotspotReference;
   replyTo?: MessageReplyReference;
   status?: MessageStatus;
@@ -155,6 +168,7 @@ export interface ChannelMessage {
   text: string;
   mediaUrl?: string;
   attachment?: MessageAttachment;
+  voiceNote?: VoiceNoteData;
   replyTo?: MessageReplyReference;
   status?: MessageStatus;
   readBy?: string[];

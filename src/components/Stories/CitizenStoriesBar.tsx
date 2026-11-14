@@ -15,6 +15,8 @@ import {
 } from '../../services/storyService';
 import { CreateStoryModal } from './CreateStoryModal';
 import { StoryViewerModal } from './StoryViewerModal';
+import { useAuth } from '../../context/AuthContext';
+import { resolveLiveAuthor } from '../../utils/profileUtils';
 
 interface CitizenStoriesBarProps {
   currentUser: any;
@@ -29,6 +31,7 @@ export const CitizenStoriesBar: React.FC<CitizenStoriesBarProps> = ({
   onOpenAuthModal,
   onViewUserProfile
 }) => {
+  const { usersById } = useAuth();
   const [stories, setStories] = useState<CitizenStory[]>([]);
   const [isCreateOpen, setIsCreateOpen] = useState<boolean>(false);
   const [isViewerOpen, setIsViewerOpen] = useState<boolean>(false);
@@ -185,7 +188,16 @@ export const CitizenStoriesBar: React.FC<CitizenStoriesBarProps> = ({
             {/* 2. Other Citizens' Story Circles */}
             {otherGroups.map((group) => {
               const hasVideo = group.stories.some((s) => s.type === 'video');
-              const firstName = group.authorName.split(' ')[0] || group.authorName;
+              const liveAuthor = resolveLiveAuthor(
+                group.authorId,
+                {
+                  displayName: group.authorName,
+                  photoURL: group.authorPhotoUrl,
+                  county: group.authorCounty
+                },
+                usersById
+              );
+              const firstName = liveAuthor.displayName.split(' ')[0] || liveAuthor.displayName;
 
               return (
                 <div
@@ -201,15 +213,15 @@ export const CitizenStoriesBar: React.FC<CitizenStoriesBarProps> = ({
                           : 'border-2 border-slate-300 dark:border-slate-700'
                       }`}
                     >
-                      {group.authorPhotoUrl ? (
+                      {liveAuthor.photoURL ? (
                         <img
-                          src={group.authorPhotoUrl}
-                          alt={group.authorName}
+                          src={liveAuthor.photoURL}
+                          alt={liveAuthor.displayName}
                           className="w-full h-full rounded-full object-cover border-2 border-white dark:border-slate-900"
                         />
                       ) : (
                         <div className="w-full h-full rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-black flex items-center justify-center text-sm border-2 border-white dark:border-slate-900">
-                          {group.authorName.charAt(0)}
+                          {liveAuthor.displayName.charAt(0)}
                         </div>
                       )}
                     </div>
@@ -229,7 +241,7 @@ export const CitizenStoriesBar: React.FC<CitizenStoriesBarProps> = ({
                     {firstName}
                   </span>
                   <span className="text-[9px] text-slate-400 dark:text-slate-500 truncate max-w-full">
-                    {group.authorCounty ? `${group.authorCounty}` : 'Kenya'}
+                    {liveAuthor.county ? `${liveAuthor.county}` : 'Kenya'}
                   </span>
                 </div>
               );
