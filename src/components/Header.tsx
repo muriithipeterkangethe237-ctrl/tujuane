@@ -150,9 +150,9 @@ export const Header: React.FC<HeaderProps> = ({
             aria-hidden="true"
           />
         )}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3 sm:gap-6">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 sm:gap-4">
           {/* Zone 1: Back Button & Wordmark */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 min-w-0">
             {canGoBack && onGoBack && (
               <button
                 onClick={onGoBack}
@@ -297,7 +297,7 @@ export const Header: React.FC<HeaderProps> = ({
           </nav>
 
           {/* Zone 3: Actions & 3-Dots Settings Menu */}
-          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {/* PWA In-App Install Prompt */}
             <PWAInstallButton variant="header" />
 
@@ -341,11 +341,11 @@ export const Header: React.FC<HeaderProps> = ({
             {currentUser ? (
               <button
                 onClick={() => {
-                  if (onViewOwnProfile) onViewOwnProfile(!isProfileComplete);
+                  if (onViewOwnProfile) onViewOwnProfile(false);
                   else setActiveTab('chat');
                 }}
                 className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 transition-colors cursor-pointer"
-                title={!isProfileComplete ? 'Complete Your Citizen Profile' : 'View & Edit Your Citizen Profile'}
+                title="View & Edit Your Citizen Profile"
               >
                 {userProfile?.photoURL ? (
                   <img
@@ -406,7 +406,7 @@ export const Header: React.FC<HeaderProps> = ({
 
               {/* Elevated Dropdown Menu */}
               {isMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150 divide-y divide-slate-100 dark:divide-slate-800">
+                <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 max-w-[calc(100vw-1rem)] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150 divide-y divide-slate-100 dark:divide-slate-800">
                   {/* Account Summary Header */}
                   <div className="p-2.5 pb-3">
                     {currentUser ? (
@@ -625,7 +625,7 @@ export const Header: React.FC<HeaderProps> = ({
                         type="button"
                         onClick={() => {
                           setIsMenuOpen(false);
-                          onViewOwnProfile(!isProfileComplete);
+                          onViewOwnProfile(false);
                         }}
                         className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors text-left cursor-pointer group"
                       >

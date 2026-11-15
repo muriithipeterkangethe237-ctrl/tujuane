@@ -9,9 +9,10 @@ import {
   onSnapshot,
   serverTimestamp,
   getDocs,
-  writeBatch
+  writeBatch,
+  limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, handleFirestoreError, handleFirestoreListenerError, OperationType } from '../firebase';
 import { UserNotification, AccountStandingSummary } from '../types/notification';
 import { CommunityPost } from '../types/community';
 import { notificationService } from './notificationService';
@@ -73,7 +74,8 @@ export function subscribeToUserNotifications(
 ): () => void {
   const q = query(
     collection(db, NOTIFICATIONS_COLLECTION),
-    where('userId', '==', userId)
+    where('userId', '==', userId),
+    limit(60)
   );
 
   let initialLoad = true;
@@ -144,7 +146,7 @@ export function subscribeToUserNotifications(
       callback(list);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, NOTIFICATIONS_COLLECTION);
+      handleFirestoreListenerError(error, OperationType.GET, NOTIFICATIONS_COLLECTION, () => callback([]));
     }
   );
 }

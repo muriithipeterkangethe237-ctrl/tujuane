@@ -25,6 +25,8 @@
         "statusUpdatedBy": { "type": "string", "maxLength": 128 },
         "backgroundAlertsEnabled": { "type": "boolean" },
         "profileCompleted": { "type": "boolean" },
+        "profileCustomized": { "type": "boolean" },
+        "profileUpdatedAt": { "type": "string", "format": "date-time" },
         "pollVotesCount": { "type": "integer" },
         "feedCommentsCount": { "type": "integer" },
         "createdAt": { "type": "string", "format": "date-time" }

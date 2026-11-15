@@ -128,8 +128,8 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
   // Update form states when userProfile changes
   useEffect(() => {
     if (userProfile) {
-      if (userProfile.county) setSelectedCounty(userProfile.county);
-      if (userProfile.constituency) setSelectedConstituency(userProfile.constituency);
+      setSelectedCounty(userProfile.county || 'Nairobi');
+      setSelectedConstituency(userProfile.constituency || '');
     }
   }, [userProfile]);
 

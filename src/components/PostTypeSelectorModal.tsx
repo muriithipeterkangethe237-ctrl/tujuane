@@ -75,9 +75,9 @@ export const POST_TYPE_OPTIONS: PostTypeOption[] = [
   {
     type: 'video',
     title: 'Short Video (Feed)',
-    badge: 'Up to 60s · 12 MB',
+    badge: 'Record or Upload · 60s',
     badgeColor: 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800',
-    description: 'Post short community video clips (MP4, WebM, MOV), event moments, road updates, or hustle demos directly on the main feed.',
+    description: 'Record live with your camera or upload short clips (MP4, WebM, MOV) up to 60s directly onto the community feed.',
     icon: <Video className="w-5 h-5" />,
     iconBg: 'bg-indigo-100 dark:bg-indigo-950/60',
     iconColor: 'text-indigo-600 dark:text-indigo-400',

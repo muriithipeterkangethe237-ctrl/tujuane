@@ -32,7 +32,7 @@ import {
   Users
 } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, handleFirestoreListenerError, OperationType } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { UserProfile } from '../types/chat';
 import { CommunityPost } from '../types/community';
@@ -96,53 +96,89 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const cachedDirectoryUser = usersById?.[user.uid];
   const currentTargetUser = isOwnProfile && userProfile ? userProfile : (cachedDirectoryUser || user);
   const [localUser, setLocalUser] = useState<UserProfile>(currentTargetUser);
+  const localSaveTimestampRef = useRef<number>(0);
 
-  // Subscribe directly to Firestore users/{uid} so all profile details (bio, occupation, constituency, email, joined) stay live
+  // Sync localUser from AuthContext / directory without tearing down snapshot or overwriting fresh local saves
+  useEffect(() => {
+    if (!isOpen) return;
+    if (Date.now() - localSaveTimestampRef.current < 4000) return;
+    setLocalUser(currentTargetUser);
+  }, [isOpen, currentTargetUser]);
+
+  // Subscribe directly to Firestore users/{uid} keyed strictly on modal open + target uid
   useEffect(() => {
     if (!isOpen || !user?.uid) return;
-    const base = isOwnProfile && userProfile ? userProfile : (usersById?.[user.uid] || user);
-    setLocalUser(base);
 
     const userDocRef = doc(db, 'users', user.uid);
     const unsubDoc = onSnapshot(
       userDocRef,
       (snap) => {
         if (!snap.exists()) return;
+        if (Date.now() - localSaveTimestampRef.current < 4000) return;
         const data = snap.data();
-        setLocalUser((prev) => ({
-          ...prev,
-          uid: user.uid,
-          displayName: data.displayName || prev.displayName || 'Citizen Member',
-          email: data.email || prev.email || '',
-          photoURL: data.photoURL !== undefined ? (String(data.photoURL).trim() ? data.photoURL : undefined) : prev.photoURL,
-          county: data.county || prev.county || 'Nairobi',
-          constituency: data.constituency !== undefined ? (data.constituency || undefined) : prev.constituency,
-          bio: data.bio !== undefined ? (data.bio || undefined) : prev.bio,
-          occupation: data.occupation !== undefined ? (data.occupation || undefined) : prev.occupation,
-          isOnline: data.isOnline !== undefined ? Boolean(data.isOnline) : prev.isOnline,
-          lastSeen: data.lastSeen?.toDate
-            ? data.lastSeen.toDate().toISOString()
-            : typeof data.lastSeen === 'string'
-            ? data.lastSeen
-            : prev.lastSeen,
-          isDeveloper: data.isDeveloper !== undefined ? Boolean(data.isDeveloper) : prev.isDeveloper,
-          accountStatus: (data.accountStatus as 'active' | 'suspended' | 'banned') || prev.accountStatus || 'active',
-          pollVotesCount: typeof data.pollVotesCount === 'number' ? data.pollVotesCount : prev.pollVotesCount,
-          feedCommentsCount: typeof data.feedCommentsCount === 'number' ? data.feedCommentsCount : prev.feedCommentsCount,
-          createdAt: data.createdAt?.toDate
-            ? data.createdAt.toDate().toISOString()
-            : typeof data.createdAt === 'string' && data.createdAt
-            ? data.createdAt
-            : prev.createdAt
-        }));
+        const remoteUpdatedAt =
+          typeof data.profileUpdatedAt === 'string' ? data.profileUpdatedAt : undefined;
+        setLocalUser((prev) => {
+          const prevMs = prev.profileUpdatedAt ? Date.parse(prev.profileUpdatedAt) : 0;
+          const remoteMs = remoteUpdatedAt ? Date.parse(remoteUpdatedAt) : 0;
+          if (snap.metadata.fromCache && prevMs > 0 && remoteMs < prevMs) {
+            return prev;
+          }
+          return {
+            ...prev,
+            uid: user.uid,
+            displayName: data.displayName || prev.displayName || 'Citizen Member',
+            email: data.email || prev.email || '',
+            photoURL:
+              data.photoURL !== undefined
+                ? String(data.photoURL).trim()
+                  ? data.photoURL
+                  : undefined
+                : prev.photoURL,
+            county: data.county || prev.county || 'Nairobi',
+            constituency:
+              'constituency' in data
+                ? String(data.constituency || '').trim() || undefined
+                : prev.constituency,
+            bio: 'bio' in data ? String(data.bio || '').trim() || undefined : prev.bio,
+            occupation:
+              'occupation' in data
+                ? String(data.occupation || '').trim() || undefined
+                : prev.occupation,
+            isOnline: data.isOnline !== undefined ? Boolean(data.isOnline) : prev.isOnline,
+            lastSeen: data.lastSeen?.toDate
+              ? data.lastSeen.toDate().toISOString()
+              : typeof data.lastSeen === 'string'
+              ? data.lastSeen
+              : prev.lastSeen,
+            isDeveloper: data.isDeveloper !== undefined ? Boolean(data.isDeveloper) : prev.isDeveloper,
+            accountStatus: (data.accountStatus as 'active' | 'suspended' | 'banned') || prev.accountStatus || 'active',
+            profileCompleted:
+              data.profileCompleted !== undefined
+                ? Boolean(data.profileCompleted)
+                : prev.profileCompleted,
+            profileCustomized:
+              data.profileCustomized !== undefined
+                ? Boolean(data.profileCustomized)
+                : prev.profileCustomized,
+            profileUpdatedAt: remoteUpdatedAt || prev.profileUpdatedAt,
+            pollVotesCount: typeof data.pollVotesCount === 'number' ? data.pollVotesCount : prev.pollVotesCount,
+            feedCommentsCount: typeof data.feedCommentsCount === 'number' ? data.feedCommentsCount : prev.feedCommentsCount,
+            createdAt: data.createdAt?.toDate
+              ? data.createdAt.toDate().toISOString()
+              : typeof data.createdAt === 'string' && data.createdAt
+              ? data.createdAt
+              : prev.createdAt
+          };
+        });
       },
-      () => {
-        // ignore offline/guest permission notice
+      (err) => {
+        handleFirestoreListenerError(err, OperationType.GET, `users/${user.uid}`);
       }
     );
 
     return () => unsubDoc();
-  }, [isOpen, user?.uid, isOwnProfile, userProfile]);
+  }, [isOpen, user?.uid]);
 
   // Social states
   const [followingList, setFollowingList] = useState<FollowRelationship[]>([]);
@@ -204,18 +240,28 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [isActionPending, setIsActionPending] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const wasOpenRef = useRef<boolean>(false);
+  const prevUidRef = useRef<string>(user?.uid || '');
 
-  // Initialize edit mode when modal opens
+  // Initialize edit mode ONLY when the modal opens or switches to a different user
   useEffect(() => {
-    if (isOpen) {
+    const justOpened = isOpen && !wasOpenRef.current;
+    const switchedUser = isOpen && prevUidRef.current !== user?.uid;
+
+    if (justOpened || switchedUser) {
       setIsEditing(isOwnProfile && initialEditMode);
       setFieldErrors({});
       setSaveError(null);
       setSaveSuccess(false);
     }
-  }, [isOpen, user.uid, isOwnProfile, initialEditMode]);
 
-  // Keep edit form fields synchronized with localUser while not actively editing
+    wasOpenRef.current = isOpen;
+    if (user?.uid) {
+      prevUidRef.current = user.uid;
+    }
+  }, [isOpen, user?.uid, isOwnProfile, initialEditMode]);
+
+  // Keep edit form fields synchronized with localUser while NOT actively editing
   useEffect(() => {
     if (isOpen && !isEditing) {
       setEditName(localUser.displayName || '');
@@ -232,9 +278,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const availableConstituencies = getConstituenciesByCounty(editCounty);
   const completeness = getProfileCompleteness(localUser);
 
-  // Subscribe to social data for target user / current user
+  // Subscribe to social data for target user / current user only while modal is open
   useEffect(() => {
-    if (!currentUser) return;
+    if (!isOpen || !currentUser) return;
 
     const unsubFollowing = subscribeToFollowing(currentUser.uid, (data) => {
       setFollowingList(data);
@@ -261,11 +307,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       unsubFollowers();
       unsubRequests();
     };
-  }, [currentUser, user.uid]);
+  }, [isOpen, currentUser, user.uid]);
 
-  // Load CommunityFeed posts and derive live author posts + feed activity
+  // Load CommunityFeed posts only when modal opens and derive live author posts + feed activity
   useEffect(() => {
-    const unsub = subscribeToCommunityPosts({}, (posts) => {
+    if (!isOpen || !user?.uid) return;
+    const unsub = subscribeToCommunityPosts({ maxPosts: 25 }, (posts) => {
       setAllFeedPosts(posts);
       const authored = posts.filter((p) => p.authorId === user.uid);
       setUserPosts(authored);
@@ -273,7 +320,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     });
 
     return () => unsub();
-  }, [user.uid]);
+  }, [isOpen, user?.uid]);
 
   // Fetch deeper CommunityFeed comments, polls, and stories metrics when modal opens
   useEffect(() => {
@@ -490,7 +537,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     }
   };
 
-  // Validate and save full profile edits with enforced required fields
+  // Save user-chosen profile edits without reverting or blocking partial/custom edits
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isOwnProfile) return;
@@ -509,19 +556,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     if (!finalCounty) {
       errors.county = 'Please select your home county.';
     }
-    if (availableConstituencies.length > 0 && !finalConstituency) {
-      errors.constituency = `Please select your constituency in ${finalCounty}.`;
-    }
-    if (finalBio.length < 10) {
-      errors.bio = 'Please write a short About / Bio (at least 10 characters) so citizens know who you are.';
-    }
-    if (finalOccupation.length < 2) {
-      errors.occupation = 'Please enter your occupation, hustle, or community role.';
-    }
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
-      setSaveError('Please complete all required citizen profile fields highlighted below.');
+      setSaveError('Please check your Display Name and Home County before saving.');
       return;
     }
 
@@ -529,6 +567,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     setIsSaving(true);
     setSaveError(null);
     try {
+      const updatedAtIso = new Date().toISOString();
+      localSaveTimestampRef.current = Date.now();
+
       await updateFullProfile({
         displayName: finalName,
         photoURL: finalPhoto,
@@ -538,18 +579,28 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         occupation: finalOccupation
       });
 
-      // Instantly update local state in modal
       const updatedUser: UserProfile = {
         ...localUser,
         displayName: finalName,
-        photoURL: finalPhoto ? finalPhoto : undefined,
+        photoURL: finalPhoto.trim() ? finalPhoto.trim() : undefined,
         county: finalCounty,
         constituency: finalConstituency || undefined,
-        bio: finalBio,
-        occupation: finalOccupation,
-        profileCompleted: true
+        bio: finalBio || undefined,
+        occupation: finalOccupation || undefined,
+        profileCustomized: true,
+        profileUpdatedAt: updatedAtIso
       };
+      updatedUser.profileCompleted = getProfileCompleteness(updatedUser).isComplete;
 
+      if (typeof window !== 'undefined' && currentUser?.uid) {
+        try {
+          localStorage.setItem(`tujuane_profile_customized_${currentUser.uid}`, '1');
+        } catch {
+          // ignore
+        }
+      }
+
+      localSaveTimestampRef.current = Date.now();
       setLocalUser(updatedUser);
       onProfileUpdated?.(updatedUser);
 
@@ -569,11 +620,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in overflow-y-auto"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white dark:bg-slate-900 rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-6 relative flex flex-col max-h-[92vh] transition-colors"
+        className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-3 sm:my-6 relative flex flex-col max-h-[92dvh] transition-colors"
       >
         {/* Hidden File Input for Profile Photo Upload */}
         <input
@@ -777,8 +828,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             </div>
           )}
 
-          {/* Profile Completion Enforcement Card on Own Profile */}
-          {isOwnProfile && !isEditing && !completeness.isComplete && (
+          {/* Optional Profile Completion Guidance for uncustomized profiles */}
+          {isOwnProfile && !isEditing && !completeness.isComplete && !localUser.profileCustomized && (
             <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl space-y-2.5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-xs font-extrabold text-amber-900 dark:text-amber-200">
@@ -887,8 +938,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         {localUser.occupation ? (
                           localUser.occupation
                         ) : (
-                          <span className="text-amber-600 dark:text-amber-400 font-semibold">
-                            {isOwnProfile ? 'Required — Tap Edit' : 'Not specified'}
+                          <span className="text-slate-400 dark:text-slate-500 font-medium">
+                            Not specified
                           </span>
                         )}
                       </div>
@@ -915,8 +966,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         {localUser.constituency ? (
                           localUser.constituency
                         ) : (
-                          <span className="text-amber-600 dark:text-amber-400 font-semibold">
-                            {isOwnProfile ? 'Required — Tap Edit' : 'Not specified'}
+                          <span className="text-slate-400 dark:text-slate-500 font-medium">
+                            Not specified
                           </span>
                         )}
                       </div>
@@ -1283,7 +1334,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    About / Bio *
+                    About / Bio
                   </label>
                   <span className="text-[11px] text-slate-400 font-medium">
                     {editBio.length} / 500
@@ -1297,24 +1348,23 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   }}
                   rows={4}
                   maxLength={500}
-                  placeholder="Share a short bio about yourself, your hustles, your community passions, or what you care about in your constituency (min 10 characters)..."
+                  placeholder="Share a short bio about yourself, your hustles, or what you care about in your county..."
                   className={`w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white resize-none leading-relaxed ${
                     fieldErrors.bio ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
                   }`}
-                  required
                 />
                 {fieldErrors.bio ? (
                   <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{fieldErrors.bio}</p>
                 ) : (
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    This description immediately updates on your public citizen card, feed posts, and chats.
+                    Saved exactly as you choose on your citizen card, feed posts, and chats.
                   </p>
                 )}
               </div>
 
               {/* 4. Occupation / Hustle */}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-800 dark:text-slate-200">Occupation / Hustle / Community Role *</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200">Occupation / Hustle / Community Role</label>
                 <input
                   type="text"
                   value={editOccupation}
@@ -1327,7 +1377,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   className={`w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white ${
                     fieldErrors.occupation ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
                   }`}
-                  required
                 />
                 {fieldErrors.occupation && (
                   <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{fieldErrors.occupation}</p>
@@ -1362,7 +1411,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    Constituency {availableConstituencies.length > 0 ? '*' : ''}
+                    Constituency
                   </label>
                   <select
                     value={editConstituency}
@@ -1373,9 +1422,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     className={`w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white cursor-pointer ${
                       fieldErrors.constituency ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
                     }`}
-                    required={availableConstituencies.length > 0}
                   >
-                    <option value="">Select Constituency</option>
+                    <option value="">Select Constituency (Optional)</option>
                     {availableConstituencies.map((con) => (
                       <option key={con} value={con}>
                         {con}

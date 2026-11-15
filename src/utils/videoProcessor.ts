@@ -92,7 +92,10 @@ async function captureVideoThumbnail(
  * Validate a selected short video file, extract duration + dimensions + JPEG poster,
  * and prepare either an inline data URI or chunked Base64 slices for Firestore persistence.
  */
-export async function processFeedVideoFile(file: File): Promise<ProcessedFeedVideo> {
+export async function processFeedVideoFile(
+  file: File,
+  overrideDurationSec?: number
+): Promise<ProcessedFeedVideo> {
   const mimeType = file.type || 'video/mp4';
   const isVideoExt = /\.(mp4|webm|mov|m4v|3gp|mkv)$/i.test(file.name || '');
 
@@ -138,8 +141,17 @@ export async function processFeedVideoFile(file: File): Promise<ProcessedFeedVid
 
     tempVideo.onloadedmetadata = async () => {
       const rawDuration = tempVideo.duration;
+      const validOverride =
+        typeof overrideDurationSec === 'number' &&
+        isFinite(overrideDurationSec) &&
+        overrideDurationSec > 0
+          ? Math.max(1, Math.min(MAX_FEED_VIDEO_DURATION_SEC, Math.round(overrideDurationSec)))
+          : undefined;
+
       const duration =
-        rawDuration && isFinite(rawDuration) ? Math.max(1, Math.round(rawDuration)) : 10;
+        rawDuration && isFinite(rawDuration)
+          ? Math.max(1, Math.round(rawDuration))
+          : validOverride ?? 10;
 
       if (rawDuration && isFinite(rawDuration) && rawDuration > MAX_FEED_VIDEO_DURATION_SEC + 0.9) {
         cleanup();

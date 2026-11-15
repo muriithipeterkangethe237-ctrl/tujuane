@@ -22,13 +22,12 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { KenyanFlagBackdrop } from './components/KenyanFlagTheme';
 import { UserProfile } from './types/chat';
 import { UserNotification, AccountStandingSummary } from './types/notification';
-import { CommunityPost } from './types/community';
 import { PostTypeSelectorModal, PostCreationType, PostTypeOption } from './components/PostTypeSelectorModal';
 import { CreateStoryModal } from './components/Stories/CreateStoryModal';
 import { ExternalCreateRequest } from './components/CommunityFeed';
+import { subscribeToFirestoreQuotaStatus } from './firebase';
 import { subscribeToSafetyReports } from './services/safetyService';
 import { subscribeToIncomingFriendRequests } from './services/socialService';
-import { subscribeToCommunityPosts } from './services/communityService';
 import {
   subscribeToUserChats,
   markChatUnreadMessagesAsDelivered
@@ -38,15 +37,14 @@ import {
   markGroupUnreadMessagesAsDelivered
 } from './services/groupChannelService';
 import {
-  subscribeToUserNotifications,
-  calculateAccountStanding
+  subscribeToUserNotifications
 } from './services/userNotificationService';
 import {
   registerBackgroundNotificationTasks,
   triggerImmediateSWNotificationCheck
 } from './services/backgroundNotificationSync';
 import { notificationService } from './services/notificationService';
-import { Check, ArrowLeft, Home, Sparkles, ShieldAlert, Bell, Ban, Clock, AlertTriangle, Edit3, UserCheck } from 'lucide-react';
+import { Check, ArrowLeft, Home, Sparkles, ShieldAlert, Bell, Ban, Clock, AlertTriangle, Edit3, UserCheck, Database, X } from 'lucide-react';
 
 const DEVELOPER_EMAIL = 'muriithipeterkangethe237@gmail.com';
 
@@ -95,6 +93,15 @@ function AppContent() {
   const [userNotifications, setUserNotifications] = useState<UserNotification[]>([]);
   const [accountStanding, setAccountStanding] = useState<AccountStandingSummary | null>(null);
   const [isFullScreenVideoOpen, setIsFullScreenVideoOpen] = useState(false);
+  const [isFirestoreQuotaLimited, setIsFirestoreQuotaLimited] = useState(false);
+  const [dismissedQuotaBanner, setDismissedQuotaBanner] = useState(false);
+
+  // Monitor Firestore free daily quota state
+  useEffect(() => {
+    return subscribeToFirestoreQuotaStatus((exceeded) => {
+      setIsFirestoreQuotaLimited(exceeded);
+    });
+  }, []);
 
   // Subscribe to real-time pending safety reports only for verified developer
   useEffect(() => {
@@ -241,11 +248,15 @@ function AppContent() {
     }
   }, [userProfile, usersById]);
 
-  // Enforce profile completion for signed-in users whose profile is missing required details (once per session)
+  // Prompt profile completion once per session ONLY if profile has not yet been customized or completed by the user
   useEffect(() => {
     if (loading || !currentUser || !userProfile || isAuthModalOpen || isRestricted) return;
-    if (isProfileComplete) {
-      setDismissedProfileBanner(false);
+    const isCustomized =
+      Boolean(userProfile.profileCustomized) ||
+      (typeof window !== 'undefined' &&
+        localStorage.getItem(`tujuane_profile_customized_${currentUser.uid}`) === '1');
+    if (isProfileComplete || isCustomized) {
+      setDismissedProfileBanner(isProfileComplete ? false : true);
       return;
     }
     try {
@@ -641,7 +652,7 @@ function AppContent() {
 
   return (
     <div
-      className={`relative min-h-screen flex flex-col text-slate-900 dark:text-slate-100 transition-colors ${
+      className={`relative min-h-screen overflow-x-clip flex flex-col text-slate-900 dark:text-slate-100 transition-colors ${
         isKenyaTheme ? 'bg-transparent' : 'bg-slate-50 dark:bg-slate-950'
       } ${activeTab === 'chat' ? 'h-screen h-dvh overflow-hidden' : ''}`}
     >
@@ -693,7 +704,7 @@ function AppContent() {
 
       {/* Contextual Top Back Bar for non-landing pages (omitted on chat and full-screen video) */}
       {activeTab !== 'landing' && activeTab !== 'chat' && !isFullScreenVideoOpen && (
-        <div className="border-b tujuane-divider px-4 sm:px-6 lg:px-8 py-2 sticky top-16 z-30 tujuane-surface-elevated transition-colors">
+        <div className="border-b tujuane-divider px-3 sm:px-6 lg:px-8 py-2 sticky top-16 z-30 tujuane-surface-elevated transition-colors">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2.5 min-w-0">
               <button
@@ -756,9 +767,36 @@ function AppContent() {
         className={
           activeTab === 'chat'
             ? 'relative z-10 flex-1 w-full p-0 flex flex-col h-full h-dvh max-w-full overflow-hidden'
-            : 'relative z-10 flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full'
+            : 'relative z-10 flex-1 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8 w-full min-w-0'
         }
       >
+        {/* Daily Database Quota Fallback Notice */}
+        {isFirestoreQuotaLimited && !dismissedQuotaBanner && activeTab !== 'chat' && (
+          <div className="mb-4 sm:mb-6 p-3.5 sm:p-4 rounded-2xl tujuane-surface border border-amber-400/50 dark:border-amber-500/40 shadow-sm animate-fade-in">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+                <Database className="w-4 h-4" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white">
+                  Daily Free Database Read Limit Reached
+                </div>
+                <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Showing locally cached content safely. Free daily Firestore read units reset tomorrow, or the project owner can upgrade the database plan in Firebase Console.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDismissedQuotaBanner(true)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer shrink-0"
+                aria-label="Dismiss database notice"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Account Restriction Status Alert */}
         {isRestricted && (
           <div className="mb-6 p-4 rounded-2xl border shadow-sm animate-fade-in transition-all bg-white overflow-hidden">
@@ -804,8 +842,8 @@ function AppContent() {
           </div>
         )}
 
-        {/* Enforced Citizen Profile Completion Prompt */}
-        {currentUser && !loading && !isProfileComplete && !isRestricted && !dismissedProfileBanner && activeTab !== 'chat' && (
+        {/* Enforced Citizen Profile Completion Prompt (suppressed once user has customized their profile per their choice) */}
+        {currentUser && !loading && !isProfileComplete && !userProfile?.profileCustomized && !isRestricted && !dismissedProfileBanner && activeTab !== 'chat' && (
           <div className="mb-6 p-4 rounded-2xl tujuane-surface border border-amber-400/50 dark:border-amber-500/40 shadow-sm animate-fade-in">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-start gap-3 min-w-0">

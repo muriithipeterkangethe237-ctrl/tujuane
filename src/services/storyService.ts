@@ -7,9 +7,10 @@ import {
   onSnapshot,
   runTransaction,
   query,
-  orderBy
+  orderBy,
+  limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, handleFirestoreError, handleFirestoreListenerError, OperationType } from '../firebase';
 import { UserProfile } from '../types/chat';
 import { CitizenStory, CreateStoryParams, UserStoryGroup } from '../types/story';
 
@@ -85,7 +86,8 @@ export function subscribeToActiveStories(
 ): () => void {
   const storiesQuery = query(
     collection(db, STORIES_COLLECTION),
-    orderBy('createdAt', 'desc')
+    orderBy('createdAt', 'desc'),
+    limit(40)
   );
 
   return onSnapshot(
@@ -116,8 +118,7 @@ export function subscribeToActiveStories(
       callback(activeStories);
     },
     (error) => {
-      console.warn('Stories listener warning:', error);
-      callback([]);
+      handleFirestoreListenerError(error, OperationType.GET, STORIES_COLLECTION, () => callback([]));
     }
   );
 }

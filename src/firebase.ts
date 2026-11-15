@@ -61,6 +61,10 @@ async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error: any) {
+    if (isFirestoreQuotaError(error)) {
+      markFirestoreQuotaExceeded();
+      return;
+    }
     const msg = error?.message || String(error);
     if (
       msg.includes('the client is offline') ||
@@ -103,12 +107,79 @@ export interface FirestoreErrorInfo {
   };
 }
 
-export function handleFirestoreError(
+let quotaExceededFlag = false;
+const quotaSubscribers = new Set<(exceeded: boolean) => void>();
+
+export function isFirestoreQuotaExceeded(): boolean {
+  return quotaExceededFlag;
+}
+
+export function subscribeToFirestoreQuotaStatus(
+  listener: (exceeded: boolean) => void
+): () => void {
+  quotaSubscribers.add(listener);
+  listener(quotaExceededFlag);
+  return () => {
+    quotaSubscribers.delete(listener);
+  };
+}
+
+export function markFirestoreQuotaExceeded(): void {
+  if (!quotaExceededFlag) {
+    quotaExceededFlag = true;
+    console.warn(
+      'Firestore free daily quota limit exceeded. Operating in graceful fallback/cached mode until daily reset or plan upgrade.'
+    );
+    quotaSubscribers.forEach((cb) => {
+      try {
+        cb(true);
+      } catch {
+        // ignore listener errors
+      }
+    });
+  }
+}
+
+export function isFirestoreQuotaError(error: unknown): boolean {
+  if (!error) return false;
+  const code = typeof (error as any)?.code === 'string' ? (error as any).code.toLowerCase() : '';
+  const message =
+    error instanceof Error
+      ? error.message.toLowerCase()
+      : String(error).toLowerCase();
+  return (
+    code === 'resource-exhausted' ||
+    code.includes('resource-exhausted') ||
+    message.includes('quota limit exceeded') ||
+    message.includes('quota exceeded') ||
+    message.includes('resource-exhausted') ||
+    message.includes('free daily read units')
+  );
+}
+
+export function isFirestoreTransientError(error: unknown): boolean {
+  if (!error) return false;
+  const code = typeof (error as any)?.code === 'string' ? (error as any).code.toLowerCase() : '';
+  const message =
+    error instanceof Error
+      ? error.message.toLowerCase()
+      : String(error).toLowerCase();
+  return (
+    code === 'unavailable' ||
+    code === 'aborted' ||
+    code === 'deadline-exceeded' ||
+    message.includes('client is offline') ||
+    message.includes('network error') ||
+    message.includes('failed to get document because the client is offline')
+  );
+}
+
+function buildFirestoreErrorInfo(
   error: unknown,
   operationType: OperationType,
   path: string | null
-): never {
-  const errInfo: FirestoreErrorInfo = {
+): FirestoreErrorInfo {
+  return {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
       userId: auth.currentUser?.uid,
@@ -125,6 +196,56 @@ export function handleFirestoreError(
     operationType,
     path,
   };
+}
+
+export function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null
+): never {
+  if (isFirestoreQuotaError(error)) {
+    markFirestoreQuotaExceeded();
+    throw new Error(
+      'Database daily free read quota reached. Cached data remains available; quota resets tomorrow.'
+    );
+  }
+  const errInfo = buildFirestoreErrorInfo(error, operationType, path);
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
+}
+
+/**
+ * Safe error handler for async onSnapshot listeners:
+ * prevents unhandled runtime crashes when free daily quota is exceeded or device goes offline,
+ * while surfacing permission/security errors cleanly.
+ */
+export function handleFirestoreListenerError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null,
+  fallbackCallback?: () => void
+): void {
+  if (isFirestoreQuotaError(error)) {
+    markFirestoreQuotaExceeded();
+    fallbackCallback?.();
+    return;
+  }
+
+  if (isFirestoreTransientError(error)) {
+    console.warn(`Firestore listener transient notice (${path || 'unknown'}):`, (error as any)?.message || error);
+    fallbackCallback?.();
+    return;
+  }
+
+  const code = typeof (error as any)?.code === 'string' ? (error as any).code.toLowerCase() : '';
+  if (code === 'permission-denied') {
+    const errInfo = buildFirestoreErrorInfo(error, operationType, path);
+    console.warn('Firestore permission warning: ', JSON.stringify(errInfo));
+    fallbackCallback?.();
+    return;
+  }
+
+  const errInfo = buildFirestoreErrorInfo(error, operationType, path);
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  fallbackCallback?.();
 }

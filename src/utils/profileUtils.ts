@@ -178,9 +178,9 @@ export function resolveLiveAuthor<
   return {
     ...fallback,
     displayName: live.displayName || fallback.displayName || 'Citizen Member',
-    photoURL: live.photoURL !== undefined ? (live.photoURL || undefined) : fallback.photoURL,
+    photoURL: live.photoURL && live.photoURL.trim() ? live.photoURL : undefined,
     county: live.county || fallback.county,
-    constituency: live.constituency || fallback.constituency,
+    constituency: live.constituency && live.constituency.trim() ? live.constituency : undefined,
     bio: live.bio,
     occupation: live.occupation,
     isOnline: live.isOnline,

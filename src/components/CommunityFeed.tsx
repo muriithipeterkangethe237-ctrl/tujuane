@@ -33,6 +33,7 @@ import {
   RecordedVoiceShout,
   formatShoutSeconds
 } from './VoiceShoutRecorder';
+import { ShortVideoCameraRecorder } from './ShortVideoCameraRecorder';
 import { compressImage, formatFileSize } from '../utils/imageCompressor';
 import {
   processFeedVideoFile,
@@ -95,7 +96,9 @@ import {
   Smile,
   Vote,
   Video,
-  Mic
+  Mic,
+  Camera,
+  RotateCcw
 } from 'lucide-react';
 
 export interface ExternalCreateRequest {
@@ -158,6 +161,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [modalVideoData, setModalVideoData] = useState<ProcessedFeedVideo | null>(null);
   const [modalAudioData, setModalAudioData] = useState<RecordedVoiceShout | null>(null);
   const [modalShowVoiceRecorder, setModalShowVoiceRecorder] = useState(false);
+  const [modalShowVideoRecorder, setModalShowVideoRecorder] = useState(false);
   const [modalUploadProgress, setModalUploadProgress] = useState<number | null>(null);
   const [modalHighlightVideo, setModalHighlightVideo] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
@@ -185,6 +189,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       setModalUploadProgress(null);
       setModalHighlightVideo(!!externalCreateRequest.requiresVideo);
       setModalShowVoiceRecorder(!!externalCreateRequest.requiresAudio);
+      setModalShowVideoRecorder(false);
       if (externalCreateRequest.requiresVideo) {
         setModalMediaType('video');
       } else if (externalCreateRequest.requiresAudio) {
@@ -198,9 +203,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         setModalMediaType('audio');
       }
       setIsCreateModalOpen(true);
-      if (externalCreateRequest.requiresVideo) {
-        setTimeout(() => videoInputRef.current?.click(), 180);
-      } else if (externalCreateRequest.requiresImage) {
+      if (externalCreateRequest.requiresImage) {
         setTimeout(() => fileInputRef.current?.click(), 180);
       }
     }
@@ -258,6 +261,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [quickImageMeta, setQuickImageMeta] = useState<{ origSize: number; compSize: number } | null>(null);
   const [quickVideoMeta, setQuickVideoMeta] = useState<{ size: number; duration: number } | null>(null);
   const [quickVideoData, setQuickVideoData] = useState<ProcessedFeedVideo | null>(null);
+  const [quickShowVideoRecorder, setQuickShowVideoRecorder] = useState(false);
   const [quickError, setQuickError] = useState<string | null>(null);
   const [quickUploadProgress, setQuickUploadProgress] = useState<number | null>(null);
   const [isQuickCompressing, setIsQuickCompressing] = useState(false);
@@ -342,11 +346,16 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     };
   }, [currentUser]);
 
+  const closeCreateModal = useCallback(() => {
+    setIsCreateModalOpen(false);
+    setModalShowVideoRecorder(false);
+  }, []);
+
   // Handle ESC key to close any active dialogs
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isCreateModalOpen) setIsCreateModalOpen(false);
+        if (isCreateModalOpen) closeCreateModal();
         if (postToDelete) setPostToDelete(null);
         if (blockedSafetyResult) setBlockedSafetyResult(null);
         if (reportModalPost) setReportModalPost(null);
@@ -355,7 +364,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isCreateModalOpen, postToDelete, blockedSafetyResult, reportModalPost, lightboxImage]);
+  }, [isCreateModalOpen, closeCreateModal, postToDelete, blockedSafetyResult, reportModalPost, lightboxImage]);
 
   // Set default post county and constituency to user profile if available
   useEffect(() => {
@@ -397,6 +406,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     if (isVideoFile) {
       setIsCompressing(true);
       setFormError(null);
+      setModalShowVideoRecorder(false);
       setModalMediaType('video');
       try {
         const processed = await processFeedVideoFile(file);
@@ -429,6 +439,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         URL.revokeObjectURL(modalVideoData.previewObjectUrl);
       }
       setModalVideoData(null);
+      setModalShowVideoRecorder(false);
       setModalMediaType('image');
       setCompressedImage(result.dataUrl);
       setVideoMeta(null);
@@ -444,11 +455,30 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
   };
 
+  const handleModalRecordedVideo = (processed: ProcessedFeedVideo) => {
+    if (modalVideoData?.previewObjectUrl) {
+      URL.revokeObjectURL(modalVideoData.previewObjectUrl);
+    }
+    if (modalAudioData?.previewObjectUrl) {
+      URL.revokeObjectURL(modalAudioData.previewObjectUrl);
+    }
+    setModalAudioData(null);
+    setModalShowVoiceRecorder(false);
+    setModalShowVideoRecorder(false);
+    setModalMediaType('video');
+    setModalVideoData(processed);
+    setCompressedImage(processed.previewObjectUrl);
+    setImageMeta(null);
+    setVideoMeta({ size: processed.sizeBytes, duration: processed.duration });
+    setFormError(null);
+  };
+
   const handleRemoveImage = () => {
     if (modalVideoData?.previewObjectUrl) {
       URL.revokeObjectURL(modalVideoData.previewObjectUrl);
     }
     setModalVideoData(null);
+    setModalShowVideoRecorder(false);
     setCompressedImage(null);
     setModalMediaType('image');
     setImageMeta(null);
@@ -478,6 +508,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     if (isVideoFile) {
       setIsQuickCompressing(true);
       setQuickError(null);
+      setQuickShowVideoRecorder(false);
       setQuickMediaType('video');
       try {
         const processed = await processFeedVideoFile(file);
@@ -507,6 +538,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
     setIsQuickCompressing(true);
     setQuickError(null);
+    setQuickShowVideoRecorder(false);
     try {
       const res = await compressImage(file, 1200, 0.78);
       if (quickVideoData?.previewObjectUrl) {
@@ -528,11 +560,25 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
   };
 
+  const handleQuickRecordedVideo = (processed: ProcessedFeedVideo) => {
+    if (quickVideoData?.previewObjectUrl) {
+      URL.revokeObjectURL(quickVideoData.previewObjectUrl);
+    }
+    setQuickShowVideoRecorder(false);
+    setQuickMediaType('video');
+    setQuickVideoData(processed);
+    setQuickImage(processed.previewObjectUrl);
+    setQuickImageMeta(null);
+    setQuickVideoMeta({ size: processed.sizeBytes, duration: processed.duration });
+    setQuickError(null);
+  };
+
   const handleRemoveQuickImage = () => {
     if (quickVideoData?.previewObjectUrl) {
       URL.revokeObjectURL(quickVideoData.previewObjectUrl);
     }
     setQuickVideoData(null);
+    setQuickShowVideoRecorder(false);
     setQuickImage(null);
     setQuickMediaType('image');
     setQuickImageMeta(null);
@@ -685,6 +731,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     setModalUploadProgress(null);
     setModalHighlightVideo(!!option?.requiresVideo);
     setModalShowVoiceRecorder(!!option?.requiresAudio);
+    setModalShowVideoRecorder(false);
     if (option?.requiresVideo) {
       setModalMediaType('video');
     } else if (option?.requiresAudio) {
@@ -693,11 +740,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
     setIsCreateModalOpen(true);
 
-    if (option?.requiresVideo) {
-      setTimeout(() => {
-        videoInputRef.current?.click();
-      }, 180);
-    } else if (option?.requiresImage) {
+    if (option?.requiresImage) {
       setTimeout(() => {
         fileInputRef.current?.click();
       }, 180);
@@ -812,6 +855,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       setModalVideoData(null);
       setModalAudioData(null);
       setModalShowVoiceRecorder(false);
+      setModalShowVideoRecorder(false);
       setCompressedImage(null);
       setModalMediaType('image');
       setImageMeta(null);
@@ -1329,10 +1373,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       </section>
 
       {/* Filter and Search Controls */}
-      <div className="tujuane-surface p-4 rounded-2xl space-y-3 transition-colors">
+      <div className="tujuane-surface p-3 sm:p-4 rounded-2xl space-y-3 transition-colors">
         {/* Audience Toggle: All Kenya vs Following & Friends */}
         <div className="flex items-center justify-between pb-2 border-b tujuane-divider flex-wrap gap-2">
-          <div className="inline-flex rounded-xl p-0.5 tujuane-surface-soft text-xs font-semibold">
+          <div className="inline-flex flex-wrap rounded-xl p-0.5 tujuane-surface-soft text-xs font-semibold">
             <button
               onClick={() => setFeedAudience('all')}
               className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
@@ -1651,6 +1695,21 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           </div>
         )}
 
+        {/* Quick Composer Live Camera Video Recorder */}
+        {quickShowVideoRecorder && !quickImage && (
+          <div className="animate-in fade-in">
+            <ShortVideoCameraRecorder
+              onVideoReady={handleQuickRecordedVideo}
+              onCancel={() => setQuickShowVideoRecorder(false)}
+              onFallbackUploadClick={() => {
+                setQuickShowVideoRecorder(false);
+                quickVideoInputRef.current?.click();
+              }}
+              disabled={isQuickSubmitting}
+            />
+          </div>
+        )}
+
         {/* Attached Photo or Short Video Preview */}
         {quickImage && (
           <div className="relative rounded-2xl overflow-hidden bg-slate-950/90 max-h-72 flex items-center justify-center">
@@ -1665,15 +1724,32 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             ) : (
               <img src={quickImage} alt="Attachment" className="max-h-64 object-contain w-full" />
             )}
-            <button
-              type="button"
-              onClick={handleRemoveQuickImage}
-              disabled={isQuickSubmitting}
-              className="absolute top-2 right-2 p-1.5 bg-black/65 hover:bg-rose-600 text-white rounded-full transition-colors cursor-pointer z-10 disabled:opacity-40"
-              title={`Remove attached ${quickMediaType}`}
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="absolute top-2 right-2 flex items-center gap-1.5 z-10">
+              {quickMediaType === 'video' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleRemoveQuickImage();
+                    setQuickShowVideoRecorder(true);
+                  }}
+                  disabled={isQuickSubmitting}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-black/70 hover:bg-indigo-600 text-white text-[11px] font-bold rounded-full transition-colors cursor-pointer disabled:opacity-40"
+                  title="Re-record with camera"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Re-record</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleRemoveQuickImage}
+                disabled={isQuickSubmitting}
+                className="p-1.5 bg-black/65 hover:bg-rose-600 text-white rounded-full transition-colors cursor-pointer disabled:opacity-40"
+                title={`Remove attached ${quickMediaType}`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
             {quickMediaType === 'image' && quickImageMeta && (
               <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 text-white text-[10px] font-mono rounded-md">
                 Compressed to {formatFileSize(quickImageMeta.compSize)}
@@ -1755,7 +1831,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
         {/* Composer Actions Bottom Row */}
         <div className="flex items-center justify-between pt-2 border-t tujuane-divider gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
             {/* Add Photo Button */}
             <button
               type="button"
@@ -1780,10 +1856,40 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               }}
               disabled={isQuickCompressing || isQuickSubmitting}
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-400 hover:bg-slate-100/70 dark:hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50"
-              title="Post a short video (MP4, WebM, MOV — up to 60s / 12 MB)"
+              title="Upload a short video file (MP4, WebM, MOV — up to 60s / 12 MB)"
             >
               <Video className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               <span>{isQuickCompressing && quickMediaType === 'video' ? 'Preparing...' : 'Short Video'}</span>
+            </button>
+
+            {/* Record Live Camera Short Video Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!currentUser) {
+                  openAuthModal();
+                  return;
+                }
+                if (isBanned || isSuspended) {
+                  handleOpenCreateModal();
+                  return;
+                }
+                if (quickImage) {
+                  handleRemoveQuickImage();
+                }
+                setQuickError(null);
+                setQuickShowVideoRecorder((prev) => !prev);
+              }}
+              disabled={isQuickCompressing || isQuickSubmitting}
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 ${
+                quickShowVideoRecorder
+                  ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-rose-700 dark:hover:text-rose-400 hover:bg-slate-100/70 dark:hover:bg-white/10'
+              }`}
+              title="Record a live short video with your camera (up to 60s)"
+            >
+              <Camera className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+              <span>Record Video</span>
             </button>
 
             {/* Record 30s Voice Shout Button (opens post modal directly in Voice Recorder mode) */}
@@ -1922,10 +2028,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 key={post.id}
                 className="tujuane-surface rounded-2xl transition-all overflow-hidden"
               >
-                <div className="p-4 sm:p-6 space-y-4">
+                <div className="p-3.5 sm:p-6 space-y-3.5 sm:space-y-4">
                   {/* Top: Author, Category Badge, County & Date */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-start justify-between gap-2 sm:gap-3">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                       <div
                         onClick={() => {
                           if (onViewUserProfile) {
@@ -2376,7 +2482,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
                             {/* Reaction Count Summary Chips */}
                             {post.reactionsCount && (
-                              <div className="flex items-center gap-1 ml-1.5">
+                              <div className="flex items-center flex-wrap gap-1 ml-1">
                                 {Object.entries(post.reactionsCount).map(([rKey, count]) => {
                                   if (!count || count <= 0) return null;
                                   const rMeta = REACTION_TYPES.find((r) => r.key === rKey);
@@ -2670,7 +2776,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           </div>
                         )}
 
-                        <div className="flex items-start gap-2">
+                        <div className="flex items-start gap-1.5 sm:gap-2">
                           <input
                             type="text"
                             value={commentInput}
@@ -2686,7 +2792,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                                 ? `Reply to @${replyingToComment.authorName}...`
                                 : 'Write a reply to the community...'
                             }
-                            className="flex-1 px-3 py-2 text-xs tujuane-surface rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                            className="flex-1 min-w-0 px-3 py-2 text-xs tujuane-surface rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                           />
 
                           <button
@@ -2764,12 +2870,12 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       {/* Create Post Modal */}
       {isCreateModalOpen && (
         <div
-          onClick={() => setIsCreateModalOpen(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto animate-in fade-in"
+          onClick={closeCreateModal}
+          className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto animate-in fade-in"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 max-w-lg w-full p-6 shadow-2xl space-y-5 my-8 text-slate-900 dark:text-slate-100 transition-colors"
+            className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 max-w-lg w-full p-4 sm:p-6 shadow-2xl space-y-4 sm:space-y-5 my-4 sm:my-8 max-h-[92dvh] overflow-y-auto text-slate-900 dark:text-slate-100 transition-colors"
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
@@ -2785,7 +2891,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setIsCreateModalOpen(false);
+                    closeCreateModal();
                     setIsTypeSelectorOpen(true);
                   }}
                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors cursor-pointer"
@@ -2796,7 +2902,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
+                  onClick={closeCreateModal}
                   className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   title="Close dialog (Esc)"
                   aria-label="Close"
@@ -2982,28 +3088,43 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               </div>
 
               {/* Highlighted Short Video Picker when opened via Short Video option */}
-              {modalHighlightVideo && !compressedImage && (
+              {modalHighlightVideo && !compressedImage && !modalShowVideoRecorder && (
                 <div className="p-4 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/35 border-2 border-dashed border-indigo-300 dark:border-indigo-700 text-center space-y-2.5 animate-in fade-in">
                   <div className="w-11 h-11 rounded-2xl bg-indigo-100 dark:bg-indigo-900/70 text-indigo-600 dark:text-indigo-300 flex items-center justify-center mx-auto">
                     <Video className="w-5 h-5" />
                   </div>
                   <div>
                     <div className="text-xs font-extrabold text-indigo-950 dark:text-indigo-200">
-                      Select a Short Video for the Feed
+                      Record or Upload a Short Video
                     </div>
                     <p className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-0.5">
-                      MP4, WebM, or MOV · up to 60 seconds · max 12 MB
+                      Use your live camera or pick MP4, WebM, MOV · up to 60s · max 12 MB
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => videoInputRef.current?.click()}
-                    disabled={isCompressing}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                  >
-                    <Video className="w-4 h-4" />
-                    <span>{isCompressing ? 'Preparing Video...' : 'Choose Short Video'}</span>
-                  </button>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalMediaType('video');
+                        setModalShowVoiceRecorder(false);
+                        setModalShowVideoRecorder(true);
+                      }}
+                      disabled={isCompressing}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <Camera className="w-4 h-4" />
+                      <span>Record Live Video</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => videoInputRef.current?.click()}
+                      disabled={isCompressing}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <Video className="w-4 h-4" />
+                      <span>{isCompressing ? 'Preparing Video...' : 'Choose Video File'}</span>
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -3080,12 +3201,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
                     Photo, Short Video, or 30s Voice Shout (Optional)
                   </label>
-                  {(modalShowVoiceRecorder || modalAudioData) && !isSubmitting && (
+                  {(modalShowVoiceRecorder || modalAudioData || modalShowVideoRecorder) && !isSubmitting && (
                     <button
                       type="button"
                       onClick={() => {
                         handleClearModalAudio();
                         setModalShowVoiceRecorder(false);
+                        setModalShowVideoRecorder(false);
                       }}
                       className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
                     >
@@ -3136,6 +3258,16 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       />
                     )}
                   </div>
+                ) : modalShowVideoRecorder && !compressedImage ? (
+                  <ShortVideoCameraRecorder
+                    onVideoReady={handleModalRecordedVideo}
+                    onCancel={() => setModalShowVideoRecorder(false)}
+                    onFallbackUploadClick={() => {
+                      setModalShowVideoRecorder(false);
+                      videoInputRef.current?.click();
+                    }}
+                    disabled={isSubmitting}
+                  />
                 ) : !compressedImage ? (
                   <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-4 text-center bg-slate-50/50 dark:bg-slate-800/40 space-y-2.5">
                     <div className="flex flex-wrap items-center justify-center gap-2">
@@ -3160,7 +3292,21 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          setModalShowVoiceRecorder(false);
+                          setModalMediaType('video');
+                          setModalShowVideoRecorder(true);
+                        }}
+                        disabled={isCompressing}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-rose-500 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-2xs transition-colors cursor-pointer"
+                      >
+                        <Camera className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                        <span>Record Short Video</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
                           setModalHighlightVideo(false);
+                          setModalShowVideoRecorder(false);
                           setModalMediaType('audio');
                           setModalShowVoiceRecorder(true);
                         }}
@@ -3174,7 +3320,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     <p className="text-[10px] text-slate-400 dark:text-slate-500">
                       {isCompressing
                         ? 'Processing media...'
-                        : 'Photos auto-compress · Short videos up to 60s · Voice shouts up to 30s'}
+                        : 'Photos auto-compress · Short videos up to 60s (camera or file) · Voice shouts up to 30s'}
                     </p>
                   </div>
                 ) : (
@@ -3195,15 +3341,33 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           className="max-h-48 w-auto object-contain"
                         />
                       )}
-                      <button
-                        type="button"
-                        onClick={handleRemoveImage}
-                        disabled={isSubmitting}
-                        className="absolute top-2 right-2 p-1.5 bg-black/70 hover:bg-rose-600 text-white rounded-lg transition-colors cursor-pointer z-10 disabled:opacity-40"
-                        title={`Remove ${modalMediaType}`}
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                      <div className="absolute top-2 right-2 flex items-center gap-1.5 z-10">
+                        {modalMediaType === 'video' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleRemoveImage();
+                              setModalMediaType('video');
+                              setModalShowVideoRecorder(true);
+                            }}
+                            disabled={isSubmitting}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-black/75 hover:bg-indigo-600 text-white text-[11px] font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-40"
+                            title="Re-record short video with camera"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Re-record</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleRemoveImage}
+                          disabled={isSubmitting}
+                          className="p-1.5 bg-black/70 hover:bg-rose-600 text-white rounded-lg transition-colors cursor-pointer disabled:opacity-40"
+                          title={`Remove ${modalMediaType}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
 
                     {modalMediaType === 'image' && imageMeta && (
@@ -3258,7 +3422,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
+                  onClick={closeCreateModal}
                   disabled={isSubmitting}
                   className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-40"
                 >

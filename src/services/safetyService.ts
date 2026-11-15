@@ -10,9 +10,10 @@ import {
   serverTimestamp,
   getDocs,
   getDoc,
-  where
+  where,
+  limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, handleFirestoreError, handleFirestoreListenerError, OperationType } from '../firebase';
 import { SafetyReport, ModeratorActionLog } from '../types/safety';
 import { sendUserNotification } from './userNotificationService';
 
@@ -67,7 +68,7 @@ export function subscribeToSafetyReports(
   callback: (reports: SafetyReport[]) => void
 ): () => void {
   try {
-    const q = query(collection(db, REPORTS_COLLECTION), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, REPORTS_COLLECTION), orderBy('createdAt', 'desc'), limit(50));
 
     return onSnapshot(
       q,
@@ -94,12 +95,7 @@ export function subscribeToSafetyReports(
         callback(reports);
       },
       (err) => {
-        if (err.code === 'permission-denied') {
-          console.warn('Safety reports feed restricted to moderators.');
-          callback([]);
-          return;
-        }
-        handleFirestoreError(err, OperationType.GET, REPORTS_COLLECTION);
+        handleFirestoreListenerError(err, OperationType.GET, REPORTS_COLLECTION, () => callback([]));
       }
     );
   } catch (err) {

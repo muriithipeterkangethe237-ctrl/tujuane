@@ -8,9 +8,10 @@ import {
   serverTimestamp,
   runTransaction,
   updateDoc,
-  increment
+  increment,
+  limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, handleFirestoreError, handleFirestoreListenerError, OperationType } from '../firebase';
 import { CommunityPoll, CreatePollParams } from '../types/poll';
 import { UserProfile } from '../types/chat';
 
@@ -25,7 +26,7 @@ export function subscribeToCommunityPolls(
   callback: (polls: CommunityPoll[]) => void
 ): () => void {
   const pollsRef = collection(db, POLLS_COLLECTION);
-  const q = query(pollsRef, orderBy('createdAt', 'desc'));
+  const q = query(pollsRef, orderBy('createdAt', 'desc'), limit(25));
 
   return onSnapshot(
     q,
@@ -56,7 +57,7 @@ export function subscribeToCommunityPolls(
       );
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, POLLS_COLLECTION);
+      handleFirestoreListenerError(error, OperationType.LIST, POLLS_COLLECTION, () => callback([]));
     }
   );
 }
@@ -86,9 +87,7 @@ export function subscribeToUserPollVote(
       }
     },
     (error) => {
-      // If permission or read issue, report gracefully
-      console.warn('User poll vote listener error:', error);
-      callback(null);
+      handleFirestoreListenerError(error, OperationType.GET, `${POLLS_COLLECTION}/${pollId}/votes/${userId}`, () => callback(null));
     }
   );
 }

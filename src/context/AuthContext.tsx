@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react';
 import { User, onAuthStateChanged, onIdTokenChanged } from 'firebase/auth';
 import {
   collection,
@@ -7,7 +7,9 @@ import {
   setDoc,
   updateDoc,
   onSnapshot,
-  serverTimestamp
+  serverTimestamp,
+  query,
+  limit
 } from 'firebase/firestore';
 import {
   auth,
@@ -20,6 +22,10 @@ import {
   sendPasswordResetEmail,
   updateProfile,
   handleFirestoreError,
+  handleFirestoreListenerError,
+  isFirestoreQuotaError,
+  isFirestoreQuotaExceeded,
+  markFirestoreQuotaExceeded,
   OperationType
 } from '../firebase';
 import { UserProfile } from '../types/chat';
@@ -86,6 +92,48 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const PERSISTENT_SESSION_KEY = 'tujuane_persistent_session';
+const USER_EDITS_KEY_PREFIX = 'tujuane_user_edits_';
+const USERS_DIRECTORY_CACHE_KEY = 'tujuane_users_directory_cache';
+
+function getCachedUsersDirectory(): Record<string, UserProfile> {
+  try {
+    const raw = localStorage.getItem(USERS_DIRECTORY_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function setCachedUsersDirectory(usersMap: Record<string, UserProfile>) {
+  try {
+    localStorage.setItem(USERS_DIRECTORY_CACHE_KEY, JSON.stringify(usersMap));
+  } catch {
+    // ignore storage limits
+  }
+}
+
+function toIsoTimestamp(value: any): string | undefined {
+  if (!value) return undefined;
+  if (typeof value?.toDate === 'function') {
+    try {
+      return value.toDate().toISOString();
+    } catch {
+      return undefined;
+    }
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value;
+  }
+  return undefined;
+}
+
+function parseMillis(iso?: string): number {
+  if (!iso) return 0;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : 0;
+}
 
 function getCachedSession(): UserProfile | null {
   if (typeof window === 'undefined') return null;
@@ -116,13 +164,59 @@ function setCachedSession(profile: UserProfile | null) {
   }
 }
 
+function getCachedUserEdits(uid: string): Partial<UserProfile> | null {
+  if (typeof window === 'undefined' || !uid) return null;
+  try {
+    const raw = localStorage.getItem(`${USER_EDITS_KEY_PREFIX}${uid}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      return parsed as Partial<UserProfile>;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function setCachedUserEdits(uid: string, profile: UserProfile) {
+  if (typeof window === 'undefined' || !uid) return;
+  try {
+    const snapshot = {
+      uid: profile.uid,
+      displayName: profile.displayName,
+      photoURL: profile.photoURL ?? '',
+      county: profile.county || 'Nairobi',
+      constituency: profile.constituency ?? '',
+      bio: profile.bio ?? '',
+      occupation: profile.occupation ?? '',
+      backgroundAlertsEnabled: profile.backgroundAlertsEnabled,
+      profileCompleted: profile.profileCompleted,
+      profileCustomized: true,
+      profileUpdatedAt: profile.profileUpdatedAt || new Date().toISOString()
+    };
+    localStorage.setItem(`${USER_EDITS_KEY_PREFIX}${uid}`, JSON.stringify(snapshot));
+  } catch {
+    // ignore storage quota errors cleanly
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(() => auth.currentUser || null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(() => getCachedSession());
-  const [usersById, setUsersById] = useState<Record<string, UserProfile>>({});
+  const [usersById, setUsersById] = useState<Record<string, UserProfile>>(() => getCachedUsersDirectory());
   const [loading, setLoading] = useState<boolean>(() => !auth.currentUser && !getCachedSession());
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState<'signin' | 'register'>('signin');
+
+  // Guards against auth/registration races and stale cached snapshots overwriting fresh user edits
+  const registeringUidRef = useRef<string | null>(null);
+  const syncInFlightRef = useRef<Map<string, Promise<void>>>(new Map());
+  const recentLocalEditRef = useRef<{
+    uid: string;
+    profile: UserProfile;
+    savedAtMs: number;
+  } | null>(null);
 
   const profileCompleteness = useMemo(() => getProfileCompleteness(userProfile), [userProfile]);
   const isProfileComplete = profileCompleteness.isComplete;
@@ -158,120 +252,362 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsAuthModalOpen(false);
   };
 
-  // Sync user profile in Firestore and update persistent local cache
-  const syncUserProfile = async (user: User, retries = 2) => {
-    const userDocRef = doc(db, 'users', user.uid);
-    try {
-      const snap = await getDoc(userDocRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        const profile: UserProfile = {
-          uid: user.uid,
-          // Firestore saved profile ALWAYS takes precedence over Google/Firebase Auth
-          displayName:
-            data.displayName && typeof data.displayName === 'string' && data.displayName.trim()
-              ? data.displayName.trim()
-              : user.displayName || 'TUJUANE Community Member',
-          email: data.email || user.email || '',
-          // If user saved a photo or explicitly cleared it in Firestore, respect it over Google auth photo
-          photoURL:
-            data.photoURL !== undefined && data.photoURL !== null
-              ? data.photoURL.trim() ? data.photoURL : undefined
-              : user.photoURL || undefined,
-          county: data.county || 'Nairobi',
-          constituency: data.constituency || undefined,
-          bio: data.bio || undefined,
-          occupation: data.occupation || undefined,
-          blockedUserIds: Array.isArray(data.blockedUserIds) ? data.blockedUserIds : [],
-          mutedUserIds: Array.isArray(data.mutedUserIds) ? data.mutedUserIds : [],
-          isDeveloper: data.isDeveloper !== undefined ? Boolean(data.isDeveloper) : (user.email?.toLowerCase().trim() === 'muriithipeterkangethe237@gmail.com'),
-          accountStatus: (data.accountStatus as 'active' | 'suspended' | 'banned') || 'active',
-          suspendedUntil: data.suspendedUntil?.toDate
-            ? data.suspendedUntil.toDate().toISOString()
-            : typeof data.suspendedUntil === 'string'
-            ? data.suspendedUntil
-            : undefined,
-          banReason: data.banReason || undefined,
-          statusUpdatedAt: data.statusUpdatedAt?.toDate
-            ? data.statusUpdatedAt.toDate().toISOString()
-            : typeof data.statusUpdatedAt === 'string'
-            ? data.statusUpdatedAt
-            : undefined,
-          statusUpdatedBy: data.statusUpdatedBy || undefined,
-          pollVotesCount: typeof data.pollVotesCount === 'number' ? data.pollVotesCount : 0,
-          feedCommentsCount: typeof data.feedCommentsCount === 'number' ? data.feedCommentsCount : 0,
-          isOnline: true,
-          lastSeen: new Date().toISOString(),
-          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString()
-        };
-        setUserProfile(profile);
-        setCachedSession(profile);
-        if (profile.blockedUserIds) setBlockedUserIds(profile.blockedUserIds);
-        if (profile.mutedUserIds) setMutedUserIds(profile.mutedUserIds);
+  // Build authoritative UserProfile from Firestore doc data without reverting user-edited fields
+  const buildProfileFromFirestoreData = (
+    uid: string,
+    data: Record<string, any>,
+    authUser: User,
+    prev?: UserProfile | null,
+    isFromCache = false
+  ): UserProfile => {
+    const remoteUpdatedAt = toIsoTimestamp(data.profileUpdatedAt);
+    const remoteUpdatedMs = parseMillis(remoteUpdatedAt);
 
-        // Update presence non-blockingly
-        updateDoc(userDocRef, {
-          isOnline: true,
-          lastSeen: serverTimestamp()
-        }).catch((err) => {
-          console.warn('Presence status update deferred:', err?.message || err);
-        });
-      } else {
-        // Create new user profile document
-        const newProfile: UserProfile = {
-          uid: user.uid,
-          displayName: user.displayName || 'TUJUANE Community Member',
-          email: user.email || '',
-          photoURL: user.photoURL || undefined,
-          county: 'Nairobi',
-          blockedUserIds: [],
-          mutedUserIds: [],
-          isOnline: true,
-          lastSeen: new Date().toISOString(),
-          createdAt: new Date().toISOString()
-        };
+    const hasExplicitPhotoField = 'photoURL' in data && data.photoURL !== undefined && data.photoURL !== null;
+    const rawRemotePhoto = hasExplicitPhotoField ? String(data.photoURL).trim() : '';
+    const isCustomizedRemote = Boolean(
+      data.profileCustomized ||
+        data.profileCompleted ||
+        remoteUpdatedAt ||
+        hasExplicitPhotoField ||
+        typeof data.bio === 'string' ||
+        typeof data.occupation === 'string'
+    );
 
-        await setDoc(userDocRef, {
-          uid: user.uid,
-          displayName: newProfile.displayName,
-          email: newProfile.email,
-          photoURL: newProfile.photoURL || '',
-          county: newProfile.county,
-          blockedUserIds: [],
-          mutedUserIds: [],
-          isOnline: true,
-          lastSeen: serverTimestamp(),
-          createdAt: serverTimestamp()
-        });
-        setUserProfile(newProfile);
-        setCachedSession(newProfile);
+    const resolvedPhotoURL = hasExplicitPhotoField
+      ? rawRemotePhoto
+        ? rawRemotePhoto
+        : undefined
+      : isCustomizedRemote || prev?.profileCustomized
+      ? prev?.photoURL
+      : authUser.photoURL || undefined;
+
+    const resolvedDisplayName =
+      typeof data.displayName === 'string' && data.displayName.trim()
+        ? data.displayName.trim()
+        : prev?.displayName || authUser.displayName || 'TUJUANE Community Member';
+
+    let assembled: UserProfile = {
+      uid,
+      displayName: resolvedDisplayName,
+      email: data.email || prev?.email || authUser.email || '',
+      photoURL: resolvedPhotoURL,
+      county:
+        typeof data.county === 'string' && data.county.trim()
+          ? data.county.trim()
+          : prev?.county || 'Nairobi',
+      constituency:
+        'constituency' in data
+          ? String(data.constituency || '').trim() || undefined
+          : prev?.constituency,
+      bio: 'bio' in data ? String(data.bio || '').trim() || undefined : prev?.bio,
+      occupation:
+        'occupation' in data ? String(data.occupation || '').trim() || undefined : prev?.occupation,
+      blockedUserIds: Array.isArray(data.blockedUserIds)
+        ? data.blockedUserIds
+        : prev?.blockedUserIds || [],
+      mutedUserIds: Array.isArray(data.mutedUserIds)
+        ? data.mutedUserIds
+        : prev?.mutedUserIds || [],
+      isDeveloper:
+        data.isDeveloper !== undefined
+          ? Boolean(data.isDeveloper)
+          : prev?.isDeveloper ??
+            authUser.email?.toLowerCase().trim() === 'muriithipeterkangethe237@gmail.com',
+      accountStatus:
+        (data.accountStatus as 'active' | 'suspended' | 'banned') || prev?.accountStatus || 'active',
+      suspendedUntil: toIsoTimestamp(data.suspendedUntil) ?? prev?.suspendedUntil,
+      banReason: 'banReason' in data ? data.banReason : prev?.banReason,
+      statusUpdatedAt: toIsoTimestamp(data.statusUpdatedAt) ?? prev?.statusUpdatedAt,
+      statusUpdatedBy: 'statusUpdatedBy' in data ? data.statusUpdatedBy : prev?.statusUpdatedBy,
+      backgroundAlertsEnabled:
+        data.backgroundAlertsEnabled !== undefined
+          ? Boolean(data.backgroundAlertsEnabled)
+          : prev?.backgroundAlertsEnabled,
+      profileCompleted:
+        data.profileCompleted !== undefined
+          ? Boolean(data.profileCompleted)
+          : prev?.profileCompleted,
+      profileCustomized: isCustomizedRemote || prev?.profileCustomized || undefined,
+      profileUpdatedAt: remoteUpdatedAt || prev?.profileUpdatedAt,
+      pollVotesCount:
+        typeof data.pollVotesCount === 'number' ? data.pollVotesCount : prev?.pollVotesCount ?? 0,
+      feedCommentsCount:
+        typeof data.feedCommentsCount === 'number'
+          ? data.feedCommentsCount
+          : prev?.feedCommentsCount ?? 0,
+      isOnline: data.isOnline !== undefined ? Boolean(data.isOnline) : true,
+      lastSeen: toIsoTimestamp(data.lastSeen) || new Date().toISOString(),
+      createdAt: toIsoTimestamp(data.createdAt) || prev?.createdAt || new Date().toISOString()
+    };
+
+    // Never allow a stale cached snapshot or heartbeat to overwrite a newer local user edit
+    const recentEdit = recentLocalEditRef.current;
+    if (
+      recentEdit &&
+      recentEdit.uid === uid &&
+      (Date.now() - recentEdit.savedAtMs < 20000 ||
+        (isFromCache && parseMillis(recentEdit.profile.profileUpdatedAt) >= remoteUpdatedMs))
+    ) {
+      const recentMs = parseMillis(recentEdit.profile.profileUpdatedAt);
+      if (remoteUpdatedMs <= recentMs) {
+        assembled = {
+          ...assembled,
+          displayName: recentEdit.profile.displayName,
+          photoURL: recentEdit.profile.photoURL,
+          county: recentEdit.profile.county,
+          constituency: recentEdit.profile.constituency,
+          bio: recentEdit.profile.bio,
+          occupation: recentEdit.profile.occupation,
+          backgroundAlertsEnabled: recentEdit.profile.backgroundAlertsEnabled,
+          profileCompleted: recentEdit.profile.profileCompleted,
+          profileCustomized: true,
+          profileUpdatedAt: recentEdit.profile.profileUpdatedAt || assembled.profileUpdatedAt
+        };
       }
-    } catch (err: any) {
-      if (retries > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        return syncUserProfile(user, retries - 1);
-      }
-      console.warn('Operating in offline mode for user profile:', err?.message || err);
-      // Prefer cached session over resetting to blank
-      const cached = getCachedSession();
-      if (cached && cached.uid === user.uid) {
-        setUserProfile(cached);
+    }
+
+    // Also reconcile against localStorage user-edits backup if local edit timestamp is strictly newer
+    const localEdits = getCachedUserEdits(uid);
+    const localEditsMs = parseMillis(localEdits?.profileUpdatedAt);
+    if (localEdits && localEditsMs > 0 && localEditsMs > remoteUpdatedMs) {
+      assembled = {
+        ...assembled,
+        displayName:
+          typeof localEdits.displayName === 'string' && localEdits.displayName.trim()
+            ? localEdits.displayName.trim()
+            : assembled.displayName,
+        photoURL:
+          localEdits.photoURL !== undefined
+            ? String(localEdits.photoURL).trim() || undefined
+            : assembled.photoURL,
+        county:
+          typeof localEdits.county === 'string' && localEdits.county.trim()
+            ? localEdits.county.trim()
+            : assembled.county,
+        constituency:
+          localEdits.constituency !== undefined
+            ? String(localEdits.constituency).trim() || undefined
+            : assembled.constituency,
+        bio:
+          localEdits.bio !== undefined
+            ? String(localEdits.bio).trim() || undefined
+            : assembled.bio,
+        occupation:
+          localEdits.occupation !== undefined
+            ? String(localEdits.occupation).trim() || undefined
+            : assembled.occupation,
+        backgroundAlertsEnabled:
+          localEdits.backgroundAlertsEnabled !== undefined
+            ? localEdits.backgroundAlertsEnabled
+            : assembled.backgroundAlertsEnabled,
+        profileCompleted:
+          localEdits.profileCompleted !== undefined
+            ? localEdits.profileCompleted
+            : assembled.profileCompleted,
+        profileCustomized: true,
+        profileUpdatedAt: localEdits.profileUpdatedAt
+      };
+    }
+
+    return assembled;
+  };
+
+  // Sync user profile in Firestore and update persistent local cache (serialized per UID to stop races)
+  const syncUserProfile = async (user: User, retries = 2): Promise<void> => {
+    const existingPromise = syncInFlightRef.current.get(user.uid);
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const runSync = async (remainingRetries: number): Promise<void> => {
+      if (registeringUidRef.current === user.uid) {
         return;
       }
-      const fallbackProfile: UserProfile = {
-        uid: user.uid,
-        displayName: user.displayName || 'TUJUANE Member',
-        email: user.email || '',
-        photoURL: user.photoURL || undefined,
-        county: 'Nairobi',
-        blockedUserIds: [],
-        mutedUserIds: [],
-        isOnline: true,
-        createdAt: new Date().toISOString()
-      };
-      setUserProfile(fallbackProfile);
-      setCachedSession(fallbackProfile);
-    }
+
+      const userDocRef = doc(db, 'users', user.uid);
+      try {
+        const snap = await getDoc(userDocRef);
+        if (registeringUidRef.current === user.uid) {
+          return;
+        }
+
+        if (snap.exists()) {
+          const data = snap.data();
+          const currentSession = getCachedSession();
+          const basePrev =
+            currentSession && currentSession.uid === user.uid ? currentSession : null;
+          const profile = buildProfileFromFirestoreData(
+            user.uid,
+            data,
+            user,
+            basePrev,
+            snap.metadata.fromCache
+          );
+
+          // If local edits were strictly newer than Firestore server doc (e.g. closed offline after save), push them now
+          const localEdits = getCachedUserEdits(user.uid);
+          if (
+            localEdits &&
+            parseMillis(localEdits.profileUpdatedAt) > parseMillis(toIsoTimestamp(data.profileUpdatedAt))
+          ) {
+            void setDoc(
+              userDocRef,
+              {
+                uid: user.uid,
+                email: profile.email || user.email || '',
+                displayName: profile.displayName,
+                photoURL: profile.photoURL || '',
+                county: profile.county || 'Nairobi',
+                constituency: profile.constituency || '',
+                bio: profile.bio || '',
+                occupation: profile.occupation || '',
+                profileCompleted: Boolean(profile.profileCompleted),
+                profileCustomized: true,
+                profileUpdatedAt: profile.profileUpdatedAt || new Date().toISOString()
+              },
+              { merge: true }
+            ).catch(() => {});
+          }
+
+          setUserProfile(profile);
+          setCachedSession(profile);
+          setUsersById((prev) => ({ ...prev, [user.uid]: profile }));
+          if (profile.blockedUserIds) setBlockedUserIds(profile.blockedUserIds);
+          if (profile.mutedUserIds) setMutedUserIds(profile.mutedUserIds);
+
+          // Update presence non-blockingly without touching profile fields
+          updateDoc(userDocRef, {
+            isOnline: true,
+            lastSeen: serverTimestamp()
+          }).catch((err) => {
+            console.warn('Presence status update deferred:', err?.message || err);
+          });
+        } else {
+          // Check if we already have cached edits/session for this UID before creating defaults
+          const cached = getCachedSession();
+          const localEdits = getCachedUserEdits(user.uid);
+          const hasLocalProfile = (cached && cached.uid === user.uid) || !!localEdits;
+
+          const newProfile: UserProfile = {
+            uid: user.uid,
+            displayName:
+              (typeof localEdits?.displayName === 'string' && localEdits.displayName.trim()) ||
+              (cached?.uid === user.uid ? cached.displayName : '') ||
+              user.displayName ||
+              'TUJUANE Community Member',
+            email: (cached?.uid === user.uid ? cached.email : '') || user.email || '',
+            photoURL: hasLocalProfile
+              ? (localEdits?.photoURL !== undefined
+                  ? String(localEdits.photoURL).trim() || undefined
+                  : cached?.uid === user.uid
+                  ? cached.photoURL
+                  : undefined)
+              : user.photoURL || undefined,
+            county:
+              (typeof localEdits?.county === 'string' && localEdits.county.trim()) ||
+              (cached?.uid === user.uid ? cached.county : '') ||
+              'Nairobi',
+            constituency:
+              localEdits?.constituency !== undefined
+                ? String(localEdits.constituency).trim() || undefined
+                : cached?.uid === user.uid
+                ? cached.constituency
+                : undefined,
+            bio:
+              localEdits?.bio !== undefined
+                ? String(localEdits.bio).trim() || undefined
+                : cached?.uid === user.uid
+                ? cached.bio
+                : undefined,
+            occupation:
+              localEdits?.occupation !== undefined
+                ? String(localEdits.occupation).trim() || undefined
+                : cached?.uid === user.uid
+                ? cached.occupation
+                : undefined,
+            blockedUserIds: [],
+            mutedUserIds: [],
+            isOnline: true,
+            profileCustomized: Boolean(localEdits?.profileCustomized || cached?.profileCustomized),
+            profileUpdatedAt: localEdits?.profileUpdatedAt || cached?.profileUpdatedAt,
+            lastSeen: new Date().toISOString(),
+            createdAt: new Date().toISOString()
+          };
+
+          await setDoc(
+            userDocRef,
+            {
+              uid: user.uid,
+              displayName: newProfile.displayName,
+              email: newProfile.email,
+              photoURL: newProfile.photoURL || '',
+              county: newProfile.county,
+              constituency: newProfile.constituency || '',
+              bio: newProfile.bio || '',
+              occupation: newProfile.occupation || '',
+              profileCustomized: Boolean(newProfile.profileCustomized),
+              ...(newProfile.profileUpdatedAt
+                ? { profileUpdatedAt: newProfile.profileUpdatedAt }
+                : {}),
+              blockedUserIds: [],
+              mutedUserIds: [],
+              isOnline: true,
+              lastSeen: serverTimestamp(),
+              createdAt: serverTimestamp()
+            },
+            { merge: true }
+          );
+          setUserProfile(newProfile);
+          setCachedSession(newProfile);
+          setUsersById((prev) => ({ ...prev, [user.uid]: newProfile }));
+        }
+      } catch (err: any) {
+        if (isFirestoreQuotaError(err)) {
+          markFirestoreQuotaExceeded();
+        } else if (remainingRetries > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          return runSync(remainingRetries - 1);
+        }
+        console.warn('Operating in offline/cached mode for user profile:', err?.message || err);
+        const cached = getCachedSession();
+        const localEdits = getCachedUserEdits(user.uid);
+        if (cached && cached.uid === user.uid) {
+          setUserProfile(cached);
+          return;
+        }
+        const fallbackProfile: UserProfile = {
+          uid: user.uid,
+          displayName:
+            (typeof localEdits?.displayName === 'string' && localEdits.displayName.trim()) ||
+            user.displayName ||
+            'TUJUANE Member',
+          email: user.email || '',
+          photoURL: localEdits
+            ? String(localEdits.photoURL || '').trim() || undefined
+            : user.photoURL || undefined,
+          county:
+            (typeof localEdits?.county === 'string' && localEdits.county.trim()) || 'Nairobi',
+          constituency: String(localEdits?.constituency || '').trim() || undefined,
+          bio: String(localEdits?.bio || '').trim() || undefined,
+          occupation: String(localEdits?.occupation || '').trim() || undefined,
+          profileCustomized: Boolean(localEdits?.profileCustomized),
+          profileUpdatedAt: localEdits?.profileUpdatedAt,
+          blockedUserIds: [],
+          mutedUserIds: [],
+          isOnline: true,
+          createdAt: new Date().toISOString()
+        };
+        setUserProfile(fallbackProfile);
+        setCachedSession(fallbackProfile);
+      }
+    };
+
+    const promise = runSync(retries).finally(() => {
+      syncInFlightRef.current.delete(user.uid);
+    });
+    syncInFlightRef.current.set(user.uid, promise);
+    return promise;
   };
 
   useEffect(() => {
@@ -286,6 +622,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } else {
         // Only clear state if Firebase confirms no active session
+        recentLocalEditRef.current = null;
         setCurrentUser(null);
         setUserProfile(null);
         setCachedSession(null);
@@ -321,50 +658,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const unsubUsers = onSnapshot(
-      collection(db, 'users'),
+      query(collection(db, 'users'), limit(100)),
       (snapshot) => {
         const nextMap: Record<string, UserProfile> = {};
         snapshot.docs.forEach((docSnap) => {
           const data = docSnap.data();
-          nextMap[docSnap.id] = {
+          let entry: UserProfile = {
             uid: docSnap.id,
             displayName: data.displayName || 'Citizen Member',
             email: data.email || '',
             photoURL: data.photoURL && String(data.photoURL).trim() ? data.photoURL : undefined,
             county: data.county || 'Nairobi',
-            constituency: data.constituency || undefined,
-            bio: data.bio || undefined,
-            occupation: data.occupation || undefined,
+            constituency: data.constituency && String(data.constituency).trim() ? data.constituency : undefined,
+            bio: data.bio && String(data.bio).trim() ? data.bio : undefined,
+            occupation: data.occupation && String(data.occupation).trim() ? data.occupation : undefined,
             isOnline: Boolean(data.isOnline),
-            lastSeen: data.lastSeen?.toDate
-              ? data.lastSeen.toDate().toISOString()
-              : typeof data.lastSeen === 'string'
-              ? data.lastSeen
-              : undefined,
+            lastSeen: toIsoTimestamp(data.lastSeen),
             isDeveloper: Boolean(data.isDeveloper),
             accountStatus: (data.accountStatus as 'active' | 'suspended' | 'banned') || 'active',
             backgroundAlertsEnabled: data.backgroundAlertsEnabled !== undefined ? Boolean(data.backgroundAlertsEnabled) : undefined,
             profileCompleted: data.profileCompleted !== undefined ? Boolean(data.profileCompleted) : undefined,
+            profileCustomized: data.profileCustomized !== undefined ? Boolean(data.profileCustomized) : undefined,
+            profileUpdatedAt: toIsoTimestamp(data.profileUpdatedAt),
             pollVotesCount: typeof data.pollVotesCount === 'number' ? data.pollVotesCount : 0,
             feedCommentsCount: typeof data.feedCommentsCount === 'number' ? data.feedCommentsCount : 0,
-            createdAt: data.createdAt?.toDate
-              ? data.createdAt.toDate().toISOString()
-              : typeof data.createdAt === 'string'
-              ? data.createdAt
-              : ''
+            createdAt: toIsoTimestamp(data.createdAt) || ''
           };
+
+          // Prevent stale cache or in-flight presence heartbeat from reverting own user's recent edits in the directory
+          const recentEdit = recentLocalEditRef.current;
+          if (
+            docSnap.id === currentUser.uid &&
+            recentEdit &&
+            recentEdit.uid === currentUser.uid &&
+            Date.now() - recentEdit.savedAtMs < 20000 &&
+            parseMillis(entry.profileUpdatedAt) <= parseMillis(recentEdit.profile.profileUpdatedAt)
+          ) {
+            entry = {
+              ...entry,
+              displayName: recentEdit.profile.displayName,
+              photoURL: recentEdit.profile.photoURL,
+              county: recentEdit.profile.county,
+              constituency: recentEdit.profile.constituency,
+              bio: recentEdit.profile.bio,
+              occupation: recentEdit.profile.occupation,
+              profileCompleted: recentEdit.profile.profileCompleted,
+              profileCustomized: true,
+              profileUpdatedAt: recentEdit.profile.profileUpdatedAt
+            };
+          }
+
+          nextMap[docSnap.id] = entry;
         });
         setUsersById(nextMap);
+        setCachedUsersDirectory(nextMap);
       },
-      () => {
-        // non-fatal directory listener notice
+      (err) => {
+        handleFirestoreListenerError(err, OperationType.LIST, 'users');
       }
     );
 
     return () => unsubUsers();
   }, [currentUser]);
 
-  // Real-time snapshot subscription to own user document in Firestore to prevent stale/reverting edits
+  // Real-time snapshot subscription to own user document in Firestore to keep edits synced and intact
   useEffect(() => {
     if (!currentUser) return;
     const userDocRef = doc(db, 'users', currentUser.uid);
@@ -374,49 +731,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!snap.exists()) return;
         const data = snap.data();
         setUserProfile((prev) => {
-          const updated: UserProfile = {
-            uid: currentUser.uid,
-            displayName:
-              data.displayName && typeof data.displayName === 'string' && data.displayName.trim()
-                ? data.displayName.trim()
-                : prev?.displayName || currentUser.displayName || 'TUJUANE Community Member',
-            email: data.email || prev?.email || currentUser.email || '',
-            photoURL:
-              data.photoURL !== undefined && data.photoURL !== null
-                ? data.photoURL.trim() ? data.photoURL : undefined
-                : prev?.photoURL || currentUser.photoURL || undefined,
-            county: data.county || prev?.county || 'Nairobi',
-            constituency: data.constituency !== undefined ? data.constituency : prev?.constituency,
-            bio: data.bio !== undefined ? data.bio : prev?.bio,
-            occupation: data.occupation !== undefined ? data.occupation : prev?.occupation,
-            blockedUserIds: Array.isArray(data.blockedUserIds) ? data.blockedUserIds : (prev?.blockedUserIds || []),
-            mutedUserIds: Array.isArray(data.mutedUserIds) ? data.mutedUserIds : (prev?.mutedUserIds || []),
-            isDeveloper: data.isDeveloper !== undefined ? Boolean(data.isDeveloper) : (prev?.isDeveloper ?? (currentUser.email?.toLowerCase().trim() === 'muriithipeterkangethe237@gmail.com')),
-            accountStatus: (data.accountStatus as 'active' | 'suspended' | 'banned') || prev?.accountStatus || 'active',
-            suspendedUntil: data.suspendedUntil?.toDate
-              ? data.suspendedUntil.toDate().toISOString()
-              : typeof data.suspendedUntil === 'string'
-              ? data.suspendedUntil
-              : prev?.suspendedUntil,
-            banReason: data.banReason !== undefined ? data.banReason : prev?.banReason,
-            statusUpdatedAt: data.statusUpdatedAt?.toDate
-              ? data.statusUpdatedAt.toDate().toISOString()
-              : typeof data.statusUpdatedAt === 'string'
-              ? data.statusUpdatedAt
-              : prev?.statusUpdatedAt,
-            statusUpdatedBy: data.statusUpdatedBy !== undefined ? data.statusUpdatedBy : prev?.statusUpdatedBy,
-            pollVotesCount: typeof data.pollVotesCount === 'number' ? data.pollVotesCount : (prev?.pollVotesCount ?? 0),
-            feedCommentsCount: typeof data.feedCommentsCount === 'number' ? data.feedCommentsCount : (prev?.feedCommentsCount ?? 0),
-            isOnline: data.isOnline !== undefined ? Boolean(data.isOnline) : true,
-            lastSeen: data.lastSeen?.toDate ? data.lastSeen.toDate().toISOString() : (typeof data.lastSeen === 'string' ? data.lastSeen : new Date().toISOString()),
-            createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (typeof data.createdAt === 'string' ? data.createdAt : prev?.createdAt || new Date().toISOString())
-          };
+          const updated = buildProfileFromFirestoreData(
+            currentUser.uid,
+            data,
+            currentUser,
+            prev,
+            snap.metadata.fromCache
+          );
           setCachedSession(updated);
           return updated;
         });
       },
       (err) => {
-        console.warn('Real-time user profile sync notice:', err?.message || err);
+        handleFirestoreListenerError(err, OperationType.GET, `users/${currentUser.uid}`);
       }
     );
     return () => unsub();
@@ -429,6 +756,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const userDocRef = doc(db, 'users', uid);
 
     const markActive = () => {
+      if (isFirestoreQuotaExceeded()) return;
       updateDoc(userDocRef, {
         isOnline: true,
         lastSeen: serverTimestamp()
@@ -436,6 +764,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const markOffline = () => {
+      if (isFirestoreQuotaExceeded()) return;
       updateDoc(userDocRef, {
         isOnline: false,
         lastSeen: serverTimestamp()
@@ -445,17 +774,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Mark active on mount
     markActive();
 
-    // Heartbeat every 35 seconds while document is visible
+    // Heartbeat every 120 seconds while document is visible (keeps reads/writes minimal across clients)
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         markActive();
       }
-    }, 35000);
+    }, 120000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         markActive();
-      } else {
+      } else if (!isFirestoreQuotaExceeded()) {
         updateDoc(userDocRef, {
           lastSeen: serverTimestamp()
         }).catch(() => {});
@@ -509,6 +838,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
+      recentLocalEditRef.current = null;
       setCachedSession(null);
       if (currentUser) {
         const userDocRef = doc(db, 'users', currentUser.uid);
@@ -546,18 +876,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateUserLocation = async (county: string, constituency?: string) => {
-    if (!currentUser || !userProfile) return;
+    if (!currentUser) return;
+    const baseProfile = userProfile || getCachedSession();
+    if (!baseProfile) return;
+
     const userDocRef = doc(db, 'users', currentUser.uid);
+    const updatedAtIso = new Date().toISOString();
+    const safeConstituency = constituency ? constituency.trim() : '';
+
     try {
-      const updated: UserProfile = { ...userProfile, county, constituency: constituency || undefined };
-      const completeness = getProfileCompleteness(updated);
-      const payload: any = {
+      const updated: UserProfile = {
+        ...baseProfile,
         county,
-        constituency: constituency || '',
-        profileCompleted: completeness.isComplete
+        constituency: safeConstituency || undefined,
+        profileCustomized: true,
+        profileUpdatedAt: updatedAtIso
       };
-      await updateDoc(userDocRef, payload);
+      const completeness = getProfileCompleteness(updated);
       updated.profileCompleted = completeness.isComplete;
+
+      recentLocalEditRef.current = {
+        uid: currentUser.uid,
+        profile: updated,
+        savedAtMs: Date.now()
+      };
+      setCachedUserEdits(currentUser.uid, updated);
+
+      const payload: any = {
+        uid: currentUser.uid,
+        displayName: updated.displayName || currentUser.displayName || 'Citizen Member',
+        email: updated.email || currentUser.email || '',
+        county,
+        constituency: safeConstituency,
+        profileCompleted: completeness.isComplete,
+        profileCustomized: true,
+        profileUpdatedAt: updatedAtIso
+      };
+
+      await setDoc(userDocRef, payload, { merge: true });
       setUserProfile(updated);
       setCachedSession(updated);
       setUsersById((prev) => ({ ...prev, [currentUser.uid]: updated }));
@@ -577,52 +933,117 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     backgroundAlertsEnabled?: boolean;
   }) => {
     if (!currentUser) return;
-    const userDocRef = doc(db, 'users', currentUser.uid);
-    try {
-      const payload: any = {
-        uid: currentUser.uid,
-        email: currentUser.email || userProfile?.email || '',
-        lastSeen: serverTimestamp()
-      };
-      if (updates.displayName !== undefined) payload.displayName = updates.displayName.trim();
-      if (updates.photoURL !== undefined) payload.photoURL = updates.photoURL;
-      if (updates.county !== undefined) payload.county = updates.county;
-      if (updates.constituency !== undefined) payload.constituency = updates.constituency;
-      if (updates.bio !== undefined) payload.bio = updates.bio.trim();
-      if (updates.occupation !== undefined) payload.occupation = updates.occupation.trim();
-      if (updates.backgroundAlertsEnabled !== undefined) {
-        payload.backgroundAlertsEnabled = Boolean(updates.backgroundAlertsEnabled);
-      }
 
-      const baseProfile: UserProfile = userProfile || {
+    if (updates.photoURL !== undefined && updates.photoURL.length > 590000) {
+      throw new Error('Selected profile picture is too large even after compression. Please pick a smaller image.');
+    }
+
+    const userDocRef = doc(db, 'users', currentUser.uid);
+    const updatedAtIso = new Date().toISOString();
+    const isIdentityEdit =
+      updates.displayName !== undefined ||
+      updates.photoURL !== undefined ||
+      updates.county !== undefined ||
+      updates.constituency !== undefined ||
+      updates.bio !== undefined ||
+      updates.occupation !== undefined;
+
+    try {
+      const baseSource =
+        userProfile ||
+        (getCachedSession()?.uid === currentUser.uid ? getCachedSession() : null);
+
+      const baseProfile: UserProfile = baseSource || {
         uid: currentUser.uid,
-        displayName: payload.displayName || currentUser.displayName || 'TUJUANE Member',
+        displayName:
+          (updates.displayName !== undefined ? updates.displayName.trim() : '') ||
+          currentUser.displayName ||
+          'TUJUANE Member',
         email: currentUser.email || '',
-        photoURL: payload.photoURL || undefined,
-        county: payload.county || 'Nairobi',
+        photoURL: updates.photoURL ? updates.photoURL : undefined,
+        county: updates.county || 'Nairobi',
         constituency: undefined,
         bio: undefined,
         occupation: undefined,
         createdAt: new Date().toISOString()
       };
 
+      const resolvedDisplayName =
+        updates.displayName !== undefined && updates.displayName.trim()
+          ? updates.displayName.trim()
+          : baseProfile.displayName || currentUser.displayName || 'Citizen Member';
+
+      const payload: any = {
+        uid: currentUser.uid,
+        displayName: resolvedDisplayName,
+        email: currentUser.email || baseProfile.email || '',
+        county:
+          updates.county !== undefined
+            ? updates.county.trim() || 'Nairobi'
+            : baseProfile.county || 'Nairobi',
+        lastSeen: serverTimestamp()
+      };
+
+      if (updates.photoURL !== undefined) {
+        payload.photoURL = updates.photoURL.trim();
+      }
+      if (updates.constituency !== undefined) {
+        payload.constituency = updates.constituency.trim();
+      }
+      if (updates.bio !== undefined) {
+        payload.bio = updates.bio.trim();
+      }
+      if (updates.occupation !== undefined) {
+        payload.occupation = updates.occupation.trim();
+      }
+      if (updates.backgroundAlertsEnabled !== undefined) {
+        payload.backgroundAlertsEnabled = Boolean(updates.backgroundAlertsEnabled);
+      }
+
       const updated: UserProfile = {
         ...baseProfile,
-        displayName: payload.displayName !== undefined && payload.displayName ? payload.displayName : baseProfile.displayName,
-        photoURL: payload.photoURL !== undefined ? (payload.photoURL.trim() ? payload.photoURL : undefined) : baseProfile.photoURL,
-        county: payload.county !== undefined ? payload.county : baseProfile.county,
-        constituency: payload.constituency !== undefined ? (payload.constituency || undefined) : baseProfile.constituency,
-        bio: payload.bio !== undefined ? payload.bio : baseProfile.bio,
-        occupation: payload.occupation !== undefined ? payload.occupation : baseProfile.occupation,
+        displayName: resolvedDisplayName,
+        photoURL:
+          updates.photoURL !== undefined
+            ? updates.photoURL.trim()
+              ? updates.photoURL.trim()
+              : undefined
+            : baseProfile.photoURL,
+        county: payload.county,
+        constituency:
+          updates.constituency !== undefined
+            ? updates.constituency.trim() || undefined
+            : baseProfile.constituency,
+        bio: updates.bio !== undefined ? updates.bio.trim() || undefined : baseProfile.bio,
+        occupation:
+          updates.occupation !== undefined
+            ? updates.occupation.trim() || undefined
+            : baseProfile.occupation,
         backgroundAlertsEnabled:
           payload.backgroundAlertsEnabled !== undefined
             ? payload.backgroundAlertsEnabled
-            : baseProfile.backgroundAlertsEnabled
+            : baseProfile.backgroundAlertsEnabled,
+        profileCustomized: isIdentityEdit ? true : baseProfile.profileCustomized,
+        profileUpdatedAt: isIdentityEdit ? updatedAtIso : baseProfile.profileUpdatedAt
       };
 
       const completeness = getProfileCompleteness(updated);
       payload.profileCompleted = completeness.isComplete;
       updated.profileCompleted = completeness.isComplete;
+      if (updated.profileCustomized) {
+        payload.profileCustomized = true;
+      }
+      if (updated.profileUpdatedAt) {
+        payload.profileUpdatedAt = updated.profileUpdatedAt;
+      }
+
+      // Record recent local edit before write so any snapshot arriving mid-write cannot revert state
+      recentLocalEditRef.current = {
+        uid: currentUser.uid,
+        profile: updated,
+        savedAtMs: Date.now()
+      };
+      setCachedUserEdits(currentUser.uid, updated);
 
       // Persist to Firestore users/{uid}
       await setDoc(userDocRef, payload, { merge: true });
@@ -632,16 +1053,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCachedSession(updated);
       setUsersById((prev) => ({ ...prev, [currentUser.uid]: updated }));
 
-      // Sync Firebase Auth profile (displayName + short HTTP photoURL if applicable)
+      // Sync Firebase Auth profile (displayName + cleared or short HTTP photoURL)
       const authUpdates: { displayName?: string; photoURL?: string } = {};
       if (payload.displayName && currentUser.displayName !== payload.displayName) {
         authUpdates.displayName = payload.displayName;
       }
       if (
         updates.photoURL !== undefined &&
-        (updates.photoURL === '' || (updates.photoURL.startsWith('http') && updates.photoURL.length < 1500))
+        (updates.photoURL.trim() === '' ||
+          (updates.photoURL.startsWith('http') && updates.photoURL.length < 1500))
       ) {
-        authUpdates.photoURL = updates.photoURL;
+        authUpdates.photoURL = updates.photoURL.trim();
       }
       if (Object.keys(authUpdates).length > 0) {
         try {
@@ -692,46 +1114,76 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
     const user = cred.user;
-    if (displayName.trim()) {
-      try {
-        await updateProfile(user, { displayName: displayName.trim() });
-      } catch (err) {
-        console.warn('Profile display name update deferred:', err);
-      }
-    }
-    const userDocRef = doc(db, 'users', user.uid);
+    // Block onAuthStateChanged -> syncUserProfile from overwriting with placeholder defaults before setDoc completes
+    registeringUidRef.current = user.uid;
+
+    const chosenName = displayName.trim() || 'TUJUANE Member';
+    const chosenCounty = county || 'Nairobi';
+    const chosenConstituency = constituency?.trim() || '';
+    const updatedAtIso = new Date().toISOString();
+
     const newProfile: UserProfile = {
       uid: user.uid,
-      displayName: displayName.trim() || 'TUJUANE Member',
+      displayName: chosenName,
       email: email.trim(),
-      county: county || 'Nairobi',
-      constituency: constituency || undefined,
+      county: chosenCounty,
+      constituency: chosenConstituency || undefined,
       blockedUserIds: [],
       mutedUserIds: [],
       isOnline: true,
-      lastSeen: new Date().toISOString(),
-      createdAt: new Date().toISOString()
+      profileCustomized: true,
+      profileUpdatedAt: updatedAtIso,
+      lastSeen: updatedAtIso,
+      createdAt: updatedAtIso
     };
-    try {
-      await setDoc(userDocRef, {
-        uid: user.uid,
-        displayName: newProfile.displayName,
-        email: newProfile.email,
-        photoURL: '',
-        county: newProfile.county,
-        constituency: newProfile.constituency || '',
-        blockedUserIds: [],
-        mutedUserIds: [],
-        isOnline: true,
-        lastSeen: serverTimestamp(),
-        createdAt: serverTimestamp()
-      });
-    } catch (err) {
-      console.warn('Firestore user doc initialization deferred:', err);
-    }
-    setCurrentUser(user);
-    setUserProfile(newProfile);
+
+    recentLocalEditRef.current = {
+      uid: user.uid,
+      profile: newProfile,
+      savedAtMs: Date.now()
+    };
+    setCachedUserEdits(user.uid, newProfile);
     setCachedSession(newProfile);
+    setUserProfile(newProfile);
+    setUsersById((prev) => ({ ...prev, [user.uid]: newProfile }));
+
+    try {
+      if (displayName.trim()) {
+        try {
+          await updateProfile(user, { displayName: chosenName });
+        } catch (err) {
+          console.warn('Profile display name update deferred:', err);
+        }
+      }
+
+      const userDocRef = doc(db, 'users', user.uid);
+      try {
+        await setDoc(userDocRef, {
+          uid: user.uid,
+          displayName: newProfile.displayName,
+          email: newProfile.email,
+          photoURL: '',
+          county: newProfile.county,
+          constituency: chosenConstituency,
+          blockedUserIds: [],
+          mutedUserIds: [],
+          isOnline: true,
+          profileCustomized: true,
+          profileUpdatedAt: updatedAtIso,
+          lastSeen: serverTimestamp(),
+          createdAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.warn('Firestore user doc initialization deferred:', err);
+      }
+      setCurrentUser(user);
+      setUserProfile(newProfile);
+      setCachedSession(newProfile);
+    } finally {
+      if (registeringUidRef.current === user.uid) {
+        registeringUidRef.current = null;
+      }
+    }
     closeAuthModal();
   };
 

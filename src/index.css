@@ -111,6 +111,27 @@ code, pre, kbd, .font-mono {
 /* Custom smooth scroll without visible side scroll indicator */
 html {
   scroll-behavior: smooth;
+  overflow-x: clip;
+  max-width: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  touch-action: manipulation;
+}
+
+body {
+  overflow-x: clip;
+  max-width: 100%;
+  touch-action: manipulation;
+  overscroll-behavior-x: none;
+}
+
+/* Prevent iOS Safari & Chrome Android automatic viewport zoom when focusing form fields on phones */
+@media (max-width: 768px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
 }
 
 * {

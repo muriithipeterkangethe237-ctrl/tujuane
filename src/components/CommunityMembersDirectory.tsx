@@ -461,7 +461,7 @@ export const CommunityMembersDirectory: React.FC<CommunityMembersDirectoryProps>
 
       {/* Filter and Search Bar (Visible for All, Friends, Following, Followers) */}
       {activeSubTab !== 'requests' && (
-        <div className="tujuane-surface p-4 sm:p-5 rounded-2xl space-y-4 transition-colors">
+        <div className="tujuane-surface p-3 sm:p-5 rounded-2xl space-y-3 sm:space-y-4 transition-colors">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
             {/* Search Input */}
             <div className="md:col-span-4 relative">

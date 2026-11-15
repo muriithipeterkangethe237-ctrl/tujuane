@@ -11,9 +11,19 @@ import {
   serverTimestamp,
   arrayUnion,
   arrayRemove,
-  writeBatch
+  writeBatch,
+  limit,
+  limitToLast
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import {
+  db,
+  handleFirestoreError,
+  handleFirestoreListenerError,
+  isFirestoreQuotaExceeded,
+  isFirestoreQuotaError,
+  markFirestoreQuotaExceeded,
+  OperationType
+} from '../firebase';
 import {
   CommunityChannel,
   GroupChat,
@@ -35,7 +45,7 @@ export function subscribeToChannelMessages(
   callback: (messages: ChannelMessage[]) => void
 ): () => void {
   const path = `channels/${channelId}/messages`;
-  const q = query(collection(db, path), orderBy('createdAt', 'asc'));
+  const q = query(collection(db, path), orderBy('createdAt', 'asc'), limitToLast(80));
 
   return onSnapshot(
     q,
@@ -64,7 +74,7 @@ export function subscribeToChannelMessages(
       callback(messages);
     },
     (err) => {
-      handleFirestoreError(err, OperationType.GET, path);
+      handleFirestoreListenerError(err, OperationType.GET, path, () => callback([]));
     }
   );
 }
@@ -181,7 +191,7 @@ export function subscribeToGroups(
   callback: (groups: GroupChat[]) => void
 ): () => void {
   const path = 'groups';
-  const q = query(collection(db, path), orderBy('lastMessageTimestamp', 'desc'));
+  const q = query(collection(db, path), orderBy('lastMessageTimestamp', 'desc'), limit(40));
 
   return onSnapshot(
     q,
@@ -218,7 +228,7 @@ export function subscribeToGroups(
       callback(groups);
     },
     (err) => {
-      handleFirestoreError(err, OperationType.GET, path);
+      handleFirestoreListenerError(err, OperationType.GET, path, () => callback([]));
     }
   );
 }
@@ -250,7 +260,7 @@ export function subscribeToGroupMessages(
   callback: (messages: ChannelMessage[]) => void
 ): () => void {
   const path = `groups/${groupId}/messages`;
-  const q = query(collection(db, path), orderBy('createdAt', 'asc'));
+  const q = query(collection(db, path), orderBy('createdAt', 'asc'), limitToLast(80));
 
   return onSnapshot(
     q,
@@ -282,7 +292,7 @@ export function subscribeToGroupMessages(
       callback(messages);
     },
     (err) => {
-      handleFirestoreError(err, OperationType.GET, path);
+      handleFirestoreListenerError(err, OperationType.GET, path, () => callback([]));
     }
   );
 }
@@ -385,7 +395,7 @@ export async function markGroupUnreadMessagesAsDelivered(
   groupId: string,
   userId: string
 ): Promise<void> {
-  if (!groupId || !userId) return;
+  if (!groupId || !userId || isFirestoreQuotaExceeded()) return;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
 
   const lockKey = `${groupId}:${userId}`;
@@ -403,7 +413,9 @@ export async function markGroupUnreadMessagesAsDelivered(
     const members: string[] = Array.isArray(groupData.members) ? groupData.members : [];
     if (!members.includes(userId)) return;
 
-    const msgsSnap = await getDocs(collection(db, 'groups', groupId, 'messages'));
+    const msgsSnap = await getDocs(
+      query(collection(db, 'groups', groupId, 'messages'), orderBy('createdAt', 'desc'), limit(40))
+    );
     const undeliveredDocs = msgsSnap.docs.filter((docSnap) => {
       const d = docSnap.data();
       if (d.senderId === userId) return false;
@@ -443,12 +455,18 @@ export async function markGroupUnreadMessagesAsDelivered(
 
     await batch.commit();
   } catch (err) {
-    console.warn('Could not mark background group messages as delivered:', err);
+    if (isFirestoreQuotaError(err)) {
+      markFirestoreQuotaExceeded();
+    } else {
+      console.warn('Could not mark background group messages as delivered:', err);
+    }
   } finally {
     inFlightGroupDeliveryChecks.delete(lockKey);
-    if (pendingGroupDeliveryRechecks.has(lockKey)) {
+    if (pendingGroupDeliveryRechecks.has(lockKey) && !isFirestoreQuotaExceeded()) {
       pendingGroupDeliveryRechecks.delete(lockKey);
       markGroupUnreadMessagesAsDelivered(groupId, userId);
+    } else {
+      pendingGroupDeliveryRechecks.delete(lockKey);
     }
   }
 }

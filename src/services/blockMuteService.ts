@@ -6,7 +6,7 @@ import {
   arrayRemove,
   onSnapshot
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, handleFirestoreError, handleFirestoreListenerError, OperationType } from '../firebase';
 
 const BLOCKED_CACHE_PREFIX = 'tujuane_blocked_users_';
 const MUTED_CACHE_PREFIX = 'tujuane_muted_users_';
@@ -173,7 +173,7 @@ export function subscribeBlockedAndMuted(
       }
     },
     (err) => {
-      console.warn('Subscription to blocked/muted lists warning:', err?.message || err);
+      handleFirestoreListenerError(err, OperationType.GET, `users/${userId}`);
     }
   );
 }

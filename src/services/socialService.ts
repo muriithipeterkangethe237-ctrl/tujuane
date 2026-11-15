@@ -9,9 +9,10 @@ import {
   onSnapshot,
   serverTimestamp,
   getDoc,
-  getDocs
+  getDocs,
+  limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, handleFirestoreError, handleFirestoreListenerError, OperationType } from '../firebase';
 import { UserProfile } from '../types/chat';
 import { FollowRelationship, FriendRequest } from '../types/social';
 import { sendUserNotification } from './userNotificationService';
@@ -86,7 +87,7 @@ export function subscribeToFollowing(
   userId: string,
   callback: (following: FollowRelationship[]) => void
 ): () => void {
-  const q = query(collection(db, FOLLOWS_COLLECTION), where('followerId', '==', userId));
+  const q = query(collection(db, FOLLOWS_COLLECTION), where('followerId', '==', userId), limit(100));
 
   return onSnapshot(
     q,
@@ -109,7 +110,7 @@ export function subscribeToFollowing(
       callback(list);
     },
     (err) => {
-      handleFirestoreError(err, OperationType.GET, FOLLOWS_COLLECTION);
+      handleFirestoreListenerError(err, OperationType.GET, FOLLOWS_COLLECTION, () => callback([]));
     }
   );
 }
@@ -121,7 +122,7 @@ export function subscribeToFollowers(
   userId: string,
   callback: (followers: FollowRelationship[]) => void
 ): () => void {
-  const q = query(collection(db, FOLLOWS_COLLECTION), where('followingId', '==', userId));
+  const q = query(collection(db, FOLLOWS_COLLECTION), where('followingId', '==', userId), limit(100));
 
   return onSnapshot(
     q,
@@ -144,7 +145,7 @@ export function subscribeToFollowers(
       callback(list);
     },
     (err) => {
-      handleFirestoreError(err, OperationType.GET, FOLLOWS_COLLECTION);
+      handleFirestoreListenerError(err, OperationType.GET, FOLLOWS_COLLECTION, () => callback([]));
     }
   );
 }
@@ -268,7 +269,8 @@ export function subscribeToIncomingFriendRequests(
   const q = query(
     collection(db, FRIEND_REQUESTS_COLLECTION),
     where('receiverId', '==', userId),
-    where('status', '==', 'pending')
+    where('status', '==', 'pending'),
+    limit(50)
   );
 
   return onSnapshot(
@@ -296,7 +298,7 @@ export function subscribeToIncomingFriendRequests(
       callback(list);
     },
     (err) => {
-      handleFirestoreError(err, OperationType.GET, FRIEND_REQUESTS_COLLECTION);
+      handleFirestoreListenerError(err, OperationType.GET, FRIEND_REQUESTS_COLLECTION, () => callback([]));
     }
   );
 }
@@ -312,13 +314,15 @@ export function subscribeToFriends(
   const qSender = query(
     collection(db, FRIEND_REQUESTS_COLLECTION),
     where('senderId', '==', userId),
-    where('status', '==', 'accepted')
+    where('status', '==', 'accepted'),
+    limit(100)
   );
 
   const qReceiver = query(
     collection(db, FRIEND_REQUESTS_COLLECTION),
     where('receiverId', '==', userId),
-    where('status', '==', 'accepted')
+    where('status', '==', 'accepted'),
+    limit(100)
   );
 
   let senderFriends: FriendRequest[] = [];
@@ -330,23 +334,35 @@ export function subscribeToFriends(
     callback(Array.from(map.values()));
   };
 
-  const unsub1 = onSnapshot(qSender, (snap) => {
-    senderFriends = snap.docs.map((d) => ({
-      id: d.id,
-      ...d.data(),
-      createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate().toISOString() : new Date().toISOString()
-    })) as FriendRequest[];
-    updateMerged();
-  });
+  const unsub1 = onSnapshot(
+    qSender,
+    (snap) => {
+      senderFriends = snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+        createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate().toISOString() : new Date().toISOString()
+      })) as FriendRequest[];
+      updateMerged();
+    },
+    (err) => {
+      handleFirestoreListenerError(err, OperationType.GET, FRIEND_REQUESTS_COLLECTION, updateMerged);
+    }
+  );
 
-  const unsub2 = onSnapshot(qReceiver, (snap) => {
-    receiverFriends = snap.docs.map((d) => ({
-      id: d.id,
-      ...d.data(),
-      createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate().toISOString() : new Date().toISOString()
-    })) as FriendRequest[];
-    updateMerged();
-  });
+  const unsub2 = onSnapshot(
+    qReceiver,
+    (snap) => {
+      receiverFriends = snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+        createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate().toISOString() : new Date().toISOString()
+      })) as FriendRequest[];
+      updateMerged();
+    },
+    (err) => {
+      handleFirestoreListenerError(err, OperationType.GET, FRIEND_REQUESTS_COLLECTION, updateMerged);
+    }
+  );
 
   return () => {
     unsub1();
@@ -363,11 +379,13 @@ export function subscribeToAllUserFriendRequests(
 ): () => void {
   const qSender = query(
     collection(db, FRIEND_REQUESTS_COLLECTION),
-    where('senderId', '==', userId)
+    where('senderId', '==', userId),
+    limit(100)
   );
   const qReceiver = query(
     collection(db, FRIEND_REQUESTS_COLLECTION),
-    where('receiverId', '==', userId)
+    where('receiverId', '==', userId),
+    limit(100)
   );
 
   let sentList: FriendRequest[] = [];
@@ -379,23 +397,35 @@ export function subscribeToAllUserFriendRequests(
     callback(Array.from(map.values()));
   };
 
-  const unsub1 = onSnapshot(qSender, (snap) => {
-    sentList = snap.docs.map((d) => ({
-      id: d.id,
-      ...d.data(),
-      createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate().toISOString() : new Date().toISOString()
-    })) as FriendRequest[];
-    notify();
-  });
+  const unsub1 = onSnapshot(
+    qSender,
+    (snap) => {
+      sentList = snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+        createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate().toISOString() : new Date().toISOString()
+      })) as FriendRequest[];
+      notify();
+    },
+    (err) => {
+      handleFirestoreListenerError(err, OperationType.GET, FRIEND_REQUESTS_COLLECTION, notify);
+    }
+  );
 
-  const unsub2 = onSnapshot(qReceiver, (snap) => {
-    receivedList = snap.docs.map((d) => ({
-      id: d.id,
-      ...d.data(),
-      createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate().toISOString() : new Date().toISOString()
-    })) as FriendRequest[];
-    notify();
-  });
+  const unsub2 = onSnapshot(
+    qReceiver,
+    (snap) => {
+      receivedList = snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+        createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate().toISOString() : new Date().toISOString()
+      })) as FriendRequest[];
+      notify();
+    },
+    (err) => {
+      handleFirestoreListenerError(err, OperationType.GET, FRIEND_REQUESTS_COLLECTION, notify);
+    }
+  );
 
   return () => {
     unsub1();

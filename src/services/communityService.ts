@@ -14,9 +14,16 @@ import {
   increment,
   getDoc,
   getDocs,
-  runTransaction
+  runTransaction,
+  limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import {
+  db,
+  handleFirestoreError,
+  handleFirestoreListenerError,
+  isFirestoreQuotaExceeded,
+  OperationType
+} from '../firebase';
 import { UserProfile } from '../types/chat';
 import { CommunityPost, CommunityComment, CreatePostParams } from '../types/community';
 import { base64ToBlobUrl } from '../utils/videoProcessor';
@@ -182,6 +189,10 @@ export async function fetchAndAssemblePostVideo(
   const cached = videoBlobUrlCache.get(postId);
   if (cached) return cached;
 
+  if (isFirestoreQuotaExceeded()) {
+    throw new Error('Database daily free read quota reached. Cached data remains available; quota resets tomorrow.');
+  }
+
   const existingPromise = inFlightVideoLoads.get(postId);
   if (existingPromise) return existingPromise;
 
@@ -216,11 +227,11 @@ export async function fetchAndAssemblePostVideo(
  * Real-time listener for community posts with optional county, constituency and category filtering
  */
 export function subscribeToCommunityPosts(
-  filters: { county?: string; constituency?: string; category?: string; sortBy?: 'latest' | 'popular' },
+  filters: { county?: string; constituency?: string; category?: string; sortBy?: 'latest' | 'popular'; maxPosts?: number },
   callback: (posts: CommunityPost[]) => void
 ): () => void {
   const postsRef = collection(db, POSTS_COLLECTION);
-  let q = query(postsRef, orderBy('createdAt', 'desc'));
+  const q = query(postsRef, orderBy('createdAt', 'desc'), limit(filters.maxPosts ?? 40));
 
   return onSnapshot(
     q,
@@ -305,7 +316,7 @@ export function subscribeToCommunityPosts(
       callback(posts);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, POSTS_COLLECTION);
+      handleFirestoreListenerError(error, OperationType.GET, POSTS_COLLECTION, () => callback([]));
     }
   );
 }
@@ -404,7 +415,7 @@ export function subscribeToPostComments(
 ): () => void {
   const path = `${POSTS_COLLECTION}/${postId}/comments`;
   const commentsRef = collection(db, POSTS_COLLECTION, postId, 'comments');
-  const q = query(commentsRef, orderBy('createdAt', 'asc'));
+  const q = query(commentsRef, orderBy('createdAt', 'asc'), limit(60));
 
   return onSnapshot(
     q,
@@ -429,7 +440,7 @@ export function subscribeToPostComments(
       callback(comments);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
+      handleFirestoreListenerError(error, OperationType.GET, path, () => callback([]));
     }
   );
 }

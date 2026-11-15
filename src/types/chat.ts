@@ -19,6 +19,8 @@ export interface UserProfile {
   statusUpdatedBy?: string;
   backgroundAlertsEnabled?: boolean;
   profileCompleted?: boolean;
+  profileCustomized?: boolean;
+  profileUpdatedAt?: string;
   pollVotesCount?: number;
   feedCommentsCount?: number;
   createdAt: string;

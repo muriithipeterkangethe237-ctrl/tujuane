@@ -20,6 +20,8 @@ export async function propagateUserProfileUpdates(
   const safePhoto = profile.photoURL || '';
   const safeCounty = profile.county || 'Nairobi';
   const safeConstituency = profile.constituency || '';
+  const safeBio = profile.bio || '';
+  const safeOccupation = profile.occupation || '';
 
   const jobs: Promise<void>[] = [];
 
@@ -88,7 +90,9 @@ export async function propagateUserProfileUpdates(
                 email: profile.email || '',
                 photoURL: safePhoto,
                 county: safeCounty,
-                constituency: safeConstituency
+                constituency: safeConstituency,
+                bio: safeBio,
+                occupation: safeOccupation
               }
             }).catch(() => {})
           )
@@ -114,7 +118,8 @@ export async function propagateUserProfileUpdates(
               [`memberDetails.${uid}`]: {
                 displayName: safeName,
                 photoURL: safePhoto,
-                county: safeCounty
+                county: safeCounty,
+                constituency: safeConstituency
               }
             }).catch(() => {})
           )

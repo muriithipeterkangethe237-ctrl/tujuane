@@ -13,9 +13,19 @@ import {
   arrayUnion,
   arrayRemove,
   writeBatch,
-  deleteField
+  deleteField,
+  limit,
+  limitToLast
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import {
+  db,
+  handleFirestoreError,
+  handleFirestoreListenerError,
+  isFirestoreQuotaExceeded,
+  isFirestoreQuotaError,
+  markFirestoreQuotaExceeded,
+  OperationType
+} from '../firebase';
 import {
   UserProfile,
   ChatConversation,
@@ -291,7 +301,7 @@ export async function markChatUnreadMessagesAsDelivered(
   chatId: string,
   recipientId: string
 ): Promise<void> {
-  if (!chatId || !recipientId) return;
+  if (!chatId || !recipientId || isFirestoreQuotaExceeded()) return;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
 
   const lockKey = `${chatId}:${recipientId}`;
@@ -303,7 +313,7 @@ export async function markChatUnreadMessagesAsDelivered(
 
   try {
     const messagesRef = collection(db, 'chats', chatId, 'messages');
-    const q = query(messagesRef, where('recipientId', '==', recipientId));
+    const q = query(messagesRef, where('recipientId', '==', recipientId), limit(40));
     const snap = await getDocs(q);
 
     const undeliveredDocs = snap.docs.filter((docSnap) => {
@@ -339,12 +349,18 @@ export async function markChatUnreadMessagesAsDelivered(
     }
     await batch.commit();
   } catch (err) {
-    console.warn('Could not mark background chat messages as delivered:', err);
+    if (isFirestoreQuotaError(err)) {
+      markFirestoreQuotaExceeded();
+    } else {
+      console.warn('Could not mark background chat messages as delivered:', err);
+    }
   } finally {
     inFlightDeliveryChecks.delete(lockKey);
-    if (pendingDeliveryRechecks.has(lockKey)) {
+    if (pendingDeliveryRechecks.has(lockKey) && !isFirestoreQuotaExceeded()) {
       pendingDeliveryRechecks.delete(lockKey);
       markChatUnreadMessagesAsDelivered(chatId, recipientId);
+    } else {
+      pendingDeliveryRechecks.delete(lockKey);
     }
   }
 }
@@ -528,7 +544,8 @@ export function subscribeToUserChats(
   const path = 'chats';
   const q = query(
     collection(db, path),
-    where('participants', 'array-contains', userId)
+    where('participants', 'array-contains', userId),
+    limit(40)
   );
 
   return onSnapshot(
@@ -563,7 +580,7 @@ export function subscribeToUserChats(
       callback(chats);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
+      handleFirestoreListenerError(error, OperationType.GET, path, () => callback([]));
     }
   );
 }
@@ -576,7 +593,7 @@ export function subscribeToChatMessages(
   callback: (messages: ChatMessage[]) => void
 ): () => void {
   const path = `chats/${chatId}/messages`;
-  const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc'));
+  const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc'), limitToLast(80));
 
   return onSnapshot(
     q,
@@ -609,7 +626,7 @@ export function subscribeToChatMessages(
       callback(messages);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
+      handleFirestoreListenerError(error, OperationType.GET, path, () => callback([]));
     }
   );
 }
@@ -711,7 +728,9 @@ export function subscribeToUserPresence(
       });
     },
     (err) => {
-      console.warn('Presence subscription note:', err);
+      handleFirestoreListenerError(err, OperationType.GET, `users/${userId}`, () =>
+        callback({ isOnline: false, lastSeenText: 'Offline' })
+      );
     }
   );
 }
@@ -753,7 +772,7 @@ export function subscribeToAllUserPresenceMap(
   callback: (presenceMap: Record<string, { isOnline: boolean; lastSeen?: string }>) => void
 ): () => void {
   const path = 'users';
-  const q = query(collection(db, path));
+  const q = query(collection(db, path), limit(100));
 
   return onSnapshot(
     q,
@@ -774,7 +793,7 @@ export function subscribeToAllUserPresenceMap(
       callback(map);
     },
     (error) => {
-      console.warn('Presence map subscription notice:', error);
+      handleFirestoreListenerError(error, OperationType.GET, path);
     }
   );
 }
@@ -789,7 +808,7 @@ export function subscribeToCommunityUsers(
   includeDeveloper: boolean = false
 ): () => void {
   const path = 'users';
-  const q = query(collection(db, path));
+  const q = query(collection(db, path), limit(100));
 
   return onSnapshot(
     q,
@@ -850,7 +869,7 @@ export function subscribeToCommunityUsers(
       callback(users);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
+      handleFirestoreListenerError(error, OperationType.GET, path, () => callback([]));
     }
   );
 }
