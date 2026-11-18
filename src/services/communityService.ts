@@ -13,9 +13,11 @@ import {
   arrayRemove,
   increment,
   getDoc,
+  getDocFromCache,
   getDocs,
   runTransaction,
-  limit
+  limit,
+  type DocumentSnapshot
 } from 'firebase/firestore';
 import {
   db,
@@ -26,10 +28,128 @@ import {
 } from '../firebase';
 import { UserProfile } from '../types/chat';
 import { CommunityPost, CommunityComment, CreatePostParams } from '../types/community';
-import { base64ToBlobUrl } from '../utils/videoProcessor';
+import { base64ChunksToBlob, resolvePlayableVideoUrl } from '../utils/videoProcessor';
 
 const videoBlobUrlCache = new Map<string, string>();
 const inFlightVideoLoads = new Map<string, Promise<string>>();
+
+// Tier-1 progressive cache: holds only chunk_0 (header + first few frames) for adjacent videos
+const videoHeadBlobCache = new Map<string, string>();
+const videoHeadChunkDataCache = new Map<string, string>();
+const inFlightHeadLoads = new Map<string, Promise<string | null>>();
+
+const VIDEO_IDB_NAME = 'tujuane_video_blob_cache_v1';
+const VIDEO_IDB_STORE = 'videos';
+const MAX_CACHED_VIDEO_BLOBS = 12;
+const MAX_CACHED_VIDEO_HEADS = 20;
+
+function openVideoCacheDB(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(VIDEO_IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const dbInst = req.result;
+        if (!dbInst.objectStoreNames.contains(VIDEO_IDB_STORE)) {
+          dbInst.createObjectStore(VIDEO_IDB_STORE, { keyPath: 'postId' });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function getVideoBlobFromIDB(postId: string): Promise<Blob | null> {
+  const idb = await openVideoCacheDB();
+  if (!idb) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = idb.transaction(VIDEO_IDB_STORE, 'readwrite');
+      const store = tx.objectStore(VIDEO_IDB_STORE);
+      const getReq = store.get(postId);
+      getReq.onsuccess = () => {
+        const record = getReq.result as { postId: string; blob: Blob; updatedAt: number } | undefined;
+        if (record?.blob instanceof Blob && record.blob.size > 0) {
+          try {
+            store.put({ ...record, updatedAt: Date.now() });
+          } catch {
+            // ignore touch error
+          }
+          resolve(record.blob);
+        } else {
+          resolve(null);
+        }
+      };
+      getReq.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function saveVideoBlobToIDB(postId: string, blob: Blob): Promise<void> {
+  if (!postId || !(blob instanceof Blob) || blob.size === 0) return;
+  const idb = await openVideoCacheDB();
+  if (!idb) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = idb.transaction(VIDEO_IDB_STORE, 'readwrite');
+      const store = tx.objectStore(VIDEO_IDB_STORE);
+      store.put({ postId, blob, updatedAt: Date.now() });
+
+      const allReq = store.getAll();
+      allReq.onsuccess = () => {
+        const items = (allReq.result || []) as Array<{ postId: string; updatedAt: number }>;
+        if (items.length > MAX_CACHED_VIDEO_BLOBS) {
+          items.sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0));
+          const excess = items.slice(0, items.length - MAX_CACHED_VIDEO_BLOBS);
+          for (const old of excess) {
+            store.delete(old.postId);
+          }
+        }
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
+function evictOldestHeadCacheIfNeeded(): void {
+  if (videoHeadBlobCache.size < MAX_CACHED_VIDEO_HEADS) return;
+  const oldestKey = videoHeadBlobCache.keys().next().value;
+  if (!oldestKey) return;
+  const oldestUrl = videoHeadBlobCache.get(oldestKey);
+  videoHeadBlobCache.delete(oldestKey);
+  videoHeadChunkDataCache.delete(oldestKey);
+  if (oldestUrl && videoBlobUrlCache.get(oldestKey) !== oldestUrl) {
+    try {
+      URL.revokeObjectURL(oldestUrl);
+    } catch {
+      // ignore revoke error
+    }
+  }
+}
+
+/**
+ * Synchronously check if a post's full assembled video Object URL is already cached in memory.
+ */
+export function getCachedPostVideoUrl(postId?: string): string | null {
+  if (!postId) return null;
+  return videoBlobUrlCache.get(postId) || null;
+}
+
+/**
+ * Synchronously check if a post's video URL (full OR opening-frame head segment) is already cached in memory.
+ */
+export function getCachedPostVideoHeadUrl(postId?: string): string | null {
+  if (!postId) return null;
+  return videoBlobUrlCache.get(postId) || videoHeadBlobCache.get(postId) || null;
+}
 
 const POSTS_COLLECTION = 'community_posts';
 
@@ -144,14 +264,35 @@ export async function createCommunityPost(
               const index = i + offset;
               const chunkId = `chunk_${index}`;
               const chunkRef = doc(db, POSTS_COLLECTION, postId, 'video_chunks', chunkId);
-              await setDoc(chunkRef, {
+              const payload = {
                 id: chunkId,
                 postId,
                 authorId: author.uid,
                 index,
                 data: chunkData,
                 createdAt: serverTimestamp(),
-              });
+              };
+
+              let lastErr: unknown;
+              for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                  await setDoc(chunkRef, payload);
+                  lastErr = null;
+                  break;
+                } catch (err: any) {
+                  lastErr = err;
+                  const code = typeof err?.code === 'string' ? err.code.toLowerCase() : '';
+                  if (
+                    code === 'permission-denied' ||
+                    code === 'resource-exhausted' ||
+                    attempt === 2
+                  ) {
+                    throw err;
+                  }
+                  await new Promise((res) => setTimeout(res, 600 * (attempt + 1)));
+                }
+              }
+              if (lastErr) throw lastErr;
               uploadedChunkIds.push(chunkId);
             })
           );
@@ -160,6 +301,15 @@ export async function createCommunityPost(
         }
 
         await updateDoc(postRef, { videoStatus: 'ready' });
+        // Pre-seed local cache so author's newly published video plays immediately
+        try {
+          const blob = base64ChunksToBlob(params.videoChunks, params.videoMimeType || 'video/mp4');
+          const objectUrl = URL.createObjectURL(blob);
+          videoBlobUrlCache.set(postId, objectUrl);
+          saveVideoBlobToIDB(postId, blob);
+        } catch {
+          // Non-critical cache seed
+        }
         onProgress?.(100);
       } catch (chunkErr) {
         // Rollback partial chunks & post document cleanly
@@ -170,6 +320,10 @@ export async function createCommunityPost(
         handleFirestoreError(chunkErr, OperationType.CREATE, `${POSTS_COLLECTION}/${postId}/video_chunks`);
       }
     } else {
+      if (postData.mediaType === 'video' && params.mediaUrl) {
+        const blobUrl = resolvePlayableVideoUrl(params.mediaUrl);
+        if (blobUrl) videoBlobUrlCache.set(postId, blobUrl);
+      }
       onProgress?.(100);
     }
 
@@ -180,18 +334,99 @@ export async function createCommunityPost(
 }
 
 /**
- * Fetch and assemble chunked video segments from Firestore into a cached Blob Object URL
+ * Fetch ONLY the opening chunk (chunk_0: header + first few frames) of a chunked video
+ * so adjacent videos can decode frame 0 with minimal bandwidth and Firestore reads.
+ */
+export async function fetchPostVideoHeadSegment(
+  postId: string,
+  mimeType: string = 'video/mp4',
+  totalChunkCount?: number
+): Promise<string | null> {
+  if (!postId) return null;
+
+  const fullCached = videoBlobUrlCache.get(postId);
+  if (fullCached) return fullCached;
+
+  const headCached = videoHeadBlobCache.get(postId);
+  if (headCached) return headCached;
+
+  const existingHeadPromise = inFlightHeadLoads.get(postId);
+  if (existingHeadPromise) return existingHeadPromise;
+
+  const loadHeadPromise = (async (): Promise<string | null> => {
+    const chunkPath = `${POSTS_COLLECTION}/${postId}/video_chunks/chunk_0`;
+    try {
+      let chunkData: string | undefined;
+
+      try {
+        // 1. Check persistent IndexedDB cache first (zero Firestore reads)
+        const cachedBlob = await getVideoBlobFromIDB(postId);
+        if (cachedBlob) {
+          const objectUrl = URL.createObjectURL(cachedBlob);
+          videoBlobUrlCache.set(postId, objectUrl);
+          return objectUrl;
+        }
+
+        if (isFirestoreQuotaExceeded()) {
+          return null;
+        }
+
+        // 2. Fetch ONLY chunk_0 via getDoc (1 Firestore read instead of all chunks)
+        const chunk0Ref = doc(db, POSTS_COLLECTION, postId, 'video_chunks', 'chunk_0');
+        const chunk0Snap = await getDoc(chunk0Ref);
+        if (!chunk0Snap.exists()) {
+          return null;
+        }
+
+        chunkData = (chunk0Snap.data() as { data?: string })?.data;
+      } catch (error) {
+        handleFirestoreListenerError(error, OperationType.GET, chunkPath);
+        return null;
+      }
+
+      if (!chunkData) {
+        return null;
+      }
+
+      try {
+        const blob = base64ChunksToBlob([chunkData], mimeType);
+        const objectUrl = URL.createObjectURL(blob);
+
+        if (totalChunkCount === 1) {
+          // Single-chunk video is already complete!
+          videoBlobUrlCache.set(postId, objectUrl);
+          saveVideoBlobToIDB(postId, blob);
+          return objectUrl;
+        }
+
+        evictOldestHeadCacheIfNeeded();
+        videoHeadChunkDataCache.set(postId, chunkData);
+        videoHeadBlobCache.set(postId, objectUrl);
+        return objectUrl;
+      } catch (decodeErr) {
+        console.warn(`Could not decode video head chunk for ${postId}:`, decodeErr);
+        return null;
+      }
+    } finally {
+      inFlightHeadLoads.delete(postId);
+    }
+  })();
+
+  inFlightHeadLoads.set(postId, loadHeadPromise);
+  return loadHeadPromise;
+}
+
+/**
+ * Fetch and assemble chunked video segments from IndexedDB or Firestore into a cached Blob Object URL.
+ * Reuses cached `chunk_0` if already preloaded so `chunk_0` is never read twice.
  */
 export async function fetchAndAssemblePostVideo(
   postId: string,
-  mimeType: string = 'video/mp4'
+  mimeType: string = 'video/mp4',
+  expectedChunkCount?: number
 ): Promise<string> {
   const cached = videoBlobUrlCache.get(postId);
   if (cached) return cached;
-
-  if (isFirestoreQuotaExceeded()) {
-    throw new Error('Database daily free read quota reached. Cached data remains available; quota resets tomorrow.');
-  }
 
   const existingPromise = inFlightVideoLoads.get(postId);
   if (existingPromise) return existingPromise;
@@ -199,21 +434,75 @@ export async function fetchAndAssemblePostVideo(
   const loadPromise = (async () => {
     const chunksPath = `${POSTS_COLLECTION}/${postId}/video_chunks`;
     try {
-      const chunksRef = collection(db, POSTS_COLLECTION, postId, 'video_chunks');
-      const snap = await getDocs(chunksRef);
-      if (snap.empty) {
-        throw new Error('Video data is unavailable.');
-      }
-      const ordered = snap.docs
-        .map((d) => d.data() as { index: number; data: string })
-        .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+      let orderedData: string[] | null = null;
 
-      const fullBase64 = ordered.map((c) => c.data).join('');
-      const objectUrl = base64ToBlobUrl(fullBase64, mimeType);
-      videoBlobUrlCache.set(postId, objectUrl);
-      return objectUrl;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, chunksPath);
+      try {
+        // 1. Check persistent IndexedDB cache first (zero network/Firestore reads)
+        const cachedBlob = await getVideoBlobFromIDB(postId);
+        if (cachedBlob) {
+          const objectUrl = URL.createObjectURL(cachedBlob);
+          videoBlobUrlCache.set(postId, objectUrl);
+          return objectUrl;
+        }
+
+        if (isFirestoreQuotaExceeded()) {
+          throw new Error('Database daily free read quota reached. Cached data remains available; quota resets tomorrow.');
+        }
+
+        // 2. If chunk_0 was already preloaded for head frames, fetch only remaining chunk_1..chunk_{N-1}
+        const cachedChunk0Data = videoHeadChunkDataCache.get(postId);
+        if (cachedChunk0Data && expectedChunkCount && expectedChunkCount > 1) {
+          try {
+            const remainingIndices = Array.from(
+              { length: expectedChunkCount - 1 },
+              (_, idx) => idx + 1
+            );
+            const remainingSnaps = await Promise.all(
+              remainingIndices.map((idx) =>
+                getDoc(doc(db, POSTS_COLLECTION, postId, 'video_chunks', `chunk_${idx}`))
+              )
+            );
+            const allValid = remainingSnaps.every(
+              (s) => s.exists() && typeof (s.data() as { data?: string })?.data === 'string'
+            );
+            if (allValid) {
+              orderedData = [
+                cachedChunk0Data,
+                ...remainingSnaps.map((s) => (s.data() as { data: string }).data)
+              ];
+            }
+          } catch {
+            orderedData = null;
+          }
+        }
+
+        // 3. Full collection fallback when chunk_0 isn't cached or indexed fetch fell short
+        if (!orderedData) {
+          const chunksRef = collection(db, POSTS_COLLECTION, postId, 'video_chunks');
+          const snap = await getDocs(chunksRef);
+          if (snap.empty) {
+            throw new Error('Video data is unavailable.');
+          }
+          const ordered = snap.docs
+            .map((d) => d.data() as { index: number; data: string })
+            .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+          orderedData = ordered.map((c) => c.data);
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, chunksPath);
+      }
+
+      try {
+        const blob = base64ChunksToBlob(orderedData, mimeType);
+        const objectUrl = URL.createObjectURL(blob);
+        videoBlobUrlCache.set(postId, objectUrl);
+        // Persist in background for instant replay across page loads
+        saveVideoBlobToIDB(postId, blob);
+        return objectUrl;
+      } catch (decodeErr) {
+        console.warn(`Could not decode video chunks for ${postId}:`, decodeErr);
+        throw new Error('This video clip could not be decoded in your browser.');
+      }
     } finally {
       inFlightVideoLoads.delete(postId);
     }
@@ -224,19 +513,118 @@ export async function fetchAndAssemblePostVideo(
 }
 
 /**
+ * Intelligently preload ONLY the first few frames (`chunk_0`) of an upcoming or adjacent video
+ * without downloading the full multi-chunk payload until the user actively views it.
+ */
+export function prefetchVideoHeadFrames(post: CommunityPost): Promise<string | null> {
+  if (!post?.id) return Promise.resolve(null);
+  if (post.mediaUrl) {
+    return Promise.resolve(resolvePlayableVideoUrl(post.mediaUrl) || post.mediaUrl);
+  }
+  if (!post.videoChunkCount || post.videoChunkCount <= 0) return Promise.resolve(null);
+  const fullCached = videoBlobUrlCache.get(post.id);
+  if (fullCached) return Promise.resolve(fullCached);
+  const headCached = videoHeadBlobCache.get(post.id);
+  if (headCached) return Promise.resolve(headCached);
+  if (isFirestoreQuotaExceeded()) return Promise.resolve(null);
+
+  return fetchPostVideoHeadSegment(
+    post.id,
+    post.videoMimeType || 'video/mp4',
+    post.videoChunkCount
+  ).catch(() => null);
+}
+
+/**
+ * Quietly prefetch a chunked video post's opening frames in the background.
+ */
+export function prefetchPostVideo(post: CommunityPost): void {
+  void prefetchVideoHeadFrames(post);
+}
+
+const POSTS_CACHE_KEY = 'tujuane_posts_cache_v1';
+
+function loadCachedPostsSnapshot(): CommunityPost[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(POSTS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as CommunityPost[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedPostsSnapshot(posts: CommunityPost[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    // Strip heavy inline data URIs from localStorage fallback cache so storage never overflows
+    const compact = posts.slice(0, 30).map((p) => ({
+      ...p,
+      mediaUrl: p.mediaUrl && p.mediaUrl.length > 60_000 ? undefined : p.mediaUrl,
+      videoThumbnail: p.videoThumbnail && p.videoThumbnail.length > 35_000 ? undefined : p.videoThumbnail
+    }));
+    localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify(compact));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+function applyPostFiltersInMemory(
+  rawPosts: CommunityPost[],
+  filters: { county?: string; constituency?: string; category?: string; sortBy?: 'latest' | 'popular' }
+): CommunityPost[] {
+  let posts = [...rawPosts];
+  if (filters.county && filters.county !== 'All') {
+    posts = posts.filter((p) => (p.county || '').toLowerCase() === filters.county!.toLowerCase());
+  }
+  if (filters.constituency && filters.constituency !== 'All') {
+    posts = posts.filter((p) => (p.constituency || '').toLowerCase() === filters.constituency!.toLowerCase());
+  }
+  if (filters.category && filters.category !== 'all') {
+    posts = posts.filter((p) => p.category === filters.category);
+  }
+  if (filters.sortBy === 'popular') {
+    posts.sort((a, b) => b.upvotes - a.upvotes);
+  }
+  return posts;
+}
+
+async function getDocPreferCache(ref: ReturnType<typeof doc>): Promise<DocumentSnapshot> {
+  try {
+    const cached = await getDocFromCache(ref);
+    if (cached.exists()) return cached;
+  } catch {
+    // cache miss
+  }
+  return getDoc(ref);
+}
+
+/**
  * Real-time listener for community posts with optional county, constituency and category filtering
  */
 export function subscribeToCommunityPosts(
   filters: { county?: string; constituency?: string; category?: string; sortBy?: 'latest' | 'popular'; maxPosts?: number },
   callback: (posts: CommunityPost[]) => void
 ): () => void {
+  const cachedInitial = loadCachedPostsSnapshot();
+  if (cachedInitial.length > 0) {
+    callback(applyPostFiltersInMemory(cachedInitial, filters));
+  }
+
+  if (isFirestoreQuotaExceeded()) {
+    if (cachedInitial.length === 0) callback([]);
+    return () => {};
+  }
+
   const postsRef = collection(db, POSTS_COLLECTION);
   const q = query(postsRef, orderBy('createdAt', 'desc'), limit(filters.maxPosts ?? 40));
 
   return onSnapshot(
     q,
     (snapshot) => {
-      let posts: CommunityPost[] = snapshot.docs.map((docSnap) => {
+      const rawPosts: CommunityPost[] = snapshot.docs.map((docSnap) => {
         const d = docSnap.data();
         return {
           id: docSnap.id,
@@ -292,31 +680,16 @@ export function subscribeToCommunityPosts(
         };
       }).filter((p) => p.videoStatus !== 'uploading');
 
-      // Filter in-memory for flexible combination
-      if (filters.county && filters.county !== 'All') {
-        posts = posts.filter(
-          (p) => (p.county || '').toLowerCase() === filters.county!.toLowerCase()
-        );
+      if (rawPosts.length > 0) {
+        saveCachedPostsSnapshot(rawPosts);
       }
 
-      if (filters.constituency && filters.constituency !== 'All') {
-        posts = posts.filter(
-          (p) => (p.constituency || '').toLowerCase() === filters.constituency!.toLowerCase()
-        );
-      }
-
-      if (filters.category && filters.category !== 'all') {
-        posts = posts.filter((p) => p.category === filters.category);
-      }
-
-      if (filters.sortBy === 'popular') {
-        posts.sort((a, b) => b.upvotes - a.upvotes);
-      }
-
-      callback(posts);
+      callback(applyPostFiltersInMemory(rawPosts, filters));
     },
     (error) => {
-      handleFirestoreListenerError(error, OperationType.GET, POSTS_COLLECTION, () => callback([]));
+      handleFirestoreListenerError(error, OperationType.GET, POSTS_COLLECTION, () => {
+        callback(applyPostFiltersInMemory(loadCachedPostsSnapshot(), filters));
+      });
     }
   );
 }
@@ -328,7 +701,7 @@ export async function toggleUpvotePost(postId: string, userId: string): Promise<
   const postRef = doc(db, POSTS_COLLECTION, postId);
 
   try {
-    const postSnap = await getDoc(postRef);
+    const postSnap = await getDocPreferCache(postRef);
     if (!postSnap.exists()) return false;
 
     const data = postSnap.data();
@@ -455,7 +828,7 @@ export async function reactToCommunityPost(
 ): Promise<{ reaction: string | null; reactionsCount: Record<string, number> }> {
   const postRef = doc(db, POSTS_COLLECTION, postId);
   try {
-    const postSnap = await getDoc(postRef);
+    const postSnap = await getDocPreferCache(postRef);
     if (!postSnap.exists()) {
       throw new Error('Post not found');
     }
@@ -520,7 +893,7 @@ export async function reactToCommunityComment(
 ): Promise<{ reaction: string | null; reactionsCount: Record<string, number> }> {
   const commentRef = doc(db, POSTS_COLLECTION, postId, 'comments', commentId);
   try {
-    const commentSnap = await getDoc(commentRef);
+    const commentSnap = await getDocPreferCache(commentRef);
     if (!commentSnap.exists()) {
       throw new Error('Comment not found');
     }
@@ -573,7 +946,7 @@ export async function deleteCommunityPost(
 ): Promise<void> {
   const postRef = doc(db, POSTS_COLLECTION, postId);
   try {
-    const snap = await getDoc(postRef);
+    const snap = await getDocPreferCache(postRef);
     if (!snap.exists()) return;
     const authorId = snap.data().authorId;
     if (authorId !== userId && !isDeveloper) {

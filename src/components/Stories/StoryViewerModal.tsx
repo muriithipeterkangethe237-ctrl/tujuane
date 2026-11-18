@@ -25,6 +25,7 @@ import {
 import { getOrCreateDirectChat, sendChatMessage } from '../../services/chatService';
 import { useAuth } from '../../context/AuthContext';
 import { resolveLiveAuthor } from '../../utils/profileUtils';
+import { resolvePlayableVideoUrl } from '../../utils/videoProcessor';
 
 interface StoryViewerModalProps {
   isOpen: boolean;
@@ -67,6 +68,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   const [currentStoryIndex, setCurrentStoryIndex] = useState<number>(0);
   const [progress, setProgress] = useState<number>(0);
   const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [isVideoBuffering, setIsVideoBuffering] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(true);
   const [mediaError, setMediaError] = useState<boolean>(false);
   const [replyText, setReplyText] = useState<string>('');
@@ -77,6 +79,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const wasOpenRef = useRef<boolean>(false);
+  const holdPauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initialize author and reset playback state ONLY when modal opens (not on every snapshot update)
   useEffect(() => {
@@ -130,13 +133,14 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
     recordStoryView(activeStory.id, currentUser.uid);
   }, [isOpen, activeStory?.id, activeStory?.authorId, currentUser?.uid]);
 
-  // Reset media error & progress whenever the active story changes
+  // Reset media error, buffering & progress whenever the active story changes
   useEffect(() => {
     if (!isOpen || !activeStory?.id) return;
     setProgress(0);
     setMediaError(false);
     setConfirmDeleteOpen(false);
-  }, [isOpen, activeStory?.id]);
+    setIsVideoBuffering(activeStory.type === 'video');
+  }, [isOpen, activeStory?.id, activeStory?.type]);
 
   // Keep HTMLVideoElement playback synced with isPaused & activeStory
   useEffect(() => {
@@ -147,6 +151,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
     if (isPaused || confirmDeleteOpen) {
       videoEl.pause();
     } else {
+      videoEl.muted = isMuted;
       const playPromise = videoEl.play();
       if (playPromise && typeof playPromise.catch === 'function') {
         playPromise.catch(() => {
@@ -159,7 +164,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
         });
       }
     }
-  }, [isOpen, activeStory?.id, activeStory?.type, isPaused, confirmDeleteOpen]);
+  }, [isOpen, activeStory?.id, activeStory?.type, isPaused, confirmDeleteOpen, isMuted]);
 
   // Navigate to next story or next author
   const handleNextStory = useCallback(() => {
@@ -194,12 +199,12 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
     }
   }, [safeStoryIndex, currentGroupIndex, storyGroups]);
 
-  // Pure progress timer loop (never mutates external state inside setProgress updater)
+  // Progress timer loop for photo stories (video stories sync directly via onTimeUpdate)
   useEffect(() => {
     if (!isOpen || !activeStory || isPaused || confirmDeleteOpen || mediaError) return;
+    if (activeStory.type === 'video') return;
 
-    const totalSeconds =
-      activeStory.type === 'video' ? activeStory.duration || 15 : activeStory.duration || 6;
+    const totalSeconds = activeStory.duration || 6;
     const stepIntervalMs = 50;
     const progressStep = 100 / ((totalSeconds * 1000) / stepIntervalMs);
 
@@ -275,6 +280,9 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
 
   const isOwnStory = Boolean(currentUser && currentUser.uid === activeStory.authorId);
   const isVideo = activeStory.type === 'video';
+  const playableStoryMediaUrl = isVideo
+    ? resolvePlayableVideoUrl(activeStory.mediaUrl) || activeStory.mediaUrl
+    : activeStory.mediaUrl;
   const liveStoryAuthor = resolveLiveAuthor(
     activeStory.authorId,
     {
@@ -531,12 +539,41 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
         {/* MEDIA DISPLAY (PHOTO OR VIDEO) */}
         <div
           className="relative flex-1 w-full h-full flex items-center justify-center bg-black"
-          onMouseDown={() => setIsPaused(true)}
-          onMouseUp={() => setIsPaused(false)}
-          onMouseLeave={() => setIsPaused(false)}
-          onTouchStart={() => setIsPaused(true)}
-          onTouchEnd={() => setIsPaused(false)}
+          onMouseDown={() => {
+            if (holdPauseTimerRef.current) clearTimeout(holdPauseTimerRef.current);
+            holdPauseTimerRef.current = setTimeout(() => setIsPaused(true), 180);
+          }}
+          onMouseUp={() => {
+            if (holdPauseTimerRef.current) {
+              clearTimeout(holdPauseTimerRef.current);
+              holdPauseTimerRef.current = null;
+            }
+            setIsPaused(false);
+          }}
+          onMouseLeave={() => {
+            if (holdPauseTimerRef.current) {
+              clearTimeout(holdPauseTimerRef.current);
+              holdPauseTimerRef.current = null;
+            }
+            setIsPaused(false);
+          }}
+          onTouchStart={() => {
+            if (holdPauseTimerRef.current) clearTimeout(holdPauseTimerRef.current);
+            holdPauseTimerRef.current = setTimeout(() => setIsPaused(true), 180);
+          }}
+          onTouchEnd={() => {
+            if (holdPauseTimerRef.current) {
+              clearTimeout(holdPauseTimerRef.current);
+              holdPauseTimerRef.current = null;
+            }
+            setIsPaused(false);
+          }}
         >
+          {isVideo && isVideoBuffering && !mediaError && (
+            <div className="pointer-events-none absolute top-0 inset-x-0 h-0.5 bg-white/15 overflow-hidden z-40">
+              <div className="h-full w-1/3 bg-emerald-400 animate-pulse rounded-full" />
+            </div>
+          )}
           {mediaError ? (
             <div className="px-6 text-center text-white/80 space-y-2 z-10">
               <AlertCircle className="w-9 h-9 text-amber-400 mx-auto" />
@@ -553,12 +590,35 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
             <video
               key={activeStory.id}
               ref={videoRef}
-              src={activeStory.mediaUrl}
+              src={playableStoryMediaUrl}
               autoPlay
               playsInline
+              preload="auto"
               muted={isMuted}
-              onEnded={handleNextStory}
-              onError={() => setMediaError(true)}
+              onCanPlay={() => {
+                setIsVideoBuffering(false);
+                if (!isPaused && !confirmDeleteOpen && videoRef.current?.paused) {
+                  videoRef.current.play().catch(() => {});
+                }
+              }}
+              onWaiting={() => setIsVideoBuffering(true)}
+              onPlaying={() => setIsVideoBuffering(false)}
+              onTimeUpdate={() => {
+                const v = videoRef.current;
+                if (!v) return;
+                const total = v.duration && isFinite(v.duration) ? v.duration : activeStory.duration || 15;
+                if (total > 0) {
+                  setProgress(Math.min(99.5, (v.currentTime / total) * 100));
+                }
+              }}
+              onEnded={() => {
+                setProgress(100);
+                handleNextStory();
+              }}
+              onError={() => {
+                setIsVideoBuffering(false);
+                setMediaError(true);
+              }}
               className="w-full h-full object-contain"
             />
           ) : (

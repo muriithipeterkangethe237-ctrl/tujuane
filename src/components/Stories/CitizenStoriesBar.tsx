@@ -17,6 +17,7 @@ import { CreateStoryModal } from './CreateStoryModal';
 import { StoryViewerModal } from './StoryViewerModal';
 import { useAuth } from '../../context/AuthContext';
 import { resolveLiveAuthor } from '../../utils/profileUtils';
+import { StoriesRowSkeleton } from '../Skeletons';
 
 interface CitizenStoriesBarProps {
   currentUser: any;
@@ -33,6 +34,7 @@ export const CitizenStoriesBar: React.FC<CitizenStoriesBarProps> = ({
 }) => {
   const { usersById } = useAuth();
   const [stories, setStories] = useState<CitizenStory[]>([]);
+  const [isLoadingStories, setIsLoadingStories] = useState<boolean>(true);
   const [isCreateOpen, setIsCreateOpen] = useState<boolean>(false);
   const [isViewerOpen, setIsViewerOpen] = useState<boolean>(false);
   const [selectedAuthorId, setSelectedAuthorId] = useState<string | undefined>(undefined);
@@ -41,8 +43,10 @@ export const CitizenStoriesBar: React.FC<CitizenStoriesBarProps> = ({
 
   // Subscribe to real-time 24h active stories
   useEffect(() => {
+    setIsLoadingStories(true);
     const unsub = subscribeToActiveStories((activeStories) => {
       setStories(activeStories);
+      setIsLoadingStories(false);
     });
     return () => unsub();
   }, []);
@@ -247,11 +251,15 @@ export const CitizenStoriesBar: React.FC<CitizenStoriesBarProps> = ({
               );
             })}
 
-            {/* Empty state hint if only user is there */}
-            {otherGroups.length === 0 && (
-              <div className="text-xs text-slate-400 dark:text-slate-500 italic pl-2 whitespace-nowrap flex items-center gap-1.5">
-                <span>Be the first to post a photo or video story today!</span>
-              </div>
+            {/* Loading skeleton or empty state hint */}
+            {isLoadingStories && otherGroups.length === 0 ? (
+              <StoriesRowSkeleton count={5} />
+            ) : (
+              otherGroups.length === 0 && (
+                <div className="text-xs text-slate-400 dark:text-slate-500 italic pl-2 whitespace-nowrap flex items-center gap-1.5">
+                  <span>Be the first to post a photo or video story today!</span>
+                </div>
+              )
             )}
           </div>
         </div>

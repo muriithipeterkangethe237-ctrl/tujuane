@@ -27,9 +27,14 @@ import {
   REACTION_TYPES
 } from '../types/community';
 import { UserProfile } from '../types/chat';
-import { fetchAndAssemblePostVideo } from '../services/communityService';
+import {
+  fetchAndAssemblePostVideo,
+  getCachedPostVideoHeadUrl,
+  getCachedPostVideoUrl,
+  prefetchVideoHeadFrames
+} from '../services/communityService';
 import { compressImage } from '../utils/imageCompressor';
-import { formatVideoDuration } from '../utils/videoProcessor';
+import { formatVideoDuration, resolvePlayableVideoUrl } from '../utils/videoProcessor';
 import { useAuth } from '../context/AuthContext';
 import { resolveLiveAuthor } from '../utils/profileUtils';
 
@@ -63,11 +68,15 @@ interface ShortVideoTheatreModalProps {
 interface TheatreVideoSlideProps {
   post: CommunityPost;
   resolvedUrl?: string;
+  headUrl?: string;
+  isLoading?: boolean;
   hasError: boolean;
   isActive: boolean;
+  isAdjacent: boolean;
   isMuted: boolean;
   liveAuthorName?: string;
   liveAuthorCounty?: string;
+  onRequestFullLoad: () => void;
   onRetryLoad: () => void;
   onForceMute: () => void;
 }
@@ -75,35 +84,75 @@ interface TheatreVideoSlideProps {
 const TheatreVideoSlide: React.FC<TheatreVideoSlideProps> = ({
   post,
   resolvedUrl,
+  headUrl,
+  isLoading = false,
   hasError,
   isActive,
+  isAdjacent,
   isMuted,
   liveAuthorName,
   liveAuthorCounty,
+  onRequestFullLoad,
   onRetryLoad,
   onForceMute
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [userPaused, setUserPaused] = useState(false);
+  const [headFailed, setHeadFailed] = useState(false);
+  const [currentTimeSec, setCurrentTimeSec] = useState(0);
+  const [durationSec, setDurationSec] = useState(post.videoDuration || 0);
+  const prevPlayableRef = useRef<string | undefined>(undefined);
+  const pendingRestoreRef = useRef<{ time: number; shouldPlay: boolean } | null>(null);
+
+  const fullPlayableUrl = resolvedUrl
+    ? resolvePlayableVideoUrl(resolvedUrl) || resolvedUrl
+    : undefined;
+  const headPlayableUrl =
+    !fullPlayableUrl && headUrl && !headFailed
+      ? resolvePlayableVideoUrl(headUrl) || headUrl
+      : undefined;
+  const playableUrl = fullPlayableUrl || headPlayableUrl;
+  const isPartialHeadOnly = Boolean(
+    !fullPlayableUrl && headPlayableUrl && (post.videoChunkCount ?? 0) > 1
+  );
+  const shouldMountVideo = Boolean(playableUrl && (isActive || isAdjacent));
 
   // Reset userPaused whenever this slide becomes active again
   useEffect(() => {
     if (isActive) {
       setUserPaused(false);
+    } else {
+      setIsBuffering(false);
     }
   }, [isActive]);
 
-  // Auto-play active slide and pause inactive slides
+  // Preserve playback time & play state when upgrading from headUrl -> fullUrl
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !resolvedUrl) return;
+    const prev = prevPlayableRef.current;
+    if (prev && playableUrl && prev !== playableUrl && videoRef.current) {
+      const v = videoRef.current;
+      pendingRestoreRef.current = {
+        time: v.currentTime || 0,
+        shouldPlay: !v.paused || (isActive && !userPaused)
+      };
+    }
+    prevPlayableRef.current = playableUrl;
+  }, [playableUrl, isActive, userPaused]);
 
-    if (isActive && !userPaused) {
-      video.muted = isMuted;
-      video
-        .play()
-        .then(() => setIsPlaying(true))
+  const attemptPlay = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !playableUrl || !isActive || userPaused) return;
+    video.loop = !isPartialHeadOnly;
+    video.muted = isMuted;
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.then === 'function') {
+      playPromise
+        .then(() => {
+          setIsPlaying(true);
+          setIsBuffering(false);
+        })
         .catch(() => {
           // If browser blocked unmuted autoplay on scroll, mute and retry immediately
           if (!video.muted) {
@@ -111,28 +160,53 @@ const TheatreVideoSlide: React.FC<TheatreVideoSlideProps> = ({
             onForceMute();
             video
               .play()
-              .then(() => setIsPlaying(true))
+              .then(() => {
+                setIsPlaying(true);
+                setIsBuffering(false);
+              })
               .catch(() => {});
           }
         });
+    }
+  }, [playableUrl, isActive, isPartialHeadOnly, isMuted, userPaused, onForceMute]);
+
+  // Keep native DOM `.loop` property synced when full video replaces head preview
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.loop = !isPartialHeadOnly;
+  }, [shouldMountVideo, playableUrl, isPartialHeadOnly]);
+
+  // Auto-play active slide and pause inactive slides
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !playableUrl || !shouldMountVideo) {
+      if (!shouldMountVideo) setIsPlaying(false);
+      return;
+    }
+
+    if (isActive && !userPaused) {
+      attemptPlay();
     } else {
       if (!video.paused) {
         video.pause();
       }
       if (!isActive) {
         video.currentTime = 0;
+        setCurrentTimeSec(0);
       }
       setIsPlaying(false);
     }
-  }, [isActive, resolvedUrl, isMuted, userPaused, onForceMute]);
+  }, [isActive, playableUrl, shouldMountVideo, isMuted, userPaused, attemptPlay]);
 
   const handleTapVideo = () => {
     const video = videoRef.current;
-    if (!video || !resolvedUrl) return;
+    if (!video || !playableUrl) return;
     if (video.paused) {
       setUserPaused(false);
       video.muted = isMuted;
       video.play().then(() => setIsPlaying(true)).catch(() => {});
+      if (!fullPlayableUrl) onRequestFullLoad();
     } else {
       setUserPaused(true);
       video.pause();
@@ -140,33 +214,120 @@ const TheatreVideoSlide: React.FC<TheatreVideoSlideProps> = ({
     }
   };
 
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    const video = videoRef.current;
+    if (!video || !durationSec) return;
+    const nextTime = Number(e.target.value);
+    if (isFinite(nextTime)) {
+      video.currentTime = nextTime;
+      setCurrentTimeSec(nextTime);
+    }
+  };
+
+  const progressPct =
+    durationSec > 0 ? Math.min(100, (currentTimeSec / durationSec) * 100) : 0;
+
   return (
     <div
       onClick={handleTapVideo}
       className="relative w-full h-full flex items-center justify-center bg-black select-none cursor-pointer overflow-hidden"
     >
-      {resolvedUrl ? (
+      {shouldMountVideo && playableUrl ? (
         <video
           ref={videoRef}
-          src={resolvedUrl}
+          src={playableUrl}
           poster={post.videoThumbnail}
           muted={isMuted}
-          loop
+          loop={!isPartialHeadOnly}
           playsInline
           preload="auto"
+          onLoadedMetadata={() => {
+            const v = videoRef.current;
+            if (v && v.duration && isFinite(v.duration)) {
+              setDurationSec(Math.max(post.videoDuration || 0, v.duration));
+            }
+            const pending = pendingRestoreRef.current;
+            if (v && pending) {
+              if (pending.time > 0 && isFinite(v.duration) && pending.time < v.duration) {
+                v.currentTime = pending.time;
+              }
+              if (pending.shouldPlay && isActive && !userPaused) {
+                attemptPlay();
+              }
+              pendingRestoreRef.current = null;
+            }
+          }}
+          onLoadedData={() => {
+            const v = videoRef.current;
+            if (v && !isActive && !v.paused) {
+              v.pause();
+            }
+          }}
+          onCanPlay={() => {
+            setIsBuffering(false);
+            if (isActive && !userPaused) {
+              attemptPlay();
+            }
+          }}
+          onWaiting={() => setIsBuffering(true)}
+          onPlaying={() => {
+            setIsPlaying(true);
+            setIsBuffering(false);
+          }}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
+          onEnded={() => {
+            if (isPartialHeadOnly) {
+              setIsBuffering(true);
+              onRequestFullLoad();
+              return;
+            }
+            const v = videoRef.current;
+            if (v && isActive && !userPaused) {
+              v.currentTime = 0;
+              v.muted = isMuted;
+              v.play()
+                .then(() => setIsPlaying(true))
+                .catch(() => {});
+            }
+          }}
+          onError={() => {
+            setIsBuffering(false);
+            if (isPartialHeadOnly) {
+              setHeadFailed(true);
+              onRequestFullLoad();
+            }
+          }}
+          onTimeUpdate={() => {
+            const v = videoRef.current;
+            if (v) {
+              setCurrentTimeSec(v.currentTime || 0);
+              if (v.duration && isFinite(v.duration) && durationSec < v.duration) {
+                setDurationSec(v.duration);
+              }
+            }
+          }}
           className="max-h-full max-w-full w-full h-full object-contain bg-black"
         />
       ) : post.videoThumbnail ? (
         <img
           src={post.videoThumbnail}
           alt={post.title}
-          className="max-h-full max-w-full w-full h-full object-contain opacity-85"
+          loading="lazy"
+          decoding="async"
+          className="max-h-full max-w-full w-full h-full object-contain opacity-90"
         />
       ) : (
         <div className="w-full h-full bg-gradient-to-br from-slate-950 via-indigo-950/40 to-black flex items-center justify-center">
           <Video className="w-16 h-16 text-indigo-400/40" />
+        </div>
+      )}
+
+      {/* Subtle top buffering bar while assembling or buffering */}
+      {(isLoading || isBuffering) && !hasError && (
+        <div className="pointer-events-none absolute top-0 inset-x-0 h-0.5 bg-white/15 overflow-hidden z-30">
+          <div className="h-full w-1/3 bg-emerald-400 animate-pulse rounded-full" />
         </div>
       )}
 
@@ -177,14 +338,14 @@ const TheatreVideoSlide: React.FC<TheatreVideoSlideProps> = ({
             e.stopPropagation();
             onRetryLoad();
           }}
-          className="absolute inset-0 flex items-center justify-center bg-black/60"
+          className="absolute inset-0 flex items-center justify-center bg-black/60 z-20"
         >
           <div className="flex flex-col items-center gap-2 px-5 py-3.5 rounded-2xl bg-rose-950/90 text-rose-100 backdrop-blur-md">
             <AlertCircle className="w-6 h-6 text-rose-400" />
             <span className="text-xs font-semibold">Failed to load video. Tap to retry.</span>
           </div>
         </div>
-      ) : !isPlaying && resolvedUrl ? (
+      ) : !isPlaying && playableUrl && userPaused ? (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20">
           <div className="w-16 h-16 rounded-full bg-black/65 text-white flex items-center justify-center backdrop-blur-sm shadow-2xl">
             <Play className="w-7 h-7 fill-white ml-1" />
@@ -194,7 +355,7 @@ const TheatreVideoSlide: React.FC<TheatreVideoSlideProps> = ({
 
       {/* Bottom contrast scrim with caption preview on mobile (desktop displays full info in side panel) */}
       <div className="md:hidden pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
-      <div className="md:hidden pointer-events-none absolute bottom-5 left-4 right-20 text-white space-y-1">
+      <div className="md:hidden pointer-events-none absolute bottom-7 left-4 right-20 text-white space-y-1">
         <div className="flex items-center gap-2 text-xs text-slate-200/90">
           <span className="font-bold text-white">{liveAuthorName || post.authorName}</span>
           {(liveAuthorCounty || post.county) && (
@@ -220,6 +381,37 @@ const TheatreVideoSlide: React.FC<TheatreVideoSlideProps> = ({
           {post.mediaCaption || post.content}
         </p>
       </div>
+
+      {/* Interactive bottom seek / playback progress bar */}
+      {playableUrl && durationSec > 0 && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute bottom-0 inset-x-0 z-20 px-3 pb-2 pt-3 bg-gradient-to-t from-black/60 to-transparent flex items-center gap-2.5"
+        >
+          <span className="text-[10px] font-mono tabular-nums text-white/80 shrink-0">
+            {formatVideoDuration(currentTimeSec)}
+          </span>
+          <div className="relative flex-1 h-1.5 bg-white/25 rounded-full overflow-hidden">
+            <div
+              className="absolute inset-y-0 left-0 bg-emerald-400 rounded-full"
+              style={{ width: `${progressPct}%` }}
+            />
+            <input
+              type="range"
+              min={0}
+              max={durationSec}
+              step={0.1}
+              value={Math.min(durationSec, currentTimeSec)}
+              onChange={handleSeek}
+              aria-label="Seek video timeline"
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            />
+          </div>
+          <span className="text-[10px] font-mono tabular-nums text-white/70 shrink-0">
+            {formatVideoDuration(durationSec)}
+          </span>
+        </div>
+      )}
     </div>
   );
 };
@@ -249,7 +441,29 @@ export const ShortVideoTheatreModal: React.FC<ShortVideoTheatreModalProps> = ({
     const idx = videoPosts.findIndex((p) => p.id === initialPostId);
     return idx >= 0 ? idx : 0;
   });
-  const [urlMap, setUrlMap] = useState<Record<string, string>>(initialResolvedUrls);
+  const [urlMap, setUrlMap] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = { ...initialResolvedUrls };
+    for (const p of videoPosts) {
+      if (!initial[p.id]) {
+        const cached = getCachedPostVideoUrl(p.id);
+        if (cached) {
+          initial[p.id] = cached;
+        } else if (p.mediaUrl) {
+          const fastUrl = resolvePlayableVideoUrl(p.mediaUrl);
+          if (fastUrl) initial[p.id] = fastUrl;
+        }
+      }
+    }
+    return initial;
+  });
+  const [headUrlMap, setHeadUrlMap] = useState<Record<string, string>>(() => {
+    const initialHeads: Record<string, string> = {};
+    for (const p of videoPosts) {
+      const head = getCachedPostVideoHeadUrl(p.id);
+      if (head) initialHeads[p.id] = head;
+    }
+    return initialHeads;
+  });
   const [loadingMap, setLoadingMap] = useState<Record<string, boolean>>({});
   const [errorMap, setErrorMap] = useState<Record<string, boolean>>({});
   const [isMuted, setIsMuted] = useState(false);
@@ -271,6 +485,7 @@ export const ShortVideoTheatreModal: React.FC<ShortVideoTheatreModalProps> = ({
   const slideRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const commentFileInputRef = useRef<HTMLInputElement | null>(null);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
+  const isInitialScrollSettlingRef = useRef(false);
   const urlMapRef = useRef(urlMap);
   urlMapRef.current = urlMap;
   const loadingMapRef = useRef(loadingMap);
@@ -291,24 +506,48 @@ export const ShortVideoTheatreModal: React.FC<ShortVideoTheatreModalProps> = ({
   // Seed initial resolved URLs and scroll immediately to initialPostId when opened
   useEffect(() => {
     if (!isOpen) return;
-    setUrlMap((prev) => ({ ...initialResolvedUrls, ...prev }));
+    setUrlMap((prev) => {
+      const merged: Record<string, string> = { ...initialResolvedUrls, ...prev };
+      for (const p of videoPosts) {
+        if (!merged[p.id]) {
+          const cached = getCachedPostVideoUrl(p.id);
+          if (cached) merged[p.id] = cached;
+          else if (p.mediaUrl) {
+            const fastUrl = resolvePlayableVideoUrl(p.mediaUrl);
+            if (fastUrl) merged[p.id] = fastUrl;
+          }
+        }
+      }
+      return merged;
+    });
     const idx = videoPosts.findIndex((p) => p.id === initialPostId);
     const targetIdx = idx >= 0 ? idx : 0;
     setActiveIndex(targetIdx);
     const targetPost = videoPosts[targetIdx];
     if (targetPost) {
+      isInitialScrollSettlingRef.current = true;
       requestAnimationFrame(() => {
         const el = slideRefs.current[targetPost.id];
         el?.scrollIntoView({ behavior: 'auto' });
       });
+      const settleTimer = setTimeout(() => {
+        isInitialScrollSettlingRef.current = false;
+      }, 220);
+      return () => clearTimeout(settleTimer);
     }
   }, [isOpen, initialPostId]);
 
   const loadVideoUrl = useCallback(async (post: CommunityPost) => {
     if (!post) return;
     if (urlMapRef.current[post.id] || loadingMapRef.current[post.id]) return;
+    const cached = getCachedPostVideoUrl(post.id);
+    if (cached) {
+      setUrlMap((prev) => ({ ...prev, [post.id]: cached }));
+      return;
+    }
     if (post.mediaUrl) {
-      setUrlMap((prev) => ({ ...prev, [post.id]: post.mediaUrl! }));
+      const fastUrl = resolvePlayableVideoUrl(post.mediaUrl) || post.mediaUrl;
+      setUrlMap((prev) => ({ ...prev, [post.id]: fastUrl }));
       return;
     }
     if (!post.videoChunkCount || post.videoChunkCount <= 0) {
@@ -319,7 +558,11 @@ export const ShortVideoTheatreModal: React.FC<ShortVideoTheatreModalProps> = ({
     setLoadingMap((prev) => ({ ...prev, [post.id]: true }));
     setErrorMap((prev) => ({ ...prev, [post.id]: false }));
     try {
-      const assembled = await fetchAndAssemblePostVideo(post.id, post.videoMimeType || 'video/mp4');
+      const assembled = await fetchAndAssemblePostVideo(
+        post.id,
+        post.videoMimeType || 'video/mp4',
+        post.videoChunkCount
+      );
       setUrlMap((prev) => ({ ...prev, [post.id]: assembled }));
     } catch {
       setErrorMap((prev) => ({ ...prev, [post.id]: true }));
@@ -328,17 +571,43 @@ export const ShortVideoTheatreModal: React.FC<ShortVideoTheatreModalProps> = ({
     }
   }, []);
 
-  // Load active video, adjacent videos, and comments whenever activePost changes
+  const preloadAdjacentHeadFrames = useCallback(async (post: CommunityPost) => {
+    if (!post) return;
+    if (urlMapRef.current[post.id]) return;
+    const cachedFull = getCachedPostVideoUrl(post.id);
+    if (cachedFull) {
+      setUrlMap((prev) => ({ ...prev, [post.id]: cachedFull }));
+      return;
+    }
+    const segUrl = await prefetchVideoHeadFrames(post);
+    if (!segUrl) return;
+    const promotedFull = getCachedPostVideoUrl(post.id);
+    if (promotedFull) {
+      setUrlMap((prev) => ({ ...prev, [post.id]: promotedFull }));
+    } else {
+      setHeadUrlMap((prev) => (prev[post.id] === segUrl ? prev : { ...prev, [post.id]: segUrl }));
+    }
+  }, []);
+
+  // Load full active video and preload ONLY the first few frames of immediate adjacent slides
   useEffect(() => {
     if (!isOpen || !activePost) return;
-    loadVideoUrl(activePost);
-    if (activeIndex > 0) loadVideoUrl(videoPosts[activeIndex - 1]);
-    if (activeIndex < videoPosts.length - 1) loadVideoUrl(videoPosts[activeIndex + 1]);
+    void loadVideoUrl(activePost);
+    if (activeIndex > 0) void preloadAdjacentHeadFrames(videoPosts[activeIndex - 1]);
+    if (activeIndex < videoPosts.length - 1) void preloadAdjacentHeadFrames(videoPosts[activeIndex + 1]);
     onEnsureCommentsLoaded(activePost.id);
     setIsReactionPickerOpen(false);
     setActiveCommentPickerId(null);
     setReplyingTo(null);
-  }, [isOpen, activeIndex, activePost?.id, videoPosts, loadVideoUrl, onEnsureCommentsLoaded]);
+  }, [
+    isOpen,
+    activeIndex,
+    activePost?.id,
+    videoPosts,
+    loadVideoUrl,
+    preloadAdjacentHeadFrames,
+    onEnsureCommentsLoaded
+  ]);
 
   // IntersectionObserver on snap slides to keep activeIndex synced on scroll/swipe
   useEffect(() => {
@@ -348,6 +617,7 @@ export const ShortVideoTheatreModal: React.FC<ShortVideoTheatreModalProps> = ({
 
     const observer = new IntersectionObserver(
       (entries) => {
+        if (isInitialScrollSettlingRef.current) return;
         let bestEntry: IntersectionObserverEntry | null = null;
         for (const entry of entries) {
           if (entry.isIntersecting && (!bestEntry || entry.intersectionRatio > bestEntry.intersectionRatio)) {
@@ -1047,12 +1317,16 @@ export const ShortVideoTheatreModal: React.FC<ShortVideoTheatreModalProps> = ({
               >
                 <TheatreVideoSlide
                   post={post}
-                  resolvedUrl={urlMap[post.id] || post.mediaUrl}
+                  resolvedUrl={urlMap[post.id] || getCachedPostVideoUrl(post.id) || post.mediaUrl}
+                  headUrl={headUrlMap[post.id] || getCachedPostVideoHeadUrl(post.id) || undefined}
+                  isLoading={!!loadingMap[post.id]}
                   hasError={!!errorMap[post.id]}
                   isActive={idx === activeIndex}
+                  isAdjacent={Math.abs(idx - activeIndex) === 1}
                   isMuted={isMuted}
                   liveAuthorName={slideAuthor.displayName}
                   liveAuthorCounty={slideAuthor.county}
+                  onRequestFullLoad={() => loadVideoUrl(post)}
                   onRetryLoad={() => loadVideoUrl(post)}
                   onForceMute={handleForceMute}
                 />

@@ -8,6 +8,7 @@ import {
   createCommunityPoll
 } from '../services/pollService';
 import { ALL_47_COUNTIES } from '../data/kenyaCounties';
+import { trackFunnelMilestone } from '../services/telemetryService';
 import {
   Vote,
   Flame,
@@ -115,6 +116,7 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
     const prev = userVoteOptionId;
     try {
       await castPollVote(activePoll.id, currentUser.uid, optionId, prev);
+      trackFunnelMilestone('engaged_action', 'Voted in daily community poll');
       setVoteToast('Kura Yako Imerekodiwa! (Vote recorded successfully)');
       setTimeout(() => setVoteToast(null), 3000);
     } catch (err) {
@@ -165,6 +167,7 @@ export const DailyCommunityPoll: React.FC<DailyCommunityPollProps> = ({
         options: validOptions
       });
 
+      trackFunnelMilestone('engaged_action', 'Created community poll');
       setNewTitle('');
       setNewDescription('');
       setNewOptions(['', '', '']);

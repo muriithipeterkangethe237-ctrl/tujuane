@@ -265,6 +265,63 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "groupId", "senderId", "createdAt"]
+    },
+    "TelemetrySession": {
+      "title": "TelemetrySession",
+      "description": "Behind-the-scenes user session analytics for drop-off points, retention cohorts, and screen dwell metrics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 100 },
+        "county": { "type": "string", "maxLength": 50 },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "lastActiveAt": { "type": "string", "format": "date-time" },
+        "durationSec": { "type": "integer" },
+        "dateKey": { "type": "string", "maxLength": 20 },
+        "firstSeenDateKey": { "type": "string", "maxLength": 20 },
+        "daysSinceFirstSeen": { "type": "integer" },
+        "isReturningUser": { "type": "boolean" },
+        "screensVisited": { "type": "array" },
+        "screenDwellSec": { "type": "object" },
+        "funnelMilestones": { "type": "array" },
+        "dropOffStage": { "type": "string", "maxLength": 80 },
+        "lastScreen": { "type": "string", "maxLength": 60 },
+        "actionsCount": { "type": "integer" },
+        "deviceType": { "type": "string", "maxLength": 30 },
+        "viewport": { "type": "string", "maxLength": 40 },
+        "crashCount": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "dateKey", "firstSeenDateKey", "lastScreen", "updatedAt"]
+    },
+    "CrashReport": {
+      "title": "CrashReport",
+      "description": "Real-time application crash and error event captured with breadcrumbs and stack trace",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "fingerprint": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 100 },
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "name": { "type": "string", "maxLength": 120 },
+        "stack": { "type": "string", "maxLength": 6000 },
+        "componentStack": { "type": "string", "maxLength": 4000 },
+        "category": { "type": "string", "enum": ["runtime", "promise_rejection", "react_boundary", "media_playback", "network_api", "firestore", "manual_test"] },
+        "severity": { "type": "string", "enum": ["fatal", "error", "warning"] },
+        "screen": { "type": "string", "maxLength": 60 },
+        "breadcrumbs": { "type": "array" },
+        "userAgent": { "type": "string", "maxLength": 300 },
+        "viewport": { "type": "string", "maxLength": 40 },
+        "status": { "type": "string", "enum": ["open", "resolved", "ignored"] },
+        "resolvedBy": { "type": "string", "maxLength": 128 },
+        "resolvedAt": { "type": "string", "format": "date-time" },
+        "developerNotes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "fingerprint", "userId", "sessionId", "message", "name", "category", "severity", "screen", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -323,6 +380,14 @@
     "/stories/{storyId}": {
       "schema": "CitizenStory",
       "description": "24-hour citizen visual stories containing pictures and videos"
+    },
+    "/telemetry_sessions/{sessionId}": {
+      "schema": "TelemetrySession",
+      "description": "Session analytics documents capturing funnel progression, drop-off stage, and retention cohort info"
+    },
+    "/crash_reports/{crashId}": {
+      "schema": "CrashReport",
+      "description": "Real-time crash and error reports with stack traces and breadcrumbs for developer monitoring"
     }
   }
 }

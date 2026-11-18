@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   X,
   Lock,
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ALL_47_COUNTIES, getConstituenciesByCounty } from '../data/kenyaCounties';
+import { trackFunnelMilestone, trackDropOffPoint } from '../services/telemetryService';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -53,24 +54,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  const didAuthenticateRef = useRef(false);
+
   // Sync mode with prop change
   useEffect(() => {
     setMode(initialMode);
     setErrorMessage(null);
     setSuccessMessage(null);
+    if (isOpen) {
+      didAuthenticateRef.current = false;
+      trackFunnelMilestone('auth_started', `Auth modal opened (${initialMode})`);
+    }
   }, [initialMode, isOpen]);
+
+  const handleClose = useCallback(() => {
+    if (!didAuthenticateRef.current) {
+      trackDropOffPoint('abandoned_auth_modal', `Closed auth modal in ${mode} mode`);
+    }
+    onClose();
+  }, [mode, onClose]);
 
   // Handle ESC key to close modal reliably
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        handleClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, handleClose]);
 
   // Real-time Password Security Criteria Validation
   const passwordSecurity = useMemo(() => {
@@ -129,6 +143,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           county,
           constituency || undefined
         );
+        didAuthenticateRef.current = true;
         onClose();
       } catch (err: any) {
         console.error('Registration error:', err);
@@ -148,6 +163,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setIsSubmitting(true);
       try {
         await loginWithEmailPassword(email, password);
+        didAuthenticateRef.current = true;
         onClose();
       } catch (err: any) {
         console.error('Sign-in error:', err);
@@ -188,6 +204,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsSubmitting(true);
     try {
       await loginWithGoogle();
+      didAuthenticateRef.current = true;
       onClose();
     } catch (err: any) {
       if (err?.code !== 'auth/popup-closed-by-user') {
@@ -200,7 +217,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   return (
     <div
-      onClick={onClose}
+      onClick={handleClose}
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in overflow-y-auto"
       role="dialog"
       aria-modal="true"
@@ -237,7 +254,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             {/* Top Close (X) Button */}
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="p-2 text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer shrink-0"
               title="Close dialog (Esc)"
               aria-label="Close"

@@ -9,10 +9,16 @@ import {
   onSnapshot,
   serverTimestamp,
   getDoc,
-  getDocs,
+  getDocFromCache,
   limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, handleFirestoreListenerError, OperationType } from '../firebase';
+import {
+  db,
+  handleFirestoreError,
+  handleFirestoreListenerError,
+  isFirestoreQuotaExceeded,
+  OperationType
+} from '../firebase';
 import { UserProfile } from '../types/chat';
 import { FollowRelationship, FriendRequest } from '../types/social';
 import { sendUserNotification } from './userNotificationService';
@@ -87,6 +93,10 @@ export function subscribeToFollowing(
   userId: string,
   callback: (following: FollowRelationship[]) => void
 ): () => void {
+  if (isFirestoreQuotaExceeded()) {
+    callback([]);
+    return () => {};
+  }
   const q = query(collection(db, FOLLOWS_COLLECTION), where('followerId', '==', userId), limit(100));
 
   return onSnapshot(
@@ -122,6 +132,10 @@ export function subscribeToFollowers(
   userId: string,
   callback: (followers: FollowRelationship[]) => void
 ): () => void {
+  if (isFirestoreQuotaExceeded()) {
+    callback([]);
+    return () => {};
+  }
   const q = query(collection(db, FOLLOWS_COLLECTION), where('followingId', '==', userId), limit(100));
 
   return onSnapshot(
@@ -205,8 +219,17 @@ export async function sendFriendRequest(
 export async function acceptFriendRequest(requestId: string): Promise<void> {
   const reqRef = doc(db, FRIEND_REQUESTS_COLLECTION, requestId);
   try {
-    const snap = await getDoc(reqRef);
-    const data = snap.data();
+    let data: Record<string, any> | undefined;
+    try {
+      const cached = await getDocFromCache(reqRef);
+      if (cached.exists()) data = cached.data();
+    } catch {
+      // cache miss
+    }
+    if (!data && !isFirestoreQuotaExceeded()) {
+      const snap = await getDoc(reqRef);
+      data = snap.data();
+    }
 
     await updateDoc(reqRef, {
       status: 'accepted',
@@ -266,6 +289,10 @@ export function subscribeToIncomingFriendRequests(
   userId: string,
   callback: (requests: FriendRequest[]) => void
 ): () => void {
+  if (isFirestoreQuotaExceeded()) {
+    callback([]);
+    return () => {};
+  }
   const q = query(
     collection(db, FRIEND_REQUESTS_COLLECTION),
     where('receiverId', '==', userId),
@@ -310,6 +337,10 @@ export function subscribeToFriends(
   userId: string,
   callback: (friends: FriendRequest[]) => void
 ): () => void {
+  if (isFirestoreQuotaExceeded()) {
+    callback([]);
+    return () => {};
+  }
   // Query where user is either sender or receiver and status is accepted
   const qSender = query(
     collection(db, FRIEND_REQUESTS_COLLECTION),
@@ -377,6 +408,10 @@ export function subscribeToAllUserFriendRequests(
   userId: string,
   callback: (requests: FriendRequest[]) => void
 ): () => void {
+  if (isFirestoreQuotaExceeded()) {
+    callback([]);
+    return () => {};
+  }
   const qSender = query(
     collection(db, FRIEND_REQUESTS_COLLECTION),
     where('senderId', '==', userId),

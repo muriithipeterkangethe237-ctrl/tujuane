@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   X,
   MapPin,
@@ -60,6 +60,7 @@ import {
 import { fetchUserCommunityActivityMetrics } from '../services/activityMetricsService';
 import { AchievementBadgesSection } from './AchievementBadgesSection';
 import { ReportModal } from './ReportModal';
+import { trackFunnelMilestone, trackDropOffPoint } from '../services/telemetryService';
 
 interface UserProfileModalProps {
   user: UserProfile;
@@ -242,6 +243,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wasOpenRef = useRef<boolean>(false);
   const prevUidRef = useRef<string>(user?.uid || '');
+  const didSaveInSessionRef = useRef<boolean>(false);
 
   // Initialize edit mode ONLY when the modal opens or switches to a different user
   useEffect(() => {
@@ -249,6 +251,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     const switchedUser = isOpen && prevUidRef.current !== user?.uid;
 
     if (justOpened || switchedUser) {
+      didSaveInSessionRef.current = false;
       setIsEditing(isOwnProfile && initialEditMode);
       setFieldErrors({});
       setSaveError(null);
@@ -368,17 +371,24 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     [localUser, effectiveActivityMetrics]
   );
 
+  const handleRequestClose = useCallback(() => {
+    if (isOwnProfile && isEditing && !didSaveInSessionRef.current) {
+      trackDropOffPoint('abandoned_profile_setup', 'Closed profile editor without saving');
+    }
+    onClose();
+  }, [isOwnProfile, isEditing, onClose]);
+
   // Handle ESC key to close modal reliably
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        handleRequestClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, handleRequestClose]);
 
   if (!isOpen) return null;
 
@@ -389,7 +399,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     return (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-xs animate-fade-in"
-        onClick={onClose}
+        onClick={handleRequestClose}
       >
         <div
           className="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 text-center space-y-3 shadow-2xl border border-slate-200 dark:border-slate-800"
@@ -403,7 +413,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             This account is reserved for system platform maintenance and administration, and is shielded from public citizen interactions.
           </p>
           <button
-            onClick={onClose}
+            onClick={handleRequestClose}
             className="w-full py-2 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
           >
             Close
@@ -601,6 +611,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       }
 
       localSaveTimestampRef.current = Date.now();
+      didSaveInSessionRef.current = true;
+      trackFunnelMilestone('profile_completed', 'Saved customized citizen profile');
       setLocalUser(updatedUser);
       onProfileUpdated?.(updatedUser);
 
@@ -619,7 +631,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   return (
     <div
-      onClick={onClose}
+      onClick={handleRequestClose}
       className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in overflow-y-auto"
     >
       <div
@@ -648,7 +660,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onClose();
+              handleRequestClose();
             }}
             className="p-2 bg-slate-950/45 hover:bg-slate-950/70 active:bg-slate-950/85 backdrop-blur-md text-white rounded-full border border-white/15 transition-colors cursor-pointer shadow-sm"
             title="Close modal (Esc)"
@@ -1500,7 +1512,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onClose();
+                handleRequestClose();
               }}
               className="px-4 py-1.5 bg-slate-800 dark:bg-emerald-600 hover:bg-slate-900 dark:hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-xl transition-all cursor-pointer shadow-xs"
               title="Close profile dialog"

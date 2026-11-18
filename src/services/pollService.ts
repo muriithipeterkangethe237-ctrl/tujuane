@@ -11,11 +11,18 @@ import {
   increment,
   limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, handleFirestoreListenerError, OperationType } from '../firebase';
+import {
+  db,
+  handleFirestoreError,
+  handleFirestoreListenerError,
+  isFirestoreQuotaExceeded,
+  OperationType
+} from '../firebase';
 import { CommunityPoll, CreatePollParams } from '../types/poll';
 import { UserProfile } from '../types/chat';
 
 const POLLS_COLLECTION = 'community_polls';
+const POLLS_CACHE_KEY = 'tujuane_polls_cache_v1';
 // Keep pre-reset polls stored in Firebase but out of public listings.
 const PUBLIC_POLLS_VISIBLE_AFTER = Date.parse('2026-11-02T22:47:21.708+03:00');
 
@@ -25,6 +32,22 @@ const PUBLIC_POLLS_VISIBLE_AFTER = Date.parse('2026-11-02T22:47:21.708+03:00');
 export function subscribeToCommunityPolls(
   callback: (polls: CommunityPoll[]) => void
 ): () => void {
+  try {
+    const raw = localStorage.getItem(POLLS_CACHE_KEY);
+    if (raw) {
+      const cached = JSON.parse(raw) as CommunityPoll[];
+      if (Array.isArray(cached) && cached.length > 0) {
+        callback(cached);
+      }
+    }
+  } catch {
+    // ignore cache error
+  }
+
+  if (isFirestoreQuotaExceeded()) {
+    return () => {};
+  }
+
   const pollsRef = collection(db, POLLS_COLLECTION);
   const q = query(pollsRef, orderBy('createdAt', 'desc'), limit(25));
 
@@ -50,11 +73,15 @@ export function subscribeToCommunityPolls(
         };
       });
 
-      callback(
-        polls.filter(
-          (poll) => Date.parse(poll.createdAt) >= PUBLIC_POLLS_VISIBLE_AFTER
-        )
+      const visible = polls.filter(
+        (poll) => Date.parse(poll.createdAt) >= PUBLIC_POLLS_VISIBLE_AFTER
       );
+      try {
+        localStorage.setItem(POLLS_CACHE_KEY, JSON.stringify(visible));
+      } catch {
+        // ignore quota/storage error
+      }
+      callback(visible);
     },
     (error) => {
       handleFirestoreListenerError(error, OperationType.LIST, POLLS_COLLECTION, () => callback([]));
@@ -70,7 +97,7 @@ export function subscribeToUserPollVote(
   userId: string | undefined,
   callback: (selectedOptionId: string | null) => void
 ): () => void {
-  if (!userId || !pollId) {
+  if (!userId || !pollId || isFirestoreQuotaExceeded()) {
     callback(null);
     return () => {};
   }

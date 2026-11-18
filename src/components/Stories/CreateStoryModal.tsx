@@ -12,12 +12,21 @@ import {
   VolumeX,
   AlertCircle,
   Clock,
-  RotateCcw
+  RotateCcw,
+  UploadCloud
 } from 'lucide-react';
 import { UserProfile } from '../../types/chat';
 import { StoryMediaType } from '../../types/story';
 import { publishCitizenStory } from '../../services/storyService';
 import { ALL_47_COUNTIES } from '../../data/kenyaCounties';
+import { useBackgroundUploads } from '../../context/BackgroundUploadContext';
+import { formatFileSize } from '../../utils/imageCompressor';
+import {
+  trimAndEncodeStoryVideo,
+  formatVideoDuration,
+  MAX_STORY_VIDEO_DURATION_SEC,
+  EncodedStoryVideoResult
+} from '../../utils/videoProcessor';
 
 interface CreateStoryModalProps {
   isOpen: boolean;
@@ -40,6 +49,19 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   const [county, setCounty] = useState<string>(userProfile?.county || 'Nairobi');
   const [duration, setDuration] = useState<number>(6);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
+  const [isProcessingVideo, setIsProcessingVideo] = useState<boolean>(false);
+  const [videoTrimProgress, setVideoTrimProgress] = useState<number | null>(null);
+  const [videoStageLabel, setVideoStageLabel] = useState<string>('Auto-compressing & trimming video...');
+  const [encodedStoryResult, setEncodedStoryResult] = useState<EncodedStoryVideoResult | null>(null);
+  const [uploadInBackground, setUploadInBackground] = useState<boolean>(true);
+  const [autoTrimInfo, setAutoTrimInfo] = useState<{
+    originalDuration: number;
+    duration: number;
+    originalSizeBytes?: number;
+    sizeBytes?: number;
+    wasAutoTrimmed?: boolean;
+    wasCompressed?: boolean;
+  } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Video playback preview state
@@ -48,6 +70,11 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const rawVideoFileRef = useRef<File | null>(null);
+  const pendingStoryPromiseRef = useRef<Promise<EncodedStoryVideoResult> | null>(null);
+  const videoGenerationRef = useRef<number>(0);
+
+  const { enqueueStoryVideoUpload } = useBackgroundUploads();
 
   useEffect(() => {
     if (userProfile?.county) {
@@ -110,53 +137,66 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Process Video File (Max 700KB raw so Base64 stays under Firestore's 1MiB document limit)
-  const processVideoFile = (file: File) => {
+  // Process Video File (auto-trims longer clips to 30s and auto-compresses size for Firestore)
+  const processVideoFile = async (file: File) => {
     setErrorMessage(null);
-    if (!file.type.startsWith('video/')) {
+    setAutoTrimInfo(null);
+    setEncodedStoryResult(null);
+    if (!file.type.startsWith('video/') && !/\.(mp4|webm|mov|m4v|3gp|mkv)$/i.test(file.name || '')) {
       setErrorMessage('Please select a valid video file (MP4, WebM, MOV).');
       return;
     }
 
-    const MAX_VIDEO_BYTES = 700 * 1024;
-    if (file.size > MAX_VIDEO_BYTES) {
-      setErrorMessage(
-        `Video file size (${(file.size / 1024).toFixed(0)}KB) is too large. Please select a short clip under 700KB (5 to 15 seconds recommended).`
-      );
-      return;
+    const gen = ++videoGenerationRef.current;
+    rawVideoFileRef.current = file;
+    setMediaType('video');
+    setIsProcessingVideo(true);
+    setVideoTrimProgress(5);
+    setVideoStageLabel('Auto-compressing & optimizing story video...');
+
+    const promise = trimAndEncodeStoryVideo(file, (pct, stage) => {
+      if (videoGenerationRef.current !== gen) return;
+      setVideoTrimProgress(pct);
+      if (stage) setVideoStageLabel(stage);
+    });
+    pendingStoryPromiseRef.current = promise;
+
+    try {
+      const encoded = await promise;
+      if (videoGenerationRef.current !== gen) return;
+      pendingStoryPromiseRef.current = null;
+      setEncodedStoryResult(encoded);
+      setMediaType('video');
+      setMediaUrl(encoded.dataUrl);
+      setDuration(Math.min(MAX_STORY_VIDEO_DURATION_SEC, encoded.duration));
+      if (encoded.wasAutoTrimmed || encoded.wasCompressed) {
+        setAutoTrimInfo({
+          originalDuration: encoded.originalDuration,
+          duration: encoded.duration,
+          originalSizeBytes: encoded.originalSizeBytes,
+          sizeBytes: encoded.sizeBytes,
+          wasAutoTrimmed: encoded.wasAutoTrimmed,
+          wasCompressed: encoded.wasCompressed
+        });
+      }
+      setIsVideoPlaying(true);
+    } catch (err: any) {
+      if (videoGenerationRef.current !== gen) return;
+      pendingStoryPromiseRef.current = null;
+      setErrorMessage(err?.message || 'Could not process selected video. Please try another clip.');
+    } finally {
+      if (videoGenerationRef.current === gen) {
+        setIsProcessingVideo(false);
+        setVideoTrimProgress(null);
+      }
     }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
-
-      // Create a temporary video element to check duration
-      const tempVideo = document.createElement('video');
-      tempVideo.preload = 'metadata';
-      tempVideo.onloadedmetadata = () => {
-        const vidDuration = Math.round(tempVideo.duration) || 10;
-        if (vidDuration > 30) {
-          setErrorMessage('Video duration exceeds 30 seconds. Please select a clip of 30 seconds or less.');
-          return;
-        }
-        setMediaType('video');
-        setMediaUrl(dataUrl);
-        setDuration(Math.min(30, vidDuration));
-        setIsVideoPlaying(true);
-      };
-      tempVideo.onerror = () => {
-        setErrorMessage('Failed to decode video format. Please use standard MP4 or WebM.');
-      };
-      tempVideo.src = dataUrl;
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.type.startsWith('video/')) {
+    if (file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v|3gp|mkv)$/i.test(file.name || '')) {
       processVideoFile(file);
     } else if (file.type.startsWith('image/')) {
       processImageFile(file);
@@ -166,12 +206,36 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   };
 
   const handlePublish = async () => {
-    if (!mediaUrl) {
+    if (!currentUser || !userProfile) {
+      setErrorMessage('You must be signed in as a citizen to post stories.');
+      return;
+    }
+
+    const canSubmitVideoInBackground =
+      mediaType === 'video' &&
+      uploadInBackground &&
+      (!!encodedStoryResult || (isProcessingVideo && !!rawVideoFileRef.current));
+
+    if (!mediaUrl && !canSubmitVideoInBackground) {
       setErrorMessage('Please select a photo or video for your story.');
       return;
     }
-    if (!currentUser || !userProfile) {
-      setErrorMessage('You must be signed in as a citizen to post stories.');
+
+    if (canSubmitVideoInBackground) {
+      videoGenerationRef.current += 1;
+      enqueueStoryVideoUpload({
+        author: userProfile,
+        county,
+        caption: caption.trim() || undefined,
+        encodedStory: encodedStoryResult,
+        pendingStoryPromise: pendingStoryPromiseRef.current,
+        rawVideoFile: rawVideoFileRef.current,
+        initialProgress: videoTrimProgress ?? 5
+      });
+      handleResetMedia();
+      setIsProcessingVideo(false);
+      setVideoTrimProgress(null);
+      onClose();
       return;
     }
 
@@ -198,8 +262,13 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   };
 
   const handleResetMedia = () => {
+    videoGenerationRef.current += 1;
+    rawVideoFileRef.current = null;
+    pendingStoryPromiseRef.current = null;
+    setEncodedStoryResult(null);
     setMediaUrl('');
     setCaption('');
+    setAutoTrimInfo(null);
     setErrorMessage(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -290,19 +359,43 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
               {/* Upload Dropzone */}
               <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 rounded-3xl p-8 text-center cursor-pointer transition-colors bg-slate-50/50 dark:bg-slate-800/40 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 group"
+                onClick={() => {
+                  if (!isProcessingVideo) fileInputRef.current?.click();
+                }}
+                className={`border-2 border-dashed rounded-3xl p-8 text-center transition-colors bg-slate-50/50 dark:bg-slate-800/40 group ${
+                  isProcessingVideo
+                    ? 'border-emerald-400 dark:border-emerald-600 cursor-wait'
+                    : 'border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 cursor-pointer'
+                }`}
               >
                 <div className="w-14 h-14 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center mx-auto shadow-xs group-hover:scale-105 transition-transform">
-                  <Upload className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                  {isProcessingVideo ? (
+                    <span className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Upload className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                  )}
                 </div>
-                <div className="mt-3.5 space-y-1">
+                <div className="mt-3.5 space-y-1.5">
                   <div className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                    Upload Photo or Video
+                    {isProcessingVideo ? videoStageLabel : 'Upload Photo or Video'}
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
-                    Choose an image (JPEG, PNG, WebP) or short video clip (MP4, WebM up to 30s, max 700KB)
-                  </p>
+                  {isProcessingVideo && videoTrimProgress !== null ? (
+                    <div className="max-w-xs mx-auto space-y-2 pt-1">
+                      <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-600 transition-all duration-200"
+                          style={{ width: `${videoTrimProgress}%` }}
+                        />
+                      </div>
+                      <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                        {videoTrimProgress}% · Auto-compressing & fitting to story size (you can share in background now)
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
+                      Choose an image (JPEG, PNG, WebP) or video clip (auto-compresses & trims to 30s)
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -311,6 +404,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                 ref={fileInputRef}
                 type="file"
                 accept="image/*,video/*"
+                disabled={isProcessingVideo}
                 onChange={handleFileChange}
                 className="hidden"
               />
@@ -385,7 +479,15 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                 {/* Type Badge & Duration */}
                 <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-black/60 text-white font-semibold text-[11px] backdrop-blur-md flex items-center gap-1.5 border border-white/10">
                   {mediaType === 'image' ? <Camera className="w-3 h-3 text-emerald-400" /> : <Video className="w-3 h-3 text-rose-400" />}
-                  <span>{mediaType === 'image' ? 'Photo (6s)' : `Video (${duration}s)`}</span>
+                  <span>
+                    {mediaType === 'image'
+                      ? 'Photo (6s)'
+                      : autoTrimInfo?.wasAutoTrimmed
+                      ? `Auto-trimmed ${formatVideoDuration(autoTrimInfo.originalDuration)} → ${formatVideoDuration(autoTrimInfo.duration)}`
+                      : autoTrimInfo?.wasCompressed && autoTrimInfo.originalSizeBytes && autoTrimInfo.sizeBytes
+                      ? `Video (${duration}s · ${formatFileSize(autoTrimInfo.sizeBytes)} from ${formatFileSize(autoTrimInfo.originalSizeBytes)})`
+                      : `Video (${duration}s)`}
+                  </span>
                 </div>
 
                 {/* Live Caption Overlay on Preview */}
@@ -433,6 +535,24 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* Background Upload Option for Story Videos */}
+          {(mediaType === 'video' && (mediaUrl || isProcessingVideo)) && (
+            <label className="flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 cursor-pointer">
+              <div className="flex items-center gap-2 min-w-0">
+                <UploadCloud className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                  Auto-upload in background (close & keep browsing)
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={uploadInBackground}
+                onChange={(e) => setUploadInBackground(e.target.checked)}
+                className="w-4 h-4 accent-emerald-600 rounded cursor-pointer shrink-0"
+              />
+            </label>
+          )}
         </div>
 
         {/* Modal Footer */}
@@ -447,7 +567,10 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
           <button
             type="button"
-            disabled={!mediaUrl || isPublishing}
+            disabled={
+              isPublishing ||
+              (!mediaUrl && !(mediaType === 'video' && uploadInBackground && isProcessingVideo && !!rawVideoFileRef.current))
+            }
             onClick={handlePublish}
             className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md hover:shadow-emerald-600/25 flex items-center gap-2 cursor-pointer"
           >
@@ -455,6 +578,11 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
               <>
                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 <span>Publishing Story...</span>
+              </>
+            ) : mediaType === 'video' && uploadInBackground ? (
+              <>
+                <UploadCloud className="w-4 h-4" />
+                <span>{isProcessingVideo ? 'Upload in Background' : 'Share in Background'}</span>
               </>
             ) : (
               <>

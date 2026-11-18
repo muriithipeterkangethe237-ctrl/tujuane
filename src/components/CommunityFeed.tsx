@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useBackgroundUploads } from '../context/BackgroundUploadContext';
 import {
   CommunityPost,
   CommunityComment,
@@ -19,7 +20,8 @@ import {
   subscribeToPostComments,
   deleteCommunityPost,
   reactToCommunityPost,
-  reactToCommunityComment
+  reactToCommunityComment,
+  prefetchVideoHeadFrames
 } from '../services/communityService';
 import { DailyCommunityPoll } from './DailyCommunityPoll';
 import { CitizenStoriesBar } from './Stories/CitizenStoriesBar';
@@ -38,8 +40,11 @@ import { compressImage, formatFileSize } from '../utils/imageCompressor';
 import {
   processFeedVideoFile,
   formatVideoDuration,
-  ProcessedFeedVideo
+  ProcessedFeedVideo,
+  MAX_FEED_VIDEO_DURATION_SEC,
+  resolvePlayableVideoUrl
 } from '../utils/videoProcessor';
+import { FeedPostSkeletonList } from './Skeletons';
 import { ALL_47_COUNTIES, getConstituenciesByCounty } from '../data/kenyaCounties';
 import { analyzeContentSafety, getSafetyExplanation } from '../utils/safetyFilter';
 import { SafetyCategory, SafetyScanResult } from '../types/safety';
@@ -53,6 +58,7 @@ import {
 import { sendUserNotification } from '../services/userNotificationService';
 import { UserProfile } from '../types/chat';
 import { resolveLiveAuthor } from '../utils/profileUtils';
+import { trackFunnelMilestone, trackDropOffPoint } from '../services/telemetryService';
 import {
   MessageSquare,
   Sparkles,
@@ -98,7 +104,8 @@ import {
   Video,
   Mic,
   Camera,
-  RotateCcw
+  RotateCcw,
+  UploadCloud
 } from 'lucide-react';
 
 export interface ExternalCreateRequest {
@@ -139,8 +146,11 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     unmuteUser
   } = useAuth();
 
+  const { enqueuePostVideoUpload } = useBackgroundUploads();
+
   // Feed states
   const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedCounty, setSelectedCounty] = useState<string>('All');
   const [sortBy, setSortBy] = useState<'latest' | 'popular'>('latest');
@@ -157,12 +167,22 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [compressedImage, setCompressedImage] = useState<string | null>(null);
   const [modalMediaType, setModalMediaType] = useState<PostMediaType>('image');
   const [imageMeta, setImageMeta] = useState<{ origSize: number; compSize: number } | null>(null);
-  const [videoMeta, setVideoMeta] = useState<{ size: number; duration: number } | null>(null);
+  const [videoMeta, setVideoMeta] = useState<{
+    size: number;
+    originalSize?: number;
+    wasCompressed?: boolean;
+    duration: number;
+    wasAutoTrimmed?: boolean;
+    originalDuration?: number;
+  } | null>(null);
   const [modalVideoData, setModalVideoData] = useState<ProcessedFeedVideo | null>(null);
   const [modalAudioData, setModalAudioData] = useState<RecordedVoiceShout | null>(null);
   const [modalShowVoiceRecorder, setModalShowVoiceRecorder] = useState(false);
   const [modalShowVideoRecorder, setModalShowVideoRecorder] = useState(false);
   const [modalUploadProgress, setModalUploadProgress] = useState<number | null>(null);
+  const [modalTrimProgress, setModalTrimProgress] = useState<number | null>(null);
+  const [modalTrimStage, setModalTrimStage] = useState<string>('Auto-compressing video file size...');
+  const [modalBackgroundUpload, setModalBackgroundUpload] = useState<boolean>(true);
   const [modalHighlightVideo, setModalHighlightVideo] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -170,6 +190,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [modalBgColor, setModalBgColor] = useState<PostBackgroundColor>('default');
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
   const [isStoryModalOpen, setIsStoryModalOpen] = useState(false);
+  const modalVideoFileRef = useRef<File | null>(null);
+  const modalVideoPromiseRef = useRef<Promise<ProcessedFeedVideo> | null>(null);
+  const modalVideoGenerationRef = useRef<number>(0);
 
   // Handle external create request from Header or App level
   useEffect(() => {
@@ -242,6 +265,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     postId: string;
     resolvedUrls: Record<string, string>;
   } | null>(null);
+  const [activeFeedVideoId, setActiveFeedVideoId] = useState<string | null>(null);
   const commentUnsubsRef = useRef<Record<string, () => void>>({});
 
   useEffect(() => {
@@ -259,11 +283,21 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [quickImage, setQuickImage] = useState<string | null>(null);
   const [quickMediaType, setQuickMediaType] = useState<PostMediaType>('image');
   const [quickImageMeta, setQuickImageMeta] = useState<{ origSize: number; compSize: number } | null>(null);
-  const [quickVideoMeta, setQuickVideoMeta] = useState<{ size: number; duration: number } | null>(null);
+  const [quickVideoMeta, setQuickVideoMeta] = useState<{
+    size: number;
+    originalSize?: number;
+    wasCompressed?: boolean;
+    duration: number;
+    wasAutoTrimmed?: boolean;
+    originalDuration?: number;
+  } | null>(null);
   const [quickVideoData, setQuickVideoData] = useState<ProcessedFeedVideo | null>(null);
   const [quickShowVideoRecorder, setQuickShowVideoRecorder] = useState(false);
   const [quickError, setQuickError] = useState<string | null>(null);
   const [quickUploadProgress, setQuickUploadProgress] = useState<number | null>(null);
+  const [quickTrimProgress, setQuickTrimProgress] = useState<number | null>(null);
+  const [quickTrimStage, setQuickTrimStage] = useState<string>('Auto-compressing video file size...');
+  const [quickBackgroundUpload, setQuickBackgroundUpload] = useState<boolean>(true);
   const [isQuickCompressing, setIsQuickCompressing] = useState(false);
   const [isQuickSubmitting, setIsQuickSubmitting] = useState(false);
   const [quickShowLocation, setQuickShowLocation] = useState(false);
@@ -272,6 +306,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [quickBgColor, setQuickBgColor] = useState<PostBackgroundColor>('default');
   const quickFileInputRef = useRef<HTMLInputElement | null>(null);
   const quickVideoInputRef = useRef<HTMLInputElement | null>(null);
+  const quickVideoFileRef = useRef<File | null>(null);
+  const quickVideoPromiseRef = useRef<Promise<ProcessedFeedVideo> | null>(null);
+  const quickVideoGenerationRef = useRef<number>(0);
 
   // Full Modal optional location toggle
   const [modalIncludeLocation, setModalIncludeLocation] = useState(false);
@@ -347,9 +384,18 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   }, [currentUser]);
 
   const closeCreateModal = useCallback(() => {
+    const hasDraft =
+      Boolean(postTitle.trim()) ||
+      Boolean(postContent.trim()) ||
+      Boolean(compressedImage) ||
+      Boolean(modalVideoData) ||
+      Boolean(modalAudioData);
+    if (hasDraft && !isSubmitting) {
+      trackDropOffPoint('abandoned_post_composer', 'Closed post composer with unsent draft');
+    }
     setIsCreateModalOpen(false);
     setModalShowVideoRecorder(false);
-  }, []);
+  }, [postTitle, postContent, compressedImage, modalVideoData, modalAudioData, isSubmitting]);
 
   // Handle ESC key to close any active dialogs
   useEffect(() => {
@@ -376,24 +422,26 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
   }, [userProfile]);
 
-  // Subscribe to real-time posts from Firestore with county & constituency filters
+  // Subscribe once to real-time posts from Firestore and apply filters in-memory (saves 40 reads per filter click)
   useEffect(() => {
-    const unsub = subscribeToCommunityPosts(
-      {
-        county: selectedCounty === 'All' ? undefined : selectedCounty,
-        constituency: selectedConstituency === 'All' ? undefined : selectedConstituency,
-        category:
-          selectedCategory === 'all' || selectedCategory === 'videos' || selectedCategory === 'audio'
-            ? undefined
-            : selectedCategory,
-        sortBy
-      },
-      (incomingPosts) => {
-        setPosts(incomingPosts);
-      }
-    );
+    setIsLoadingPosts(true);
+    const unsub = subscribeToCommunityPosts({}, (incomingPosts) => {
+      setPosts(incomingPosts);
+      setIsLoadingPosts(false);
+      const topVideos = incomingPosts
+        .filter(
+          (p) =>
+            p.mediaType === 'video' ||
+            (p.mediaUrl?.startsWith('data:video/') ?? false) ||
+            (p.videoChunkCount ?? 0) > 0
+        )
+        .slice(0, 2);
+      topVideos.forEach((vp) => {
+        void prefetchVideoHeadFrames(vp);
+      });
+    });
     return () => unsub();
-  }, [selectedCounty, selectedConstituency, selectedCategory, sortBy]);
+  }, []);
 
   // Handle image or short video upload in Create Modal
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -404,23 +452,67 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v|3gp|mkv)$/i.test(file.name || '');
 
     if (isVideoFile) {
+      const gen = ++modalVideoGenerationRef.current;
+      modalVideoFileRef.current = file;
       setIsCompressing(true);
+      setModalTrimProgress(5);
+      setModalTrimStage('Auto-compressing video file size...');
       setFormError(null);
       setModalShowVideoRecorder(false);
       setModalMediaType('video');
+
+      const promise = processFeedVideoFile(file, {
+        maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
+        autoTrim: true,
+        autoCompress: true,
+        onProgress: (pct, stage) => {
+          if (modalVideoGenerationRef.current !== gen) return;
+          setModalTrimProgress(pct);
+          if (stage) setModalTrimStage(stage);
+        }
+      });
+      modalVideoPromiseRef.current = promise;
+
       try {
-        const processed = await processFeedVideoFile(file);
+        const processed = await promise;
+        if (modalVideoGenerationRef.current !== gen) return;
+        modalVideoPromiseRef.current = null;
+
         if (modalVideoData?.previewObjectUrl) {
           URL.revokeObjectURL(modalVideoData.previewObjectUrl);
         }
         setModalVideoData(processed);
         setCompressedImage(processed.previewObjectUrl);
         setImageMeta(null);
-        setVideoMeta({ size: processed.sizeBytes, duration: processed.duration });
+        setVideoMeta({
+          size: processed.sizeBytes,
+          originalSize: processed.originalSizeBytes,
+          wasCompressed: processed.wasCompressed,
+          duration: processed.duration,
+          wasAutoTrimmed: processed.wasAutoTrimmed,
+          originalDuration: processed.originalDuration
+        });
+        if (processed.wasAutoTrimmed) {
+          triggerToast(
+            `Video auto-trimmed from ${formatVideoDuration(processed.originalDuration)} to ${formatVideoDuration(processed.duration)}.`
+          );
+        } else if (processed.wasCompressed && processed.originalSizeBytes) {
+          const savedPct = Math.round(
+            ((processed.originalSizeBytes - processed.sizeBytes) / processed.originalSizeBytes) * 100
+          );
+          triggerToast(
+            `Video auto-compressed: ${formatFileSize(processed.originalSizeBytes)} → ${formatFileSize(processed.sizeBytes)} (-${savedPct}%).`
+          );
+        }
       } catch (err: any) {
+        if (modalVideoGenerationRef.current !== gen) return;
+        modalVideoPromiseRef.current = null;
         setFormError(err?.message || 'Could not process selected short video.');
       } finally {
-        setIsCompressing(false);
+        if (modalVideoGenerationRef.current === gen) {
+          setIsCompressing(false);
+          setModalTrimProgress(null);
+        }
       }
       return;
     }
@@ -430,6 +522,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       return;
     }
 
+    modalVideoGenerationRef.current += 1;
+    modalVideoFileRef.current = null;
+    modalVideoPromiseRef.current = null;
     setIsCompressing(true);
     setFormError(null);
 
@@ -456,6 +551,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   };
 
   const handleModalRecordedVideo = (processed: ProcessedFeedVideo) => {
+    modalVideoGenerationRef.current += 1;
+    modalVideoFileRef.current = null;
+    modalVideoPromiseRef.current = null;
     if (modalVideoData?.previewObjectUrl) {
       URL.revokeObjectURL(modalVideoData.previewObjectUrl);
     }
@@ -469,11 +567,19 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     setModalVideoData(processed);
     setCompressedImage(processed.previewObjectUrl);
     setImageMeta(null);
-    setVideoMeta({ size: processed.sizeBytes, duration: processed.duration });
+    setVideoMeta({
+      size: processed.sizeBytes,
+      originalSize: processed.originalSizeBytes,
+      wasCompressed: processed.wasCompressed,
+      duration: processed.duration
+    });
     setFormError(null);
   };
 
   const handleRemoveImage = () => {
+    modalVideoGenerationRef.current += 1;
+    modalVideoFileRef.current = null;
+    modalVideoPromiseRef.current = null;
     if (modalVideoData?.previewObjectUrl) {
       URL.revokeObjectURL(modalVideoData.previewObjectUrl);
     }
@@ -506,25 +612,69 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v|3gp|mkv)$/i.test(file.name || '');
 
     if (isVideoFile) {
+      const gen = ++quickVideoGenerationRef.current;
+      quickVideoFileRef.current = file;
       setIsQuickCompressing(true);
+      setQuickTrimProgress(5);
+      setQuickTrimStage('Auto-compressing video file size...');
       setQuickError(null);
       setQuickShowVideoRecorder(false);
       setQuickMediaType('video');
+
+      const promise = processFeedVideoFile(file, {
+        maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
+        autoTrim: true,
+        autoCompress: true,
+        onProgress: (pct, stage) => {
+          if (quickVideoGenerationRef.current !== gen) return;
+          setQuickTrimProgress(pct);
+          if (stage) setQuickTrimStage(stage);
+        }
+      });
+      quickVideoPromiseRef.current = promise;
+
       try {
-        const processed = await processFeedVideoFile(file);
+        const processed = await promise;
+        if (quickVideoGenerationRef.current !== gen) return;
+        quickVideoPromiseRef.current = null;
+
         if (quickVideoData?.previewObjectUrl) {
           URL.revokeObjectURL(quickVideoData.previewObjectUrl);
         }
         setQuickVideoData(processed);
         setQuickImage(processed.previewObjectUrl);
         setQuickImageMeta(null);
-        setQuickVideoMeta({ size: processed.sizeBytes, duration: processed.duration });
+        setQuickVideoMeta({
+          size: processed.sizeBytes,
+          originalSize: processed.originalSizeBytes,
+          wasCompressed: processed.wasCompressed,
+          duration: processed.duration,
+          wasAutoTrimmed: processed.wasAutoTrimmed,
+          originalDuration: processed.originalDuration
+        });
+        if (processed.wasAutoTrimmed) {
+          triggerToast(
+            `Video auto-trimmed from ${formatVideoDuration(processed.originalDuration)} to ${formatVideoDuration(processed.duration)}.`
+          );
+        } else if (processed.wasCompressed && processed.originalSizeBytes) {
+          const savedPct = Math.round(
+            ((processed.originalSizeBytes - processed.sizeBytes) / processed.originalSizeBytes) * 100
+          );
+          triggerToast(
+            `Video auto-compressed: ${formatFileSize(processed.originalSizeBytes)} → ${formatFileSize(processed.sizeBytes)} (-${savedPct}%).`
+          );
+        }
       } catch (err: any) {
+        if (quickVideoGenerationRef.current !== gen) return;
+        quickVideoPromiseRef.current = null;
         const msg = err?.message || 'Could not load short video.';
         setQuickError(msg);
         triggerToast(msg);
       } finally {
-        setIsQuickCompressing(false);
+        if (quickVideoGenerationRef.current === gen) {
+          setIsQuickCompressing(false);
+          setQuickTrimProgress(null);
+        }
       }
       return;
     }
@@ -536,6 +686,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       return;
     }
 
+    quickVideoGenerationRef.current += 1;
+    quickVideoFileRef.current = null;
+    quickVideoPromiseRef.current = null;
     setIsQuickCompressing(true);
     setQuickError(null);
     setQuickShowVideoRecorder(false);
@@ -561,6 +714,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   };
 
   const handleQuickRecordedVideo = (processed: ProcessedFeedVideo) => {
+    quickVideoGenerationRef.current += 1;
+    quickVideoFileRef.current = null;
+    quickVideoPromiseRef.current = null;
     if (quickVideoData?.previewObjectUrl) {
       URL.revokeObjectURL(quickVideoData.previewObjectUrl);
     }
@@ -569,11 +725,19 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     setQuickVideoData(processed);
     setQuickImage(processed.previewObjectUrl);
     setQuickImageMeta(null);
-    setQuickVideoMeta({ size: processed.sizeBytes, duration: processed.duration });
+    setQuickVideoMeta({
+      size: processed.sizeBytes,
+      originalSize: processed.originalSizeBytes,
+      wasCompressed: processed.wasCompressed,
+      duration: processed.duration
+    });
     setQuickError(null);
   };
 
   const handleRemoveQuickImage = () => {
+    quickVideoGenerationRef.current += 1;
+    quickVideoFileRef.current = null;
+    quickVideoPromiseRef.current = null;
     if (quickVideoData?.previewObjectUrl) {
       URL.revokeObjectURL(quickVideoData.previewObjectUrl);
     }
@@ -588,7 +752,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     if (quickVideoInputRef.current) quickVideoInputRef.current.value = '';
   };
 
-  // Submit direct quick post (Caption, photo, or short video — no location required!)
+  // Submit direct quick post (Caption, photo, or short video — supports background compression & upload)
   const handleDirectQuickPost = async () => {
     if (!currentUser || !userProfile) {
       openAuthModal();
@@ -596,7 +760,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
 
     const trimmedCaption = quickCaption.trim();
-    if (!trimmedCaption && !quickImage && !quickVideoData) {
+    const hasPendingQuickVideo =
+      isQuickCompressing && quickMediaType === 'video' && !!quickVideoFileRef.current;
+
+    if (!trimmedCaption && !quickImage && !quickVideoData && !hasPendingQuickVideo) {
       setQuickError('Please write a caption or attach a photo / short video.');
       return;
     }
@@ -608,27 +775,84 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       return;
     }
 
+    const isVideo =
+      quickMediaType === 'video' && (!!quickVideoData || !!quickImage || hasPendingQuickVideo);
+    const autoTitle = trimmedCaption
+      ? trimmedCaption.slice(0, 75) + (trimmedCaption.length > 75 ? '...' : '')
+      : isVideo
+      ? 'Citizen Short Video'
+      : 'Citizen Photo Update';
+
+    const baseParams: any = {
+      title: autoTitle,
+      content:
+        trimmedCaption ||
+        (isVideo ? 'Shared a short video on the feed.' : quickImage ? 'Shared a citizen photo.' : ''),
+      category: 'general',
+      county: quickShowLocation ? quickCounty : '',
+      constituency: quickShowLocation && quickConstituency ? quickConstituency : undefined,
+      mediaType: isVideo ? 'video' : quickImage ? 'image' : undefined
+    };
+
+    if (quickBgColor && quickBgColor !== 'default' && !quickImage && !quickVideoData && !hasPendingQuickVideo) {
+      baseParams.backgroundColor = quickBgColor;
+    }
+
+    if (safetyScan.severity === 'medium' || safetyScan.triggeredCategories.length > 0) {
+      baseParams.isFlagged = true;
+      baseParams.safetyCategory = safetyScan.triggeredCategories[0] || 'misleading';
+      baseParams.safetyReason = safetyScan.flagReason;
+      baseParams.moderationStatus = 'under_review';
+    }
+
+    // Queue video upload into background manager so user can immediately keep browsing
+    if (isVideo && quickBackgroundUpload && (quickVideoData || hasPendingQuickVideo)) {
+      const processedSnap = quickVideoData;
+      const promiseSnap = quickVideoPromiseRef.current;
+      const fileSnap = quickVideoFileRef.current;
+      const initialPct = quickTrimProgress ?? 5;
+
+      quickVideoGenerationRef.current += 1;
+      quickVideoFileRef.current = null;
+      quickVideoPromiseRef.current = null;
+
+      enqueuePostVideoUpload({
+        title: autoTitle,
+        author: userProfile,
+        basePostParams: baseParams,
+        processedVideo: processedSnap,
+        pendingVideoPromise: promiseSnap,
+        rawVideoFile: fileSnap,
+        initialProgress: initialPct
+      });
+
+      setQuickCaption('');
+      setQuickVideoData(null);
+      setQuickImage(null);
+      setQuickMediaType('image');
+      setQuickImageMeta(null);
+      setQuickVideoMeta(null);
+      setQuickShowLocation(false);
+      setQuickConstituency('');
+      setQuickBgColor('default');
+      setIsQuickCompressing(false);
+      setQuickTrimProgress(null);
+      setQuickError(null);
+      if (quickFileInputRef.current) quickFileInputRef.current.value = '';
+      if (quickVideoInputRef.current) quickVideoInputRef.current.value = '';
+      triggerToast(
+        processedSnap
+          ? '🚀 Short video uploading in background — keep browsing!'
+          : '🚀 Video auto-compressing & uploading in background!'
+      );
+      return;
+    }
+
     setIsQuickSubmitting(true);
     setQuickError(null);
     setQuickUploadProgress(quickVideoData ? 5 : null);
     try {
-      const isVideo = quickMediaType === 'video' && (!!quickVideoData || !!quickImage);
-      const autoTitle = trimmedCaption
-        ? trimmedCaption.slice(0, 75) + (trimmedCaption.length > 75 ? '...' : '')
-        : isVideo
-        ? 'Citizen Short Video'
-        : 'Citizen Photo Update';
-
-      const params: any = {
-        title: autoTitle,
-        content:
-          trimmedCaption ||
-          (isVideo ? 'Shared a short video on the feed.' : quickImage ? 'Shared a citizen photo.' : ''),
-        category: 'general',
-        county: quickShowLocation ? quickCounty : '',
-        constituency: quickShowLocation && quickConstituency ? quickConstituency : undefined,
-        mediaType: isVideo ? 'video' : quickImage ? 'image' : undefined
-      };
+      const params: any = { ...baseParams };
 
       if (isVideo && quickVideoData) {
         params.mediaUrl = quickVideoData.inlineDataUrl || undefined;
@@ -641,17 +865,6 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         params.mediaUrl = quickImage;
       }
 
-      if (quickBgColor && quickBgColor !== 'default' && !quickImage && !quickVideoData) {
-        params.backgroundColor = quickBgColor;
-      }
-
-      if (safetyScan.severity === 'medium' || safetyScan.triggeredCategories.length > 0) {
-        params.isFlagged = true;
-        params.safetyCategory = safetyScan.triggeredCategories[0] || 'misleading';
-        params.safetyReason = safetyScan.flagReason;
-        params.moderationStatus = 'under_review';
-      }
-
       await createCommunityPost(userProfile, params, (pct) => {
         if (quickVideoData) setQuickUploadProgress(pct);
       });
@@ -659,6 +872,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       if (quickVideoData?.previewObjectUrl) {
         URL.revokeObjectURL(quickVideoData.previewObjectUrl);
       }
+      quickVideoFileRef.current = null;
+      quickVideoPromiseRef.current = null;
       setQuickCaption('');
       setQuickVideoData(null);
       setQuickImage(null);
@@ -766,7 +981,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
 
     const trimmedContent = postContent.trim();
-    if (!trimmedContent && !compressedImage && !modalVideoData && !modalAudioData) {
+    const hasPendingModalVideo =
+      isCompressing && modalMediaType === 'video' && !!modalVideoFileRef.current;
+
+    if (!trimmedContent && !compressedImage && !modalVideoData && !modalAudioData && !hasPendingModalVideo) {
       setFormError('Please enter caption details or attach a photo, short video, or voice shout.');
       return;
     }
@@ -778,12 +996,11 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       return;
     }
 
-    setIsSubmitting(true);
-    setFormError(null);
-    setModalUploadProgress(modalVideoData ? 5 : null);
-
     const isAudio = modalMediaType === 'audio' && !!modalAudioData;
-    const isVideo = !isAudio && modalMediaType === 'video' && (!!modalVideoData || !!compressedImage);
+    const isVideo =
+      !isAudio &&
+      modalMediaType === 'video' &&
+      (!!modalVideoData || !!compressedImage || hasPendingModalVideo);
 
     const derivedTitle = postTitle.trim()
       ? postTitle.trim()
@@ -800,7 +1017,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         ? 'Shared a community photo.'
         : '');
 
-    const params: CreatePostParams & Record<string, any> = {
+    const baseParams: CreatePostParams & Record<string, any> = {
       title: derivedTitle,
       content: safeContent,
       category: postCategory,
@@ -809,6 +1026,73 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       mediaType: isAudio ? 'audio' : isVideo ? 'video' : compressedImage ? 'image' : undefined,
       mediaCaption: mediaCaption.trim() || undefined
     };
+
+    if (modalBgColor && modalBgColor !== 'default' && !compressedImage && !modalVideoData && !modalAudioData && !hasPendingModalVideo) {
+      baseParams.backgroundColor = modalBgColor;
+    }
+
+    if (safetyScan.severity === 'medium' || safetyScan.triggeredCategories.length > 0) {
+      baseParams.isFlagged = true;
+      baseParams.safetyCategory = safetyScan.triggeredCategories[0] || 'misleading';
+      baseParams.safetyReason = safetyScan.flagReason;
+      baseParams.moderationStatus = 'under_review';
+    }
+
+    // Queue video upload into background manager and close modal immediately
+    if (isVideo && modalBackgroundUpload && (modalVideoData || hasPendingModalVideo)) {
+      const processedSnap = modalVideoData;
+      const promiseSnap = modalVideoPromiseRef.current;
+      const fileSnap = modalVideoFileRef.current;
+      const initialPct = modalTrimProgress ?? 5;
+
+      modalVideoGenerationRef.current += 1;
+      modalVideoFileRef.current = null;
+      modalVideoPromiseRef.current = null;
+
+      enqueuePostVideoUpload({
+        title: derivedTitle,
+        author: userProfile,
+        basePostParams: baseParams,
+        processedVideo: processedSnap,
+        pendingVideoPromise: promiseSnap,
+        rawVideoFile: fileSnap,
+        initialProgress: initialPct
+      });
+
+      setIsCreateModalOpen(false);
+      setPostTitle('');
+      setPostContent('');
+      setPostConstituency('');
+      setModalVideoData(null);
+      setModalAudioData(null);
+      setModalShowVoiceRecorder(false);
+      setModalShowVideoRecorder(false);
+      setCompressedImage(null);
+      setModalMediaType('image');
+      setImageMeta(null);
+      setVideoMeta(null);
+      setMediaCaption('');
+      setModalIncludeLocation(false);
+      setModalHighlightVideo(false);
+      setModalBgColor('default');
+      setIsCompressing(false);
+      setModalTrimProgress(null);
+      setFormError(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (videoInputRef.current) videoInputRef.current.value = '';
+      triggerToast(
+        processedSnap
+          ? '🚀 Uploading short video in background — keep browsing!'
+          : '🚀 Video auto-compressing & uploading in background!'
+      );
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError(null);
+    setModalUploadProgress(modalVideoData ? 5 : null);
+
+    const params: CreatePostParams & Record<string, any> = { ...baseParams };
 
     if (isAudio && modalAudioData) {
       params.mediaUrl = modalAudioData.dataUrl;
@@ -826,17 +1110,6 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       params.mediaUrl = compressedImage;
     }
 
-    if (modalBgColor && modalBgColor !== 'default' && !compressedImage && !modalVideoData && !modalAudioData) {
-      params.backgroundColor = modalBgColor;
-    }
-
-    if (safetyScan.severity === 'medium' || safetyScan.triggeredCategories.length > 0) {
-      params.isFlagged = true;
-      params.safetyCategory = safetyScan.triggeredCategories[0] || 'misleading';
-      params.safetyReason = safetyScan.flagReason;
-      params.moderationStatus = 'under_review';
-    }
-
     try {
       await createCommunityPost(userProfile, params, (pct) => {
         if (modalVideoData) setModalUploadProgress(pct);
@@ -847,6 +1120,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       if (modalAudioData?.previewObjectUrl) {
         URL.revokeObjectURL(modalAudioData.previewObjectUrl);
       }
+      modalVideoFileRef.current = null;
+      modalVideoPromiseRef.current = null;
       setIsCreateModalOpen(false);
       // Reset form
       setPostTitle('');
@@ -866,6 +1141,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       setModalBgColor('default');
       if (fileInputRef.current) fileInputRef.current.value = '';
       if (videoInputRef.current) videoInputRef.current.value = '';
+      trackFunnelMilestone(
+        'engaged_action',
+        isAudio ? 'Published voice shout' : isVideo ? 'Published short video' : 'Published community post'
+      );
       triggerToast(
         isAudio
           ? '✓ Voice shout published to TUJUANE feed!'
@@ -890,6 +1169,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     try {
       const res = await reactToCommunityPost(post.id, currentUser.uid, reactionKey);
       setActiveReactionPickerPostId(null);
+      if (res?.reaction) {
+        trackFunnelMilestone('engaged_action', `Reacted (${res.reaction}) on community post`);
+      }
 
       if (res?.reaction && post.authorId && post.authorId !== currentUser.uid) {
         const reactionMeta = REACTION_TYPES.find((r) => r.key === res.reaction);
@@ -1066,6 +1348,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         replyingToComment
       );
       if (ok) {
+        trackFunnelMilestone('engaged_action', 'Submitted feed comment');
         setCommentInput('');
         setCommentImage(null);
         setReplyingToComment(null);
@@ -1221,36 +1504,64 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     return posts.filter((p) => blockedUserIds.includes(p.authorId)).length;
   }, [posts, blockedUserIds]);
 
-  // Search, Video, Audience and Block filter
-  const filteredPosts = posts.filter((post) => {
-    // Hide discussions from blocked users
-    if (blockedUserIds && blockedUserIds.includes(post.authorId)) {
-      return false;
+  // Search, County, Constituency, Category, Video, Audience, Sort and Block filter
+  const filteredPosts = useMemo(() => {
+    const list = posts.filter((post) => {
+      // Hide discussions from blocked users
+      if (blockedUserIds && blockedUserIds.includes(post.authorId)) {
+        return false;
+      }
+      if (selectedCounty !== 'All' && (post.county || '').toLowerCase() !== selectedCounty.toLowerCase()) {
+        return false;
+      }
+      if (
+        selectedConstituency !== 'All' &&
+        (post.constituency || '').toLowerCase() !== selectedConstituency.toLowerCase()
+      ) {
+        return false;
+      }
+      if (feedAudience === 'following' && !followingIds.includes(post.authorId) && post.authorId !== currentUser?.uid) {
+        return false;
+      }
+      if (selectedCategory === 'videos') {
+        const isVid =
+          post.mediaType === 'video' ||
+          (post.mediaUrl?.startsWith('data:video/') ?? false) ||
+          (post.videoChunkCount ?? 0) > 0;
+        if (!isVid) return false;
+      } else if (selectedCategory === 'audio') {
+        const isAud =
+          post.mediaType === 'audio' ||
+          (post.mediaUrl?.startsWith('data:audio/') ?? false);
+        if (!isAud) return false;
+      } else if (selectedCategory !== 'all' && post.category !== selectedCategory) {
+        return false;
+      }
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      const titleMatch = post.title.toLowerCase().includes(q);
+      const contentMatch = post.content.toLowerCase().includes(q);
+      const authorMatch = post.authorName.toLowerCase().includes(q);
+      const countyMatch = (post.county || '').toLowerCase().includes(q);
+      return titleMatch || contentMatch || authorMatch || countyMatch;
+    });
+
+    if (sortBy === 'popular') {
+      return [...list].sort((a, b) => b.upvotes - a.upvotes);
     }
-    if (feedAudience === 'following' && !followingIds.includes(post.authorId) && post.authorId !== currentUser?.uid) {
-      return false;
-    }
-    if (selectedCategory === 'videos') {
-      const isVid =
-        post.mediaType === 'video' ||
-        (post.mediaUrl?.startsWith('data:video/') ?? false) ||
-        (post.videoChunkCount ?? 0) > 0;
-      if (!isVid) return false;
-    }
-    if (selectedCategory === 'audio') {
-      const isAud =
-        post.mediaType === 'audio' ||
-        (post.mediaUrl?.startsWith('data:audio/') ?? false);
-      if (!isAud) return false;
-    }
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    const titleMatch = post.title.toLowerCase().includes(q);
-    const contentMatch = post.content.toLowerCase().includes(q);
-    const authorMatch = post.authorName.toLowerCase().includes(q);
-    const countyMatch = post.county ? post.county.toLowerCase().includes(q) : false;
-    return titleMatch || contentMatch || authorMatch || countyMatch;
-  });
+    return list;
+  }, [
+    posts,
+    blockedUserIds,
+    selectedCounty,
+    selectedConstituency,
+    feedAudience,
+    followingIds,
+    currentUser?.uid,
+    selectedCategory,
+    searchQuery,
+    sortBy
+  ]);
 
   const videoPosts = useMemo(
     () =>
@@ -1262,6 +1573,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       ),
     [filteredPosts]
   );
+
+  const handleFeedVideoActiveChange = useCallback((postId: string, isVisible: boolean) => {
+    setActiveFeedVideoId((prev) => {
+      if (isVisible) return postId;
+      return prev === postId ? null : prev;
+    });
+  }, []);
 
   // Category visual styles helper
   const getCategoryMeta = (cat: PostCategory) => {
@@ -1718,6 +2036,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 src={quickImage}
                 poster={quickVideoData?.thumbnailDataUrl}
                 controls
+                autoPlay
+                muted
+                loop
                 playsInline
                 className="max-h-72 w-full object-contain bg-black"
               />
@@ -1759,14 +2080,57 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               <span className="absolute top-2 left-2 px-2 py-0.5 bg-black/75 text-white text-[10px] font-semibold rounded-md flex items-center gap-1 backdrop-blur-xs">
                 <Video className="w-3 h-3 text-indigo-400" />
                 <span>
-                  {formatVideoDuration(quickVideoMeta.duration)} · {formatFileSize(quickVideoMeta.size)}
+                  {quickVideoMeta.wasAutoTrimmed
+                    ? `Auto-trimmed ${formatVideoDuration(quickVideoMeta.originalDuration)} → ${formatVideoDuration(quickVideoMeta.duration)}`
+                    : formatVideoDuration(quickVideoMeta.duration)}{' '}
+                  · {formatFileSize(quickVideoMeta.size)}
+                  {quickVideoMeta.wasCompressed && quickVideoMeta.originalSize && quickVideoMeta.originalSize > quickVideoMeta.size
+                    ? ` (-${Math.round(((quickVideoMeta.originalSize - quickVideoMeta.size) / quickVideoMeta.originalSize) * 100)}%)`
+                    : ''}
                 </span>
               </span>
             )}
           </div>
         )}
 
-        {/* Quick Video Upload Progress Bar */}
+        {/* Quick Video Auto-Compression & Trimming Progress Bar */}
+        {isQuickCompressing && quickTrimProgress !== null && (
+          <div className="space-y-1.5 p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/50">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
+              <span>{quickTrimStage}</span>
+              <span>{quickTrimProgress}%</span>
+            </div>
+            <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-indigo-600 transition-all duration-200"
+                style={{ width: `${quickTrimProgress}%` }}
+              />
+            </div>
+            {quickBackgroundUpload && (
+              <p className="text-[10px] text-slate-600 dark:text-slate-300">
+                Tap <strong>Post in Background</strong> anytime to queue & keep browsing while it finishes.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Quick Video Background Upload Toggle */}
+        {quickMediaType === 'video' && (quickVideoData || (isQuickCompressing && !!quickVideoFileRef.current)) && (
+          <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50 cursor-pointer">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-800 dark:text-slate-200">
+              <UploadCloud className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>Auto-upload video in background</span>
+            </div>
+            <input
+              type="checkbox"
+              checked={quickBackgroundUpload}
+              onChange={(e) => setQuickBackgroundUpload(e.target.checked)}
+              className="w-3.5 h-3.5 accent-emerald-600 rounded cursor-pointer"
+            />
+          </label>
+        )}
+
+        {/* Quick Video Upload Progress Bar (when synchronous mode selected) */}
         {isQuickSubmitting && quickUploadProgress !== null && (
           <div className="space-y-1">
             <div className="flex items-center justify-between text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
@@ -1950,15 +2314,25 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               <button
                 type="button"
                 onClick={handleDirectQuickPost}
-                disabled={isQuickSubmitting || isQuickCompressing || (!quickCaption.trim() && !quickImage)}
+                disabled={
+                  isQuickSubmitting ||
+                  (isQuickCompressing && !(quickMediaType === 'video' && quickBackgroundUpload && !!quickVideoFileRef.current)) ||
+                  (!quickCaption.trim() && !quickImage && !(isQuickCompressing && quickMediaType === 'video' && quickBackgroundUpload && !!quickVideoFileRef.current))
+                }
                 className="inline-flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
-                <Send className="w-3.5 h-3.5" />
+                {quickMediaType === 'video' && quickBackgroundUpload && (quickVideoData || (isQuickCompressing && !!quickVideoFileRef.current)) ? (
+                  <UploadCloud className="w-3.5 h-3.5" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
                 <span>
                   {isQuickSubmitting
                     ? quickUploadProgress !== null
                       ? `Posting (${quickUploadProgress}%)`
                       : 'Posting...'
+                    : quickMediaType === 'video' && quickBackgroundUpload && (quickVideoData || (isQuickCompressing && !!quickVideoFileRef.current))
+                    ? 'Post in Background'
                     : 'Direct Post'}
                 </span>
               </button>
@@ -1982,7 +2356,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
       {/* Posts Stream */}
       <div className="space-y-4">
-        {filteredPosts.length === 0 ? (
+        {isLoadingPosts && filteredPosts.length === 0 ? (
+          <FeedPostSkeletonList count={3} />
+        ) : filteredPosts.length === 0 ? (
           <div className="tujuane-surface rounded-2xl p-12 text-center space-y-4 transition-colors">
             <div className="w-12 h-12 rounded-2xl tujuane-surface-soft text-slate-400 dark:text-slate-500 flex items-center justify-center mx-auto">
               <MessageSquare className="w-6 h-6" />
@@ -2371,17 +2747,35 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
                     return (
                       <div className="rounded-xl overflow-hidden bg-slate-950/90 relative group">
-                        {isVideoPost ? (
-                          <FeedVideoPlayer
-                            post={post}
-                            onOpenTheatre={(resolvedUrl) =>
-                              setVideoTheatreState({
-                                postId: post.id,
-                                resolvedUrls: resolvedUrl ? { [post.id]: resolvedUrl } : {}
-                              })
-                            }
-                          />
-                        ) : (
+                        {isVideoPost ? (() => {
+                          const vIdx = videoPosts.findIndex((vp) => vp.id === post.id);
+                          const activeVIdx = activeFeedVideoId
+                            ? videoPosts.findIndex((vp) => vp.id === activeFeedVideoId)
+                            : -1;
+                          const preloadHint: 'active' | 'adjacent' | 'idle' =
+                            activeVIdx >= 0
+                              ? vIdx === activeVIdx
+                                ? 'active'
+                                : Math.abs(vIdx - activeVIdx) === 1
+                                ? 'adjacent'
+                                : 'idle'
+                              : vIdx >= 0 && vIdx <= 1
+                              ? 'adjacent'
+                              : 'idle';
+                          return (
+                            <FeedVideoPlayer
+                              post={post}
+                              preloadHint={preloadHint}
+                              onActiveInView={handleFeedVideoActiveChange}
+                              onOpenTheatre={(resolvedUrl) =>
+                                setVideoTheatreState({
+                                  postId: post.id,
+                                  resolvedUrls: resolvedUrl ? { [post.id]: resolvedUrl } : {}
+                                })
+                              }
+                            />
+                          );
+                        })() : (
                           <>
                             <img
                               src={post.mediaUrl}
@@ -3317,11 +3711,31 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         <span>Record Voice Shout (30s)</span>
                       </button>
                     </div>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                      {isCompressing
-                        ? 'Processing media...'
-                        : 'Photos auto-compress · Short videos up to 60s (camera or file) · Voice shouts up to 30s'}
-                    </p>
+                    {isCompressing && modalTrimProgress !== null ? (
+                      <div className="max-w-xs mx-auto space-y-1.5 pt-1">
+                        <div className="flex items-center justify-between text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
+                          <span>{modalTrimStage}</span>
+                          <span>{modalTrimProgress}%</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-indigo-600 transition-all duration-200"
+                            style={{ width: `${modalTrimProgress}%` }}
+                          />
+                        </div>
+                        {modalMediaType === 'video' && modalBackgroundUpload && (
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                            You can tap <strong>Publish in Background</strong> now and keep browsing.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                        {isCompressing
+                          ? 'Auto-compressing media...'
+                          : 'Photos & videos auto-compress for fast 3G/4G upload · Longer videos auto-trim to 60s'}
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -3331,6 +3745,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           src={compressedImage}
                           poster={modalVideoData?.thumbnailDataUrl}
                           controls
+                          autoPlay
+                          muted
+                          loop
                           playsInline
                           className="max-h-56 w-full object-contain bg-black"
                         />
@@ -3382,11 +3799,21 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     )}
 
                     {modalMediaType === 'video' && videoMeta && (
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1">
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1 gap-2 flex-wrap">
                         <span>
-                          Short Video: <strong>{formatVideoDuration(videoMeta.duration)}</strong> ({formatFileSize(videoMeta.size)})
+                          Short Video: <strong>{formatVideoDuration(videoMeta.duration)}</strong> ({formatFileSize(videoMeta.size)}
+                          {videoMeta.wasCompressed && videoMeta.originalSize && videoMeta.originalSize > videoMeta.size
+                            ? ` · compressed from ${formatFileSize(videoMeta.originalSize)}`
+                            : ''}
+                          )
                         </span>
-                        <span className="text-indigo-600 dark:text-indigo-400 font-semibold">✓ Ready for Feed</span>
+                        <span className="text-indigo-600 dark:text-indigo-400 font-semibold">
+                          {videoMeta.wasAutoTrimmed
+                            ? `✓ Auto-trimmed from ${formatVideoDuration(videoMeta.originalDuration)}`
+                            : videoMeta.wasCompressed
+                            ? '✓ Auto-compressed'
+                            : '✓ Ready for Feed'}
+                        </span>
                       </div>
                     )}
 
@@ -3402,7 +3829,25 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 )}
               </div>
 
-              {/* Modal Video Upload Progress Bar */}
+              {/* Background Upload Option when Video is attached or compressing */}
+              {modalMediaType === 'video' && (modalVideoData || (isCompressing && !!modalVideoFileRef.current)) && (
+                <label className="flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 cursor-pointer">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <UploadCloud className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                      Auto-upload in background (close modal & keep browsing)
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={modalBackgroundUpload}
+                    onChange={(e) => setModalBackgroundUpload(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-600 rounded cursor-pointer shrink-0"
+                  />
+                </label>
+              )}
+
+              {/* Modal Video Upload Progress Bar (when synchronous mode selected) */}
               {isSubmitting && modalUploadProgress !== null && (
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
@@ -3430,7 +3875,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting || isCompressing}
+                  disabled={
+                    isSubmitting ||
+                    (isCompressing && !(modalMediaType === 'video' && modalBackgroundUpload && !!modalVideoFileRef.current))
+                  }
                   className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-xs inline-flex items-center gap-1.5"
                 >
                   {isSubmitting ? (
@@ -3439,6 +3887,11 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       <span>
                         {modalUploadProgress !== null ? `Publishing (${modalUploadProgress}%)` : 'Publishing...'}
                       </span>
+                    </>
+                  ) : modalMediaType === 'video' && modalBackgroundUpload && (modalVideoData || (isCompressing && !!modalVideoFileRef.current)) ? (
+                    <>
+                      <UploadCloud className="w-3.5 h-3.5" />
+                      <span>Publish in Background</span>
                     </>
                   ) : (
                     <>
@@ -3496,10 +3949,12 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
             {lightboxImage.mediaType === 'video' || lightboxImage.url.startsWith('data:video/') || lightboxImage.url.startsWith('blob:') ? (
               <video
-                src={lightboxImage.url}
+                src={resolvePlayableVideoUrl(lightboxImage.url) || lightboxImage.url}
                 controls
                 autoPlay
+                loop
                 playsInline
+                preload="auto"
                 className="max-h-[80vh] w-full max-w-3xl rounded-xl bg-black shadow-2xl"
               />
             ) : (

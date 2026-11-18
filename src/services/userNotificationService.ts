@@ -12,7 +12,13 @@ import {
   writeBatch,
   limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, handleFirestoreListenerError, OperationType } from '../firebase';
+import {
+  db,
+  handleFirestoreError,
+  handleFirestoreListenerError,
+  isFirestoreQuotaExceeded,
+  OperationType
+} from '../firebase';
 import { UserNotification, AccountStandingSummary } from '../types/notification';
 import { CommunityPost } from '../types/community';
 import { notificationService } from './notificationService';
@@ -65,6 +71,27 @@ export async function sendUserNotification(
   }
 }
 
+function getCachedUserNotifications(userId: string): UserNotification[] {
+  if (typeof window === 'undefined' || !userId) return [];
+  try {
+    const raw = localStorage.getItem(`tujuane_user_notifs_${userId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as UserNotification[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function setCachedUserNotifications(userId: string, list: UserNotification[]): void {
+  if (typeof window === 'undefined' || !userId) return;
+  try {
+    localStorage.setItem(`tujuane_user_notifs_${userId}`, JSON.stringify(list.slice(0, 40)));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 /**
  * Subscribe to real-time notifications for the signed-in citizen
  */
@@ -72,6 +99,16 @@ export function subscribeToUserNotifications(
   userId: string,
   callback: (notifications: UserNotification[]) => void
 ): () => void {
+  const cached = getCachedUserNotifications(userId);
+  if (cached.length > 0) {
+    callback(cached);
+  }
+
+  if (isFirestoreQuotaExceeded()) {
+    if (cached.length === 0) callback([]);
+    return () => {};
+  }
+
   const q = query(
     collection(db, NOTIFICATIONS_COLLECTION),
     where('userId', '==', userId),
@@ -109,6 +146,7 @@ export function subscribeToUserNotifications(
 
       // Sort in-memory by newest first
       list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setCachedUserNotifications(userId, list);
 
       // If new unread notification arrives after initial load, play audio chime & push
       if (!initialLoad) {

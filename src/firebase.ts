@@ -13,8 +13,12 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   doc,
-  getDocFromServer
+  getDocFromServer,
+  Firestore
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -53,8 +57,24 @@ export {
   browserLocalPersistence
 };
 
-// Initialize Cloud Firestore with specified Database ID
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Initialize Cloud Firestore with persistent IndexedDB cache (survives reloads & minimizes server reads)
+function createFirestoreInstance(): Firestore {
+  try {
+    return initializeFirestore(
+      app,
+      {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager()
+        })
+      },
+      firebaseConfig.firestoreDatabaseId
+    );
+  } catch {
+    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  }
+}
+
+export const db = createFirestoreInstance();
 
 // Test Firestore Connection as specified in skill guidelines
 async function testConnection() {
@@ -153,7 +173,9 @@ export function isFirestoreQuotaError(error: unknown): boolean {
     message.includes('quota limit exceeded') ||
     message.includes('quota exceeded') ||
     message.includes('resource-exhausted') ||
-    message.includes('free daily read units')
+    message.includes('free daily read units') ||
+    message.includes('daily free read quota') ||
+    message.includes('quota resets tomorrow')
   );
 }
 

@@ -10,7 +10,13 @@ import {
   orderBy,
   limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, handleFirestoreListenerError, OperationType } from '../firebase';
+import {
+  db,
+  handleFirestoreError,
+  handleFirestoreListenerError,
+  isFirestoreQuotaExceeded,
+  OperationType
+} from '../firebase';
 import { UserProfile } from '../types/chat';
 import { CitizenStory, CreateStoryParams, UserStoryGroup } from '../types/story';
 
@@ -84,6 +90,11 @@ export async function publishCitizenStory(
 export function subscribeToActiveStories(
   callback: (stories: CitizenStory[]) => void
 ): () => void {
+  if (isFirestoreQuotaExceeded()) {
+    callback([]);
+    return () => {};
+  }
+
   const storiesQuery = query(
     collection(db, STORIES_COLLECTION),
     orderBy('createdAt', 'desc'),
@@ -127,7 +138,7 @@ export function subscribeToActiveStories(
  * Record that a user viewed a story (idempotent, never counts the author or repeats)
  */
 export async function recordStoryView(storyId: string, userId: string): Promise<void> {
-  if (!storyId || !userId) return;
+  if (!storyId || !userId || isFirestoreQuotaExceeded()) return;
   const storyRef = doc(db, STORIES_COLLECTION, storyId);
 
   try {

@@ -17,6 +17,8 @@ import { Footer } from './components/Footer';
 import { NotificationCenterModal } from './components/NotificationCenterModal';
 import { AuthModal } from './components/AuthModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { BackgroundUploadDock } from './components/BackgroundUploadDock';
+import { BackgroundUploadProvider } from './context/BackgroundUploadContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { KenyanFlagBackdrop } from './components/KenyanFlagTheme';
@@ -44,6 +46,12 @@ import {
   triggerImmediateSWNotificationCheck
 } from './services/backgroundNotificationSync';
 import { notificationService } from './services/notificationService';
+import {
+  initTelemetryAndCrashReporting,
+  setTelemetryUser,
+  trackScreenView,
+  trackFunnelMilestone
+} from './services/telemetryService';
 import { Check, ArrowLeft, Home, Sparkles, ShieldAlert, Bell, Ban, Clock, AlertTriangle, Edit3, UserCheck, Database, X } from 'lucide-react';
 
 const DEVELOPER_EMAIL = 'muriithipeterkangethe237@gmail.com';
@@ -102,6 +110,25 @@ function AppContent() {
       setIsFirestoreQuotaLimited(exceeded);
     });
   }, []);
+
+  // Behind-the-scenes Analytics & Crash Reporting hooks (silent to citizens)
+  useEffect(() => {
+    initTelemetryAndCrashReporting();
+  }, []);
+
+  useEffect(() => {
+    setTelemetryUser(currentUser, userProfile);
+  }, [currentUser, userProfile]);
+
+  useEffect(() => {
+    trackScreenView(activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (isAuthModalOpen) {
+      trackFunnelMilestone('auth_started', 'Opened Sign-In / Registration modal');
+    }
+  }, [isAuthModalOpen]);
 
   // Subscribe to real-time pending safety reports only for verified developer
   useEffect(() => {
@@ -651,11 +678,12 @@ function AppContent() {
   };
 
   return (
-    <div
-      className={`relative min-h-screen overflow-x-clip flex flex-col text-slate-900 dark:text-slate-100 transition-colors ${
-        isKenyaTheme ? 'bg-transparent' : 'bg-slate-50 dark:bg-slate-950'
-      } ${activeTab === 'chat' ? 'h-screen h-dvh overflow-hidden' : ''}`}
-    >
+    <BackgroundUploadProvider onNotify={showToast}>
+      <div
+        className={`relative min-h-screen overflow-x-clip flex flex-col text-slate-900 dark:text-slate-100 transition-colors ${
+          isKenyaTheme ? 'bg-transparent' : 'bg-slate-50 dark:bg-slate-950'
+        } ${activeTab === 'chat' ? 'h-screen h-dvh overflow-hidden' : ''}`}
+      >
       {/* Animated Kenyan Flag Backdrop when Kenyan Flag theme is active */}
       {isKenyaTheme && <KenyanFlagBackdrop />}
 
@@ -784,6 +812,26 @@ function AppContent() {
                 <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                   Showing locally cached content safely. Free daily Firestore read units reset tomorrow, or the project owner can upgrade the database plan in Firebase Console.
                 </p>
+                {isDeveloper && (
+                  <div className="pt-1 flex flex-wrap items-center gap-3 text-[11px]">
+                    <a
+                      href="https://console.firebase.google.com/project/striking-visitor-0pz3c/firestore/databases/ai-studio-kenyanetfreekeny-fba8652d-d05e-47fa-920f-377c76591651/data?openUpgradeDialog=true"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-bold text-emerald-700 dark:text-emerald-400 hover:underline"
+                    >
+                      Open Firebase Upgrade Dialog →
+                    </a>
+                    <a
+                      href="https://firebase.google.com/pricing#cloud-firestore"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-slate-600 dark:text-slate-400 hover:underline"
+                    >
+                      Spark Enterprise Quota Info
+                    </a>
+                  </div>
+                )}
               </div>
               <button
                 type="button"
@@ -1081,6 +1129,9 @@ function AppContent() {
       {/* Offline Status Badge for PWA Resilience */}
       {!isFullScreenVideoOpen && <OfflineIndicator />}
 
+      {/* Floating Background Video Compression & Upload Progress Dock */}
+      <BackgroundUploadDock hidden={isFullScreenVideoOpen} />
+
       {/* Post Type Selector Modal (triggered from top Header Plus button) */}
       {isPostTypeSelectorOpen && (
         <PostTypeSelectorModal
@@ -1098,13 +1149,15 @@ function AppContent() {
           userProfile={userProfile}
           onClose={() => setIsStoryModalOpen(false)}
           onStoryPublished={(_storyId) => {
+            trackFunnelMilestone('engaged_action', 'Published citizen story');
             setIsStoryModalOpen(false);
             showToast('✓ Story published to Citizen Stories tray!');
             setActiveTab('community');
           }}
         />
       )}
-    </div>
+      </div>
+    </BackgroundUploadProvider>
   );
 }
 

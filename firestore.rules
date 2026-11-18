@@ -219,6 +219,70 @@ service cloud.firestore {
         && (data.createdAt is timestamp || data.createdAt is string);
     }
 
+    // Validation for TelemetrySession (Analytics funnel, retention & drop-off)
+    function isValidTelemetrySession(data) {
+      return data.keys().hasAll(['id', 'userId', 'dateKey', 'firstSeenDateKey', 'lastScreen', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'userId', 'userName', 'county', 'startedAt', 'lastActiveAt',
+          'durationSec', 'dateKey', 'firstSeenDateKey', 'daysSinceFirstSeen',
+          'isReturningUser', 'screensVisited', 'screenDwellSec', 'funnelMilestones',
+          'dropOffStage', 'lastScreen', 'actionsCount', 'deviceType', 'viewport',
+          'crashCount', 'updatedAt'
+        ])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128 && data.id.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.userId is string && data.userId == request.auth.uid && data.userId.size() <= 128
+        && (!('userName' in data) || (data.userName is string && data.userName.size() <= 100))
+        && (!('county' in data) || (data.county is string && data.county.size() <= 50))
+        && (!('startedAt' in data) || (data.startedAt is string && data.startedAt.size() <= 64) || data.startedAt is timestamp)
+        && (!('lastActiveAt' in data) || (data.lastActiveAt is string && data.lastActiveAt.size() <= 64) || data.lastActiveAt is timestamp)
+        && (!('durationSec' in data) || (data.durationSec is int && data.durationSec >= 0 && data.durationSec <= 86400))
+        && data.dateKey is string && data.dateKey.size() > 0 && data.dateKey.size() <= 20
+        && data.firstSeenDateKey is string && data.firstSeenDateKey.size() > 0 && data.firstSeenDateKey.size() <= 20
+        && (!('daysSinceFirstSeen' in data) || (data.daysSinceFirstSeen is int && data.daysSinceFirstSeen >= 0 && data.daysSinceFirstSeen <= 10000))
+        && (!('isReturningUser' in data) || data.isReturningUser is bool)
+        && (!('screensVisited' in data) || (data.screensVisited is list && data.screensVisited.size() <= 20 && (data.screensVisited.size() == 0 || data.screensVisited[0] is string)))
+        && (!('screenDwellSec' in data) || data.screenDwellSec is map)
+        && (!('funnelMilestones' in data) || (data.funnelMilestones is list && data.funnelMilestones.size() <= 25 && (data.funnelMilestones.size() == 0 || data.funnelMilestones[0] is string)))
+        && (!('dropOffStage' in data) || (data.dropOffStage is string && data.dropOffStage.size() <= 80))
+        && data.lastScreen is string && data.lastScreen.size() > 0 && data.lastScreen.size() <= 60
+        && (!('actionsCount' in data) || (data.actionsCount is int && data.actionsCount >= 0 && data.actionsCount <= 100000))
+        && (!('deviceType' in data) || (data.deviceType is string && data.deviceType.size() <= 30))
+        && (!('viewport' in data) || (data.viewport is string && data.viewport.size() <= 40))
+        && (!('crashCount' in data) || (data.crashCount is int && data.crashCount >= 0 && data.crashCount <= 1000))
+        && (data.updatedAt is timestamp || data.updatedAt is string);
+    }
+
+    // Validation for CrashReport (Real-time crash & error tracking)
+    function isValidCrashReport(data) {
+      return data.keys().hasAll(['id', 'fingerprint', 'userId', 'sessionId', 'message', 'name', 'category', 'severity', 'screen', 'status', 'createdAt'])
+        && data.keys().hasOnly([
+          'id', 'fingerprint', 'userId', 'userName', 'sessionId', 'message',
+          'name', 'stack', 'componentStack', 'category', 'severity', 'screen',
+          'breadcrumbs', 'userAgent', 'viewport', 'status', 'resolvedBy',
+          'resolvedAt', 'developerNotes', 'createdAt'
+        ])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128 && data.id.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.fingerprint is string && data.fingerprint.size() > 0 && data.fingerprint.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid && data.userId.size() <= 128
+        && (!('userName' in data) || (data.userName is string && data.userName.size() <= 100))
+        && data.sessionId is string && data.sessionId.size() > 0 && data.sessionId.size() <= 128
+        && data.message is string && data.message.size() > 0 && data.message.size() <= 1000
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 120
+        && (!('stack' in data) || (data.stack is string && data.stack.size() <= 6000))
+        && (!('componentStack' in data) || (data.componentStack is string && data.componentStack.size() <= 4000))
+        && data.category in ['runtime', 'promise_rejection', 'react_boundary', 'media_playback', 'network_api', 'firestore', 'manual_test']
+        && data.severity in ['fatal', 'error', 'warning']
+        && data.screen is string && data.screen.size() > 0 && data.screen.size() <= 60
+        && (!('breadcrumbs' in data) || (data.breadcrumbs is list && data.breadcrumbs.size() <= 12))
+        && (!('userAgent' in data) || (data.userAgent is string && data.userAgent.size() <= 300))
+        && (!('viewport' in data) || (data.viewport is string && data.viewport.size() <= 40))
+        && data.status in ['open', 'resolved', 'ignored']
+        && (!('resolvedBy' in data) || (data.resolvedBy is string && data.resolvedBy.size() <= 128))
+        && (!('resolvedAt' in data) || (data.resolvedAt is string && data.resolvedAt.size() <= 64) || data.resolvedAt is timestamp)
+        && (!('developerNotes' in data) || (data.developerNotes is string && data.developerNotes.size() <= 500))
+        && data.createdAt is timestamp;
+    }
+
     // 1. Users collection
     match /users/{userId} {
       allow get: if isSignedIn() && isValidId(userId);
@@ -502,6 +566,40 @@ service cloud.firestore {
       allow delete: if isSignedIn()
         && isValidId(storyId)
         && (existing().authorId == request.auth.uid || request.auth.token.email == 'muriithipeterkangethe237@gmail.com');
+    }
+
+    // 16. Telemetry Sessions (Funnel drop-offs, retention & engagement metrics)
+    match /telemetry_sessions/{sessionId} {
+      allow get, list: if isDeveloper() && request.auth.token.email_verified == true;
+      allow create: if isSignedIn()
+        && isValidId(sessionId)
+        && isValidTelemetrySession(incoming())
+        && incoming().id == sessionId
+        && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn()
+        && isValidId(sessionId)
+        && isValidTelemetrySession(incoming())
+        && existing().userId == request.auth.uid
+        && incoming().userId == existing().userId
+        && incoming().id == existing().id;
+      allow delete: if isDeveloper() && request.auth.token.email_verified == true && isValidId(sessionId);
+    }
+
+    // 17. Real-time Crash & Error Reports
+    match /crash_reports/{crashId} {
+      allow get, list: if isDeveloper() && request.auth.token.email_verified == true;
+      allow create: if isSignedIn()
+        && isValidId(crashId)
+        && isValidCrashReport(incoming())
+        && incoming().id == crashId
+        && incoming().userId == request.auth.uid
+        && incoming().status == 'open';
+      allow update: if isDeveloper()
+        && request.auth.token.email_verified == true
+        && isValidId(crashId)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'resolvedBy', 'resolvedAt', 'developerNotes'])
+        && incoming().status in ['open', 'resolved', 'ignored'];
+      allow delete: if isDeveloper() && request.auth.token.email_verified == true && isValidId(crashId);
     }
   }
 }

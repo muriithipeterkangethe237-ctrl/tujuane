@@ -21,6 +21,18 @@ import {
 } from '../services/chatService';
 import { sendUserNotification } from '../services/userNotificationService';
 import { analyzeContentSafety, getSafetyExplanation } from '../utils/safetyFilter';
+import { isFirestoreQuotaError } from '../firebase';
+import {
+  subscribeToTelemetrySessions,
+  subscribeToCrashReports,
+  computeAnalyticsSummary,
+  getLocalTelemetrySnapshot
+} from '../services/telemetryService';
+import { TelemetrySession, CrashReport } from '../types/telemetry';
+import {
+  DeveloperAnalyticsTab,
+  DeveloperCrashReportsTab
+} from './DeveloperTelemetryPanels';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -52,7 +64,9 @@ import {
   UserCheck,
   Calendar,
   AlertOctagon,
-  Shield
+  Shield,
+  BarChart3,
+  Bug
 } from 'lucide-react';
 
 const DEVELOPER_EMAIL = 'muriithipeterkangethe237@gmail.com';
@@ -69,12 +83,14 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
   const { currentUser, userProfile, loginWithGoogle } = useAuth();
 
   // Active section tab
-  const [activeTab, setActiveTab] = useState<'reports' | 'posts' | 'users' | 'tester'>('reports');
+  const [activeTab, setActiveTab] = useState<'reports' | 'posts' | 'users' | 'tester' | 'analytics' | 'crashes'>('reports');
 
   // Real-time data streams
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [reports, setReports] = useState<SafetyReport[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [telemetrySessions, setTelemetrySessions] = useState<TelemetrySession[]>(() => getLocalTelemetrySnapshot().sessions);
+  const [crashReports, setCrashReports] = useState<CrashReport[]>(() => getLocalTelemetrySnapshot().crashes);
 
   // Search & filter states
   const [postSearch, setPostSearch] = useState('');
@@ -289,10 +305,20 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
       );
     }
 
+    const unsubTelemetry = subscribeToTelemetrySessions((loadedSessions) => {
+      setTelemetrySessions(loadedSessions);
+    });
+
+    const unsubCrashes = subscribeToCrashReports((loadedCrashes) => {
+      setCrashReports(loadedCrashes);
+    });
+
     return () => {
       unsubPosts();
       unsubReports();
       unsubUsers();
+      unsubTelemetry();
+      unsubCrashes();
     };
   }, [isDeveloperUser, currentUser]);
 
@@ -327,6 +353,34 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
     const cleanCount = posts.filter((p) => !p.isFlagged).length;
     return Math.round((cleanCount / posts.length) * 100);
   }, [posts]);
+
+  const analyticsSummary = useMemo(() => {
+    return computeAnalyticsSummary(telemetrySessions, users, crashReports);
+  }, [telemetrySessions, users, crashReports]);
+
+  const openCrashReportsCount = useMemo(() => {
+    return crashReports.filter((c) => c.status === 'open').length;
+  }, [crashReports]);
+
+  const refreshLocalTelemetryFallback = () => {
+    const local = getLocalTelemetrySnapshot();
+    setTelemetrySessions((prev) => {
+      const map = new Map<string, TelemetrySession>();
+      for (const s of prev) map.set(s.id, s);
+      for (const l of local.sessions) map.set(l.id, l);
+      return Array.from(map.values()).sort(
+        (a, b) => Date.parse(b.updatedAt || b.lastActiveAt) - Date.parse(a.updatedAt || a.lastActiveAt)
+      );
+    });
+    setCrashReports((prev) => {
+      const localIds = new Set(local.crashes.map((c) => c.id));
+      const merged = [
+        ...local.crashes,
+        ...prev.filter((p) => p.source === 'cloud' && !localIds.has(p.id))
+      ];
+      return merged.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    });
+  };
 
   // Filtered posts for monitor
   const filteredPosts = useMemo(() => {
@@ -394,11 +448,19 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
   // Moderation actions
   const handleApprovePost = async (post: CommunityPost) => {
     try {
-      await approvePostSafety(post.id, currentUser?.email || DEVELOPER_EMAIL);
+      await approvePostSafety(post.id, currentUser?.email || DEVELOPER_EMAIL, {
+        authorId: post.authorId,
+        title: post.title
+      });
       showToast('Post verified and marked safe.');
     } catch (err) {
-      console.error(err);
-      showToast('Failed to approve post.');
+      if (isFirestoreQuotaError(err)) {
+        console.warn('Database daily quota reached while approving post.');
+        showToast('Daily database quota reached. Quota resets tomorrow or upgrade plan.');
+      } else {
+        console.error(err);
+        showToast('Failed to approve post.');
+      }
     }
   };
 
@@ -413,13 +475,23 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
       await attachSafetyAdvisoryToPost(
         selectedPostForAdvisory.id,
         advisoryText.trim(),
-        currentUser?.email || DEVELOPER_EMAIL
+        currentUser?.email || DEVELOPER_EMAIL,
+        {
+          authorId: selectedPostForAdvisory.authorId,
+          title: selectedPostForAdvisory.title
+        }
       );
       showToast('Safety advisory attached to post.');
       setSelectedPostForAdvisory(null);
     } catch (err) {
-      console.error(err);
-      showToast('Failed to attach advisory.');
+      if (isFirestoreQuotaError(err)) {
+        console.warn('Database daily quota reached while attaching advisory.');
+        showToast('Daily database quota reached. Quota resets tomorrow or upgrade plan.');
+        setSelectedPostForAdvisory(null);
+      } else {
+        console.error(err);
+        showToast('Failed to attach advisory.');
+      }
     }
   };
 
@@ -429,13 +501,23 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
       await removePostByModerator(
         selectedPostForDelete.id,
         deleteReason,
-        currentUser?.email || DEVELOPER_EMAIL
+        currentUser?.email || DEVELOPER_EMAIL,
+        {
+          authorId: selectedPostForDelete.authorId,
+          title: selectedPostForDelete.title
+        }
       );
       showToast('Post removed permanently for community safety.');
       setSelectedPostForDelete(null);
     } catch (err) {
-      console.error(err);
-      showToast('Failed to delete post.');
+      if (isFirestoreQuotaError(err)) {
+        console.warn('Database daily quota reached while deleting post.');
+        showToast('Daily database quota reached. Quota resets tomorrow or upgrade plan.');
+        setSelectedPostForDelete(null);
+      } else {
+        console.error(err);
+        showToast('Failed to delete post.');
+      }
     }
   };
 
@@ -444,18 +526,28 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
       await resolveSafetyReport(reportId, 'dismissed', currentUser?.email || DEVELOPER_EMAIL, 'Dismissed by developer');
       showToast('Report marked as dismissed.');
     } catch (err) {
-      console.error(err);
-      showToast('Failed to dismiss report.');
+      if (isFirestoreQuotaError(err)) {
+        console.warn('Database daily quota reached while dismissing report.');
+        showToast('Daily database quota reached. Quota resets tomorrow or upgrade plan.');
+      } else {
+        console.error(err);
+        showToast('Failed to dismiss report.');
+      }
     }
   };
 
   const handleActionReportAndTakeDown = async (report: SafetyReport) => {
     try {
       if (report.postId) {
+        const matchedPost = posts.find((p) => p.id === report.postId);
         await removePostByModerator(
           report.postId,
           `Takedown via Report #${report.id}: ${report.category}`,
-          currentUser?.email || DEVELOPER_EMAIL
+          currentUser?.email || DEVELOPER_EMAIL,
+          {
+            authorId: report.authorId || matchedPost?.authorId,
+            title: report.postTitle || matchedPost?.title
+          }
         );
       }
       await resolveSafetyReport(
@@ -466,8 +558,13 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
       );
       showToast(`Report #${report.id.slice(0, 8)} actioned and resolved.`);
     } catch (err) {
-      console.error(err);
-      showToast('Failed to resolve safety report.');
+      if (isFirestoreQuotaError(err)) {
+        console.warn('Database daily quota reached while taking down reported content.');
+        showToast('Daily database quota reached. Quota resets tomorrow or upgrade plan.');
+      } else {
+        console.error(err);
+        showToast('Failed to resolve safety report.');
+      }
     }
   };
 
@@ -704,6 +801,36 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
         >
           <Sparkles className="w-4 h-4 text-amber-500" />
           <span>Live Safety Filter Sandbox</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('analytics')}
+          className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === 'analytics'
+              ? 'bg-slate-900 dark:bg-emerald-600 text-white font-bold shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <BarChart3 className="w-4 h-4 text-emerald-500" />
+          <span>Analytics & Retention</span>
+          <span className="text-[11px] text-slate-400">({analyticsSummary.dau} DAU)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('crashes')}
+          className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === 'crashes'
+              ? 'bg-slate-900 dark:bg-emerald-600 text-white font-bold shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Bug className="w-4 h-4 text-rose-500" />
+          <span>Crash Reports</span>
+          {openCrashReportsCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-extrabold">
+              {openCrashReportsCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -1442,6 +1569,27 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* TAB 5: ANALYTICS & RETENTION */}
+      {activeTab === 'analytics' && (
+        <DeveloperAnalyticsTab
+          analytics={analyticsSummary}
+          sessions={telemetrySessions}
+          crashes={crashReports}
+          onNotify={showToast}
+        />
+      )}
+
+      {/* TAB 6: CRASH REPORTS */}
+      {activeTab === 'crashes' && (
+        <DeveloperCrashReportsTab
+          crashes={crashReports}
+          crashFreeSessionPct={analyticsSummary.crashFreeSessionPct}
+          developerEmail={currentUser?.email || DEVELOPER_EMAIL}
+          onRefreshLocal={refreshLocalTelemetryFallback}
+          onNotify={showToast}
+        />
       )}
 
       {/* MODAL: ATTACH SAFETY ADVISORY */}

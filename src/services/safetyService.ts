@@ -8,18 +8,73 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
-  getDocs,
   getDoc,
-  where,
+  getDocFromCache,
   limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, handleFirestoreListenerError, OperationType } from '../firebase';
-import { SafetyReport, ModeratorActionLog } from '../types/safety';
+import {
+  db,
+  handleFirestoreError,
+  handleFirestoreListenerError,
+  isFirestoreQuotaError,
+  isFirestoreQuotaExceeded,
+  markFirestoreQuotaExceeded,
+  OperationType
+} from '../firebase';
+import { SafetyReport } from '../types/safety';
 import { sendUserNotification } from './userNotificationService';
 
 const REPORTS_COLLECTION = 'safety_reports';
 const POSTS_COLLECTION = 'community_posts';
 const MOD_LOGS_COLLECTION = 'moderator_action_logs';
+
+export interface ModerationPostContext {
+  authorId?: string;
+  title?: string;
+}
+
+async function resolvePostContextSafely(
+  postRef: ReturnType<typeof doc>,
+  provided?: ModerationPostContext
+): Promise<ModerationPostContext> {
+  if (provided?.authorId || provided?.title) {
+    return provided;
+  }
+
+  try {
+    const cachedSnap = await getDocFromCache(postRef);
+    if (cachedSnap.exists()) {
+      const data = cachedSnap.data() as Record<string, any>;
+      return {
+        authorId: data?.authorId,
+        title: data?.title
+      };
+    }
+  } catch {
+    // Cache miss; fall through only if quota allows
+  }
+
+  if (isFirestoreQuotaExceeded()) {
+    return {};
+  }
+
+  try {
+    const snap = await getDoc(postRef);
+    if (snap.exists()) {
+      const data = snap.data() as Record<string, any>;
+      return {
+        authorId: data?.authorId,
+        title: data?.title
+      };
+    }
+  } catch (err) {
+    if (isFirestoreQuotaError(err)) {
+      markFirestoreQuotaExceeded();
+    }
+  }
+
+  return {};
+}
 
 /**
  * Submit a community safety report for a post
@@ -67,6 +122,11 @@ export async function submitSafetyReport(
 export function subscribeToSafetyReports(
   callback: (reports: SafetyReport[]) => void
 ): () => void {
+  if (isFirestoreQuotaExceeded()) {
+    callback([]);
+    return () => {};
+  }
+
   try {
     const q = query(collection(db, REPORTS_COLLECTION), orderBy('createdAt', 'desc'), limit(50));
 
@@ -122,17 +182,17 @@ export async function resolveSafetyReport(
       actionTaken: actionDetails || action
     });
 
-    // Log action
+    // Log action (non-blocking if log fails)
     const logId = `log_${Date.now()}`;
     await setDoc(doc(db, MOD_LOGS_COLLECTION, logId), {
       id: logId,
       moderatorEmail,
-      actionType: action === 'actioned' ? 'dismiss_report' : 'dismiss_report',
+      actionType: 'dismiss_report',
       targetId: reportId,
       targetType: 'report',
       details: actionDetails,
       timestamp: serverTimestamp()
-    });
+    }).catch(() => {});
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `${REPORTS_COLLECTION}/${reportId}`);
   }
@@ -144,12 +204,12 @@ export async function resolveSafetyReport(
 export async function attachSafetyAdvisoryToPost(
   postId: string,
   advisory: string,
-  moderatorEmail: string
+  moderatorEmail: string,
+  postContext?: ModerationPostContext
 ): Promise<void> {
   const postRef = doc(db, POSTS_COLLECTION, postId);
   try {
-    const postSnap = await getDoc(postRef);
-    const postData = postSnap.data();
+    const resolvedContext = await resolvePostContextSafely(postRef, postContext);
 
     await updateDoc(postRef, {
       isFlagged: true,
@@ -166,23 +226,23 @@ export async function attachSafetyAdvisoryToPost(
       targetType: 'post',
       details: advisory,
       timestamp: serverTimestamp()
-    });
+    }).catch(() => {});
 
     // Notify author of post advisory and account status
-    if (postData?.authorId) {
+    if (resolvedContext.authorId) {
       await sendUserNotification({
-        userId: postData.authorId,
+        userId: resolvedContext.authorId,
         category: 'post_interaction',
         type: 'post_advisory',
         title: 'Community Safety Advisory Added',
-        message: `An advisory was attached to "${(postData.title || 'your post').slice(0, 40)}": ${advisory}`,
+        message: `An advisory was attached to "${(resolvedContext.title || 'your post').slice(0, 40)}": ${advisory}`,
         postId,
-        postTitle: postData.title,
+        postTitle: resolvedContext.title,
         details: advisory
       });
 
       await sendUserNotification({
-        userId: postData.authorId,
+        userId: resolvedContext.authorId,
         category: 'account_status',
         type: 'account_warning',
         title: 'Account Advisory Notice',
@@ -201,12 +261,12 @@ export async function attachSafetyAdvisoryToPost(
  */
 export async function approvePostSafety(
   postId: string,
-  moderatorEmail: string
+  moderatorEmail: string,
+  postContext?: ModerationPostContext
 ): Promise<void> {
   const postRef = doc(db, POSTS_COLLECTION, postId);
   try {
-    const postSnap = await getDoc(postRef);
-    const postData = postSnap.data();
+    const resolvedContext = await resolvePostContextSafely(postRef, postContext);
 
     await updateDoc(postRef, {
       isFlagged: false,
@@ -224,21 +284,21 @@ export async function approvePostSafety(
       targetType: 'post',
       details: 'Approved content after safety review',
       timestamp: serverTimestamp()
-    });
+    }).catch(() => {});
 
-    if (postData?.authorId) {
+    if (resolvedContext.authorId) {
       await sendUserNotification({
-        userId: postData.authorId,
+        userId: resolvedContext.authorId,
         category: 'post_interaction',
         type: 'post_approved',
         title: 'Post Confirmed Safe & Approved',
-        message: `Your discussion "${(postData.title || 'post').slice(0, 40)}" was reviewed and approved for public community viewing.`,
+        message: `Your discussion "${(resolvedContext.title || 'post').slice(0, 40)}" was reviewed and approved for public community viewing.`,
         postId,
-        postTitle: postData.title
+        postTitle: resolvedContext.title
       });
 
       await sendUserNotification({
-        userId: postData.authorId,
+        userId: resolvedContext.authorId,
         category: 'account_status',
         type: 'account_good_standing',
         title: 'Account in Good Standing',
@@ -257,12 +317,12 @@ export async function approvePostSafety(
 export async function removePostByModerator(
   postId: string,
   reason: string,
-  moderatorEmail: string
+  moderatorEmail: string,
+  postContext?: ModerationPostContext
 ): Promise<void> {
   const postRef = doc(db, POSTS_COLLECTION, postId);
   try {
-    const postSnap = await getDoc(postRef);
-    const postData = postSnap.data();
+    const resolvedContext = await resolvePostContextSafely(postRef, postContext);
 
     await deleteDoc(postRef);
 
@@ -275,21 +335,21 @@ export async function removePostByModerator(
       targetType: 'post',
       details: reason,
       timestamp: serverTimestamp()
-    });
+    }).catch(() => {});
 
-    if (postData?.authorId) {
+    if (resolvedContext.authorId) {
       await sendUserNotification({
-        userId: postData.authorId,
+        userId: resolvedContext.authorId,
         category: 'post_interaction',
         type: 'post_removed',
         title: 'Post Removed by Moderation',
         message: `Your discussion was removed due to safety policy: ${reason}`,
-        postTitle: postData.title,
+        postTitle: resolvedContext.title,
         details: reason
       });
 
       await sendUserNotification({
-        userId: postData.authorId,
+        userId: resolvedContext.authorId,
         category: 'account_status',
         type: 'account_warning',
         title: 'Account Policy Warning',

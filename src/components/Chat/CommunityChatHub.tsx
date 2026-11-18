@@ -38,6 +38,8 @@ import {
   markGroupMessagesAsRead
 } from '../../services/groupChannelService';
 import { notificationService } from '../../services/notificationService';
+import { ChatInboxSkeletonList, ChatThreadSkeleton } from '../Skeletons';
+import { trackFunnelMilestone } from '../../services/telemetryService';
 import {
   MessageSquare,
   Send,
@@ -155,6 +157,11 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   const [communityUsers, setCommunityUsers] = useState<UserProfile[]>([]);
   const [userPresenceMap, setUserPresenceMap] = useState<Record<string, { isOnline: boolean; lastSeen?: string }>>({});
   const [communityGroups, setCommunityGroups] = useState<GroupChat[]>([]);
+  const [isLoadingConversations, setIsLoadingConversations] = useState<boolean>(true);
+  const [isLoadingMembers, setIsLoadingMembers] = useState<boolean>(true);
+  const [isLoadingGroups, setIsLoadingGroups] = useState<boolean>(true);
+  const [isLoadingDirectMessages, setIsLoadingDirectMessages] = useState<boolean>(false);
+  const [isLoadingGroupMessages, setIsLoadingGroupMessages] = useState<boolean>(false);
 
   // Notifications state
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
@@ -369,10 +376,13 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   useEffect(() => {
     if (!currentUser) {
       setConversations([]);
+      setIsLoadingConversations(false);
       return;
     }
+    setIsLoadingConversations(true);
     const unsub = subscribeToUserChats(currentUser.uid, (userChats) => {
       setConversations(userChats);
+      setIsLoadingConversations(false);
     });
     return () => unsub();
   }, [currentUser]);
@@ -382,10 +392,13 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
     if (!currentUser) {
       setCommunityUsers([]);
       setUserPresenceMap({});
+      setIsLoadingMembers(false);
       return;
     }
+    setIsLoadingMembers(true);
     const unsubUsers = subscribeToCommunityUsers(currentUser.uid, (users) => {
       setCommunityUsers(users);
+      setIsLoadingMembers(false);
     });
     const unsubPresence = subscribeToAllUserPresenceMap((presenceMap) => {
       setUserPresenceMap(presenceMap);
@@ -400,10 +413,13 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   useEffect(() => {
     if (!currentUser) {
       setCommunityGroups([]);
+      setIsLoadingGroups(false);
       return;
     }
+    setIsLoadingGroups(true);
     const unsub = subscribeToGroups(currentUser.uid, (grps) => {
       setCommunityGroups(grps);
+      setIsLoadingGroups(false);
     });
     return () => unsub();
   }, [currentUser]);
@@ -427,8 +443,10 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   useEffect(() => {
     if (activeChatMode !== 'direct' || !activeChatId) {
       setDirectMessages([]);
+      setIsLoadingDirectMessages(false);
       return;
     }
+    setIsLoadingDirectMessages(true);
     const unsub = subscribeToChatMessages(activeChatId, (msgs) => {
       // Check if new message arrived from partner to trigger notification
       if (msgs.length > 0) {
@@ -452,6 +470,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
       }
 
       setDirectMessages(msgs);
+      setIsLoadingDirectMessages(false);
       if (shouldAutoScrollRef.current) {
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -562,10 +581,13 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
   useEffect(() => {
     if (activeChatMode !== 'group' || !activeGroup) {
       setGroupMessages([]);
+      setIsLoadingGroupMessages(false);
       return;
     }
+    setIsLoadingGroupMessages(true);
     const unsub = subscribeToGroupMessages(activeGroup.id, (msgs) => {
       setGroupMessages(msgs);
+      setIsLoadingGroupMessages(false);
       if (shouldAutoScrollRef.current) {
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1005,6 +1027,7 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
         );
       }
       notificationService.playChime();
+      trackFunnelMilestone('engaged_action', `Sent ${activeChatMode} chat message`);
     } catch (err) {
       console.error('Error sending message:', err);
     } finally {
@@ -1661,7 +1684,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
         <div className="flex-1 overflow-y-auto px-2 space-y-1">
           {/* TAB 1: Direct 1-on-1 Chats */}
           {activeTab === 'direct' && (
-            filteredConversations.length === 0 ? (
+            isLoadingConversations && filteredConversations.length === 0 ? (
+              <ChatInboxSkeletonList count={6} />
+            ) : filteredConversations.length === 0 ? (
               <div className="p-6 text-center text-slate-400 space-y-2">
                 <MessageSquare className="w-8 h-8 mx-auto text-slate-300" />
                 <div className="text-xs font-semibold text-slate-600">No direct chats yet</div>
@@ -1810,7 +1835,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
                 </button>
               </div>
 
-              {filteredGroups.length === 0 ? (
+              {isLoadingGroups && filteredGroups.length === 0 ? (
+                <ChatInboxSkeletonList count={5} />
+              ) : filteredGroups.length === 0 ? (
                 <div className="p-6 text-center text-slate-400 dark:text-slate-500 space-y-3">
                   <Users className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
                   <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">No groups created yet</div>
@@ -1899,7 +1926,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
           {/* TAB 4: Citizens / Members Directory */}
           {activeTab === 'members' && (
-            filteredMembers.length === 0 ? (
+            isLoadingMembers && filteredMembers.length === 0 ? (
+              <ChatInboxSkeletonList count={6} />
+            ) : filteredMembers.length === 0 ? (
               <div className="p-6 text-center text-slate-400 dark:text-slate-500 space-y-2">
                 <Users className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
                 <div className="text-xs font-semibold text-slate-600 dark:text-slate-300">No citizens found</div>
@@ -2260,7 +2289,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
               {/* DIRECT MESSAGES STREAM */}
               {activeChatMode === 'direct' &&
-                (visibleDirectMessages.length === 0 ? (
+                (isLoadingDirectMessages && visibleDirectMessages.length === 0 ? (
+                  <ChatThreadSkeleton />
+                ) : visibleDirectMessages.length === 0 ? (
                   <div className="p-8 text-center text-slate-400 dark:text-slate-500 space-y-2">
                     <MessageSquare className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
                     <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">No messages yet</div>
@@ -2552,7 +2583,9 @@ export const CommunityChatHub: React.FC<CommunityChatHubProps> = ({
 
               {/* GROUP MESSAGES STREAM */}
               {activeChatMode === 'group' &&
-                (groupMessages.length === 0 ? (
+                (isLoadingGroupMessages && groupMessages.length === 0 ? (
+                  <ChatThreadSkeleton />
+                ) : groupMessages.length === 0 ? (
                   <div className="p-8 text-center text-slate-400 dark:text-slate-500 space-y-2">
                     <Users className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
                     <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
