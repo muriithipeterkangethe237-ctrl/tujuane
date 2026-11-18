@@ -13,11 +13,15 @@ import {
   AlertCircle,
   Clock,
   RotateCcw,
-  UploadCloud
+  UploadCloud,
+  Music,
+  Trash2
 } from 'lucide-react';
 import { UserProfile } from '../../types/chat';
 import { StoryMediaType } from '../../types/story';
+import { PostedVideoSound, SoundMixMode } from '../../types/community';
 import { publishCitizenStory } from '../../services/storyService';
+import { resolvePostVideoAudioSource } from '../../services/communityService';
 import { ALL_47_COUNTIES } from '../../data/kenyaCounties';
 import { useBackgroundUploads } from '../../context/BackgroundUploadContext';
 import { formatFileSize } from '../../utils/imageCompressor';
@@ -27,6 +31,7 @@ import {
   MAX_STORY_VIDEO_DURATION_SEC,
   EncodedStoryVideoResult
 } from '../../utils/videoProcessor';
+import { PostedSoundPickerModal } from '../PostedSoundPickerModal';
 
 interface CreateStoryModalProps {
   isOpen: boolean;
@@ -67,6 +72,11 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   // Video playback preview state
   const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(true);
   const [isVideoMuted, setIsVideoMuted] = useState<boolean>(true);
+
+  // Posted video sound state
+  const [selectedSound, setSelectedSound] = useState<PostedVideoSound | null>(null);
+  const [soundMixMode, setSoundMixMode] = useState<SoundMixMode>('replace');
+  const [isSoundPickerOpen, setIsSoundPickerOpen] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -137,8 +147,12 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Process Video File (auto-trims longer clips to 30s and auto-compresses size for Firestore)
-  const processVideoFile = async (file: File) => {
+  // Process Video File (auto-trims longer clips to 30s, mixes optional posted sound, and auto-compresses size)
+  const processVideoFile = async (
+    file: File,
+    overrideSound?: PostedVideoSound | null,
+    overrideMode?: SoundMixMode
+  ) => {
     setErrorMessage(null);
     setAutoTrimInfo(null);
     setEncodedStoryResult(null);
@@ -147,22 +161,41 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
       return;
     }
 
+    const activeSound = overrideSound !== undefined ? overrideSound : selectedSound;
+    const activeMode = overrideMode ?? soundMixMode;
     const gen = ++videoGenerationRef.current;
     rawVideoFileRef.current = file;
     setMediaType('video');
     setIsProcessingVideo(true);
     setVideoTrimProgress(5);
-    setVideoStageLabel('Auto-compressing & optimizing story video...');
+    setVideoStageLabel(
+      activeSound
+        ? 'Mixing selected sound & optimizing story video...'
+        : 'Auto-compressing & optimizing story video...'
+    );
 
-    const promise = trimAndEncodeStoryVideo(file, (pct, stage) => {
-      if (videoGenerationRef.current !== gen) return;
-      setVideoTrimProgress(pct);
-      if (stage) setVideoStageLabel(stage);
-    });
-    pendingStoryPromiseRef.current = promise;
+    const taskPromise = (async () => {
+      let soundTrack: { url: string; mode: SoundMixMode } | undefined;
+      if (activeSound) {
+        const resolvedUrl =
+          activeSound.resolvedPlayableUrl || (await resolvePostVideoAudioSource(activeSound));
+        soundTrack = { url: resolvedUrl, mode: activeMode };
+      }
+
+      return trimAndEncodeStoryVideo(file, {
+        soundTrack,
+        onProgress: (pct, stage) => {
+          if (videoGenerationRef.current !== gen) return;
+          setVideoTrimProgress(pct);
+          if (stage) setVideoStageLabel(stage);
+        }
+      });
+    })();
+
+    pendingStoryPromiseRef.current = taskPromise;
 
     try {
-      const encoded = await promise;
+      const encoded = await taskPromise;
       if (videoGenerationRef.current !== gen) return;
       pendingStoryPromiseRef.current = null;
       setEncodedStoryResult(encoded);
@@ -180,6 +213,9 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
         });
       }
       setIsVideoPlaying(true);
+      if (activeSound) {
+        setIsVideoMuted(false);
+      }
     } catch (err: any) {
       if (videoGenerationRef.current !== gen) return;
       pendingStoryPromiseRef.current = null;
@@ -192,6 +228,32 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     }
   };
 
+  const handleSelectStorySound = async (sound: PostedVideoSound, mode: SoundMixMode) => {
+    setSelectedSound(sound);
+    setSoundMixMode(mode);
+    setMediaType('video');
+    if (rawVideoFileRef.current) {
+      setMediaUrl('');
+      await processVideoFile(rawVideoFileRef.current, sound, mode);
+    }
+  };
+
+  const handleClearStorySound = async () => {
+    setSelectedSound(null);
+    if (rawVideoFileRef.current) {
+      setMediaUrl('');
+      await processVideoFile(rawVideoFileRef.current, null, soundMixMode);
+    }
+  };
+
+  const handleToggleStorySoundMode = async (mode: SoundMixMode) => {
+    setSoundMixMode(mode);
+    if (selectedSound && rawVideoFileRef.current && mode !== soundMixMode) {
+      setMediaUrl('');
+      await processVideoFile(rawVideoFileRef.current, selectedSound, mode);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -199,6 +261,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     if (file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v|3gp|mkv)$/i.test(file.name || '')) {
       processVideoFile(file);
     } else if (file.type.startsWith('image/')) {
+      setSelectedSound(null);
       processImageFile(file);
     } else {
       setErrorMessage('Unsupported file type. Please select a photo or video.');
@@ -230,6 +293,9 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
         encodedStory: encodedStoryResult,
         pendingStoryPromise: pendingStoryPromiseRef.current,
         rawVideoFile: rawVideoFileRef.current,
+        soundTrack: selectedSound
+          ? { sound: selectedSound, mode: soundMixMode, url: selectedSound.resolvedPlayableUrl }
+          : null,
         initialProgress: videoTrimProgress ?? 5
       });
       handleResetMedia();
@@ -248,7 +314,15 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
         mediaUrl,
         caption: caption.trim() || undefined,
         duration,
-        authorCounty: county
+        authorCounty: county,
+        ...(mediaType === 'video' && selectedSound
+          ? {
+              soundSourcePostId: selectedSound.sourceSoundPostId || selectedSound.postId,
+              soundTitle: selectedSound.soundTitle,
+              soundAuthorId: selectedSound.authorId,
+              soundAuthorName: selectedSound.authorName
+            }
+          : {})
       });
 
       onStoryPublished(storyId);
@@ -266,6 +340,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     rawVideoFileRef.current = null;
     pendingStoryPromiseRef.current = null;
     setEncodedStoryResult(null);
+    setSelectedSound(null);
     setMediaUrl('');
     setCaption('');
     setAutoTrimInfo(null);
@@ -399,6 +474,62 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                 </div>
               </div>
 
+              {/* Story Video Sound Bar (pre-upload) */}
+              <div className="p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/60 flex flex-wrap items-center justify-between gap-2">
+                {selectedSound ? (
+                  <>
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <Music className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-indigo-950 dark:text-indigo-200 truncate">
+                          {selectedSound.soundTitle}
+                        </div>
+                        <div className="text-[10px] text-indigo-700 dark:text-indigo-300 truncate">
+                          Sound by {selectedSound.authorName} · {soundMixMode === 'mix' ? 'Mix + Original Audio' : 'Sound Only'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        disabled={isProcessingVideo}
+                        onClick={() => setIsSoundPickerOpen(true)}
+                        className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold cursor-pointer disabled:opacity-40"
+                      >
+                        Change
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isProcessingVideo}
+                        onClick={handleClearStorySound}
+                        className="p-1.5 rounded-lg bg-white dark:bg-slate-800 text-slate-500 hover:text-rose-600 cursor-pointer disabled:opacity-40"
+                        title="Remove sound"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Music className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
+                        Optional: Use sound from a posted video
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isProcessingVideo}
+                      onClick={() => setIsSoundPickerOpen(true)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold cursor-pointer disabled:opacity-40 shrink-0"
+                    >
+                      <Music className="w-3 h-3" />
+                      <span>Use Posted Sound</span>
+                    </button>
+                  </>
+                )}
+              </div>
+
               {/* Hidden File Input */}
               <input
                 ref={fileInputRef}
@@ -498,6 +629,88 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                 )}
               </div>
 
+              {/* Story Video Sound Controls in Preview */}
+              {mediaType === 'video' && (
+                <div className="p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/60 flex flex-wrap items-center justify-between gap-2">
+                  {selectedSound ? (
+                    <>
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <Music className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-indigo-950 dark:text-indigo-200 truncate">
+                            {selectedSound.soundTitle}
+                          </div>
+                          <div className="text-[10px] text-indigo-700 dark:text-indigo-300 truncate">
+                            by {selectedSound.authorName}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                        <div className="inline-flex rounded-lg bg-white dark:bg-slate-800 p-0.5 text-[10px] font-bold border border-indigo-200 dark:border-indigo-700">
+                          <button
+                            type="button"
+                            disabled={isPublishing}
+                            onClick={() => handleToggleStorySoundMode('replace')}
+                            className={`px-2 py-1 rounded-md cursor-pointer ${
+                              soundMixMode === 'replace'
+                                ? 'bg-indigo-600 text-white'
+                                : 'text-slate-600 dark:text-slate-300'
+                            }`}
+                          >
+                            Sound Only
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isPublishing}
+                            onClick={() => handleToggleStorySoundMode('mix')}
+                            className={`px-2 py-1 rounded-md cursor-pointer ${
+                              soundMixMode === 'mix'
+                                ? 'bg-indigo-600 text-white'
+                                : 'text-slate-600 dark:text-slate-300'
+                            }`}
+                          >
+                            Mix + Original
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isPublishing}
+                          onClick={() => setIsSoundPickerOpen(true)}
+                          className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold cursor-pointer"
+                        >
+                          Change
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isPublishing}
+                          onClick={handleClearStorySound}
+                          className="p-1.5 rounded-lg bg-white dark:bg-slate-800 text-slate-500 hover:text-rose-600 cursor-pointer"
+                          title="Remove sound"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        <Music className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <span>Add a posted video sound to this clip</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isPublishing}
+                        onClick={() => setIsSoundPickerOpen(true)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold cursor-pointer"
+                      >
+                        <Music className="w-3 h-3" />
+                        <span>Use Posted Sound</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* Caption Input */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -593,6 +806,17 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Sound Picker Modal */}
+      <PostedSoundPickerModal
+        isOpen={isSoundPickerOpen}
+        selectedSound={selectedSound}
+        initialMixMode={soundMixMode}
+        audioSourceLabel="Original Video Audio"
+        onSelectSound={handleSelectStorySound}
+        onClearSound={handleClearStorySound}
+        onClose={() => setIsSoundPickerOpen(false)}
+      />
     </div>
   );
 };

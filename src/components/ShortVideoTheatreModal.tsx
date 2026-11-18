@@ -18,13 +18,15 @@ import {
   UserPlus,
   UserCheck,
   AlertCircle,
-  Video
+  Video,
+  Music
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import {
   CommunityPost,
   CommunityComment,
-  REACTION_TYPES
+  REACTION_TYPES,
+  buildSoundFromPost
 } from '../types/community';
 import { UserProfile } from '../types/chat';
 import {
@@ -61,6 +63,7 @@ interface ShortVideoTheatreModalProps {
   onSharePost: (post: CommunityPost) => void;
   onViewUserProfile?: (user: UserProfile) => void;
   onOpenDirectChatWithUser?: (authorId: string, authorName: string) => void;
+  onUseVideoSound?: (post: CommunityPost) => void;
   onOpenAuthModal: (mode?: 'signin' | 'register') => void;
   onClose: () => void;
 }
@@ -79,6 +82,7 @@ interface TheatreVideoSlideProps {
   onRequestFullLoad: () => void;
   onRetryLoad: () => void;
   onForceMute: () => void;
+  onUseSound?: () => void;
 }
 
 const TheatreVideoSlide: React.FC<TheatreVideoSlideProps> = ({
@@ -94,7 +98,8 @@ const TheatreVideoSlide: React.FC<TheatreVideoSlideProps> = ({
   liveAuthorCounty,
   onRequestFullLoad,
   onRetryLoad,
-  onForceMute
+  onForceMute,
+  onUseSound
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -380,6 +385,20 @@ const TheatreVideoSlide: React.FC<TheatreVideoSlideProps> = ({
         <p className="text-xs text-slate-200/95 line-clamp-2 leading-relaxed">
           {post.mediaCaption || post.content}
         </p>
+        {onUseSound && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onUseSound();
+            }}
+            className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 hover:bg-indigo-600/90 text-white text-[11px] font-semibold backdrop-blur-md transition-colors cursor-pointer max-w-full"
+          >
+            <Music className="w-3 h-3 text-indigo-300 shrink-0" />
+            <span className="truncate">{buildSoundFromPost(post, liveAuthorName).soundTitle}</span>
+            <span className="text-indigo-200 font-extrabold shrink-0">· Use</span>
+          </button>
+        )}
       </div>
 
       {/* Interactive bottom seek / playback progress bar */}
@@ -433,6 +452,7 @@ export const ShortVideoTheatreModal: React.FC<ShortVideoTheatreModalProps> = ({
   onSharePost,
   onViewUserProfile,
   onOpenDirectChatWithUser,
+  onUseVideoSound,
   onOpenAuthModal,
   onClose
 }) => {
@@ -890,6 +910,38 @@ export const ShortVideoTheatreModal: React.FC<ShortVideoTheatreModalProps> = ({
           )}
         </div>
 
+        {/* Sound Attribution & Use Sound Button */}
+        {(() => {
+          const soundMeta = buildSoundFromPost(activePost, liveActiveAuthor.displayName);
+          return (
+            <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white/5 border border-white/10">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-300 flex items-center justify-center shrink-0">
+                  <Music className="w-3.5 h-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-white truncate">
+                    {soundMeta.soundTitle}
+                  </div>
+                  <div className="text-[10px] text-slate-400 truncate">
+                    Sound · {soundMeta.authorName}
+                  </div>
+                </div>
+              </div>
+              {onUseVideoSound && (
+                <button
+                  type="button"
+                  onClick={() => onUseVideoSound(activePost)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors cursor-pointer shrink-0"
+                >
+                  <Music className="w-3.5 h-3.5" />
+                  <span>Use Sound</span>
+                </button>
+              )}
+            </div>
+          );
+        })()}
+
         {/* 2. Reactions, Comment Count & Share Bar */}
         <div className="pt-2 space-y-2.5">
           <div className="flex items-center justify-between gap-2">
@@ -1329,6 +1381,7 @@ export const ShortVideoTheatreModal: React.FC<ShortVideoTheatreModalProps> = ({
                   onRequestFullLoad={() => loadVideoUrl(post)}
                   onRetryLoad={() => loadVideoUrl(post)}
                   onForceMute={handleForceMute}
+                  onUseSound={onUseVideoSound ? () => onUseVideoSound(post) : undefined}
                 />
               </div>
             );
@@ -1449,6 +1502,21 @@ export const ShortVideoTheatreModal: React.FC<ShortVideoTheatreModalProps> = ({
             </div>
             <span className="text-[11px] font-bold drop-shadow">Share</span>
           </button>
+
+          {/* Use Sound Button */}
+          {onUseVideoSound && (
+            <button
+              type="button"
+              onClick={() => onUseVideoSound(activePost)}
+              className="flex flex-col items-center gap-0.5 text-white cursor-pointer"
+              title="Use this video sound in your own recording or upload"
+            >
+              <div className="w-11 h-11 rounded-full bg-indigo-600/90 hover:bg-indigo-500 flex items-center justify-center backdrop-blur-md shadow-lg ring-2 ring-white/25">
+                <Music className="w-5 h-5" />
+              </div>
+              <span className="text-[11px] font-bold drop-shadow">Sound</span>
+            </button>
+          )}
         </div>
       </div>
 

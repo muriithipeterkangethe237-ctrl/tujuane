@@ -63,6 +63,54 @@ export type ReactionKey = typeof REACTION_TYPES[number]['key'];
 
 export type PostMediaType = 'image' | 'video' | 'audio';
 
+export type SoundMixMode = 'replace' | 'mix';
+
+export interface PostedVideoSound {
+  /** Post ID of the posted video whose audio stream we decode & reuse */
+  postId: string;
+  /** Original root sound post ID if this video reused another video's sound */
+  sourceSoundPostId?: string;
+  soundTitle: string;
+  authorId: string;
+  authorName: string;
+  authorPhotoUrl?: string;
+  thumbnailDataUrl?: string;
+  duration?: number;
+  videoMimeType?: string;
+  videoChunkCount?: number;
+  mediaUrl?: string;
+  resolvedPlayableUrl?: string;
+}
+
+export function buildSoundFromPost(post: CommunityPost, overrideAuthorName?: string): PostedVideoSound {
+  const authorName = post.soundAuthorName || overrideAuthorName || post.authorName || 'Citizen Creator';
+  const genericTitles = new Set([
+    'Citizen Short Video',
+    'Citizen Video Update',
+    'Citizen Post',
+    'Community Update'
+  ]);
+  const candidateTitle =
+    post.soundTitle ||
+    (post.title && !genericTitles.has(post.title) ? post.title : '') ||
+    (post.mediaCaption || '') ||
+    `Original sound · ${authorName}`;
+
+  return {
+    postId: post.id,
+    sourceSoundPostId: post.soundSourcePostId || post.id,
+    soundTitle: candidateTitle.trim().slice(0, 140),
+    authorId: post.soundAuthorId || post.authorId,
+    authorName: authorName.slice(0, 100),
+    authorPhotoUrl: post.authorPhotoUrl,
+    thumbnailDataUrl: post.videoThumbnail,
+    duration: post.videoDuration,
+    videoMimeType: post.videoMimeType,
+    videoChunkCount: post.videoChunkCount,
+    mediaUrl: post.mediaUrl
+  };
+}
+
 export interface CommunityPost {
   id: string;
   authorId: string;
@@ -89,6 +137,10 @@ export interface CommunityPost {
   audioDuration?: number;
   audioSizeBytes?: number;
   audioMimeType?: string;
+  soundSourcePostId?: string;
+  soundTitle?: string;
+  soundAuthorId?: string;
+  soundAuthorName?: string;
   backgroundColor?: PostBackgroundColor | string;
   upvotes: number;
   upvoters: string[]; // list of user UIDs who upvoted
@@ -141,5 +193,9 @@ export interface CreatePostParams {
   audioDuration?: number;
   audioSizeBytes?: number;
   audioMimeType?: string;
+  soundSourcePostId?: string;
+  soundTitle?: string;
+  soundAuthorId?: string;
+  soundAuthorName?: string;
   backgroundColor?: PostBackgroundColor | string;
 }

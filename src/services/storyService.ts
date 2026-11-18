@@ -74,6 +74,18 @@ export async function publishCitizenStory(
   } else {
     storyData.duration = params.type === 'video' ? 15 : 6;
   }
+  if (params.soundSourcePostId) {
+    storyData.soundSourcePostId = params.soundSourcePostId.slice(0, 128);
+  }
+  if (params.soundTitle) {
+    storyData.soundTitle = params.soundTitle.trim().slice(0, 160);
+  }
+  if (params.soundAuthorId) {
+    storyData.soundAuthorId = params.soundAuthorId.slice(0, 128);
+  }
+  if (params.soundAuthorName) {
+    storyData.soundAuthorName = params.soundAuthorName.trim().slice(0, 100);
+  }
 
   try {
     await setDoc(storyRef, storyData);

@@ -27,7 +27,13 @@ import {
   OperationType
 } from '../firebase';
 import { UserProfile } from '../types/chat';
-import { CommunityPost, CommunityComment, CreatePostParams } from '../types/community';
+import {
+  CommunityPost,
+  CommunityComment,
+  CreatePostParams,
+  PostedVideoSound,
+  buildSoundFromPost
+} from '../types/community';
 import { base64ChunksToBlob, resolvePlayableVideoUrl } from '../utils/videoProcessor';
 
 const videoBlobUrlCache = new Map<string, string>();
@@ -245,6 +251,19 @@ export async function createCommunityPost(
 
   if (params.backgroundColor && params.backgroundColor !== 'default') {
     postData.backgroundColor = params.backgroundColor;
+  }
+
+  if (params.soundSourcePostId) {
+    postData.soundSourcePostId = params.soundSourcePostId.slice(0, 128);
+  }
+  if (params.soundTitle) {
+    postData.soundTitle = params.soundTitle.trim().slice(0, 160);
+  }
+  if (params.soundAuthorId) {
+    postData.soundAuthorId = params.soundAuthorId.slice(0, 128);
+  }
+  if (params.soundAuthorName) {
+    postData.soundAuthorName = params.soundAuthorName.trim().slice(0, 100);
   }
 
   try {
@@ -543,6 +562,147 @@ export function prefetchPostVideo(post: CommunityPost): void {
 }
 
 const POSTS_CACHE_KEY = 'tujuane_posts_cache_v1';
+let latestCommunityPostsSnapshot: CommunityPost[] = [];
+
+function isCommunityVideoPost(post: Partial<CommunityPost>): boolean {
+  return (
+    post.mediaType === 'video' ||
+    (typeof post.mediaUrl === 'string' && post.mediaUrl.startsWith('data:video/')) ||
+    (post.videoChunkCount ?? 0) > 0
+  );
+}
+
+/**
+ * Synchronously return posted video sounds already known from active feed or local cache.
+ */
+export function getAvailablePostedVideoSounds(): PostedVideoSound[] {
+  const source =
+    latestCommunityPostsSnapshot.length > 0
+      ? latestCommunityPostsSnapshot
+      : loadCachedPostsSnapshot();
+
+  return source
+    .filter((p) => isCommunityVideoPost(p) && p.videoStatus !== 'uploading')
+    .map((p) => buildSoundFromPost(p));
+}
+
+/**
+ * Resolve all currently posted videos that users can reuse as sounds for recording/posting.
+ * Uses the active live feed snapshot when available to avoid extra Firestore reads.
+ */
+export async function fetchAvailablePostedVideoSounds(
+  maxResults: number = 30
+): Promise<PostedVideoSound[]> {
+  const inMemory = getAvailablePostedVideoSounds();
+  if (inMemory.length > 0 || isFirestoreQuotaExceeded()) {
+    return inMemory.slice(0, maxResults);
+  }
+
+  try {
+    const postsRef = collection(db, POSTS_COLLECTION);
+    const q = query(postsRef, orderBy('createdAt', 'desc'), limit(40));
+    const snap = await getDocs(q);
+    const mapped: CommunityPost[] = snap.docs
+      .map((docSnap) => {
+        const d = docSnap.data();
+        return {
+          id: docSnap.id,
+          authorId: d.authorId,
+          authorName: d.authorName || 'Kenya Community Member',
+          authorPhotoUrl: d.authorPhotoUrl || undefined,
+          authorCounty: d.authorCounty || 'Kenya',
+          title: d.title || 'Community Update',
+          content: d.content || '',
+          category: d.category || 'general',
+          county: d.county || '',
+          mediaUrl: d.mediaUrl || undefined,
+          mediaType: d.mediaType,
+          mediaCaption: d.mediaCaption || undefined,
+          videoThumbnail: d.videoThumbnail || undefined,
+          videoDuration: typeof d.videoDuration === 'number' ? d.videoDuration : undefined,
+          videoSizeBytes: typeof d.videoSizeBytes === 'number' ? d.videoSizeBytes : undefined,
+          videoChunkCount: typeof d.videoChunkCount === 'number' ? d.videoChunkCount : undefined,
+          videoMimeType: d.videoMimeType || undefined,
+          videoStatus: d.videoStatus || undefined,
+          soundSourcePostId: d.soundSourcePostId || undefined,
+          soundTitle: d.soundTitle || undefined,
+          soundAuthorId: d.soundAuthorId || undefined,
+          soundAuthorName: d.soundAuthorName || undefined,
+          upvotes: typeof d.upvotes === 'number' ? d.upvotes : 0,
+          upvoters: Array.isArray(d.upvoters) ? d.upvoters : [],
+          commentsCount: typeof d.commentsCount === 'number' ? d.commentsCount : 0,
+          createdAt: d.createdAt?.toDate ? d.createdAt.toDate().toISOString() : new Date().toISOString()
+        } as CommunityPost;
+      })
+      .filter((p) => p.videoStatus !== 'uploading');
+
+    if (mapped.length > 0) {
+      latestCommunityPostsSnapshot = mapped;
+    }
+
+    return mapped
+      .filter((p) => isCommunityVideoPost(p))
+      .map((p) => buildSoundFromPost(p))
+      .slice(0, maxResults);
+  } catch (err) {
+    handleFirestoreListenerError(err, OperationType.GET, POSTS_COLLECTION);
+    return [];
+  }
+}
+
+/**
+ * Resolve a playable same-origin Blob/Media URL for a posted video so its audio track can be
+ * auditioned, recorded alongside, or mixed into another video upload.
+ */
+export async function resolvePostVideoAudioSource(
+  source: Pick<
+    PostedVideoSound,
+    'postId' | 'resolvedPlayableUrl' | 'mediaUrl' | 'videoMimeType' | 'videoChunkCount'
+  > | CommunityPost
+): Promise<string> {
+  const postId = 'postId' in source ? source.postId : source.id;
+  if ('resolvedPlayableUrl' in source && source.resolvedPlayableUrl) {
+    return source.resolvedPlayableUrl;
+  }
+
+  const cached = getCachedPostVideoUrl(postId);
+  if (cached) return cached;
+
+  if (source.mediaUrl) {
+    const playable = resolvePlayableVideoUrl(source.mediaUrl) || source.mediaUrl;
+    if (playable) return playable;
+  }
+
+  const chunkCount = source.videoChunkCount ?? 0;
+  if (chunkCount > 0) {
+    return fetchAndAssemblePostVideo(
+      postId,
+      source.videoMimeType || 'video/mp4',
+      chunkCount
+    );
+  }
+
+  // Last attempt: lookup post document directly in case mediaUrl/chunks were omitted in compact cache
+  const postRef = doc(db, POSTS_COLLECTION, postId);
+  const snap = await getDocPreferCache(postRef);
+  if (!snap.exists()) {
+    throw new Error('Could not find the source video for this sound.');
+  }
+  const d = snap.data() as Partial<CommunityPost>;
+  if (d.mediaUrl) {
+    const playable = resolvePlayableVideoUrl(d.mediaUrl) || d.mediaUrl;
+    if (playable) return playable;
+  }
+  if ((d.videoChunkCount ?? 0) > 0) {
+    return fetchAndAssemblePostVideo(
+      postId,
+      d.videoMimeType || 'video/mp4',
+      d.videoChunkCount
+    );
+  }
+
+  throw new Error('This video sound is currently unavailable.');
+}
 
 function loadCachedPostsSnapshot(): CommunityPost[] {
   if (typeof window === 'undefined') return [];
@@ -663,6 +823,10 @@ export function subscribeToCommunityPosts(
           audioDuration: typeof d.audioDuration === 'number' ? d.audioDuration : undefined,
           audioSizeBytes: typeof d.audioSizeBytes === 'number' ? d.audioSizeBytes : undefined,
           audioMimeType: d.audioMimeType || undefined,
+          soundSourcePostId: d.soundSourcePostId || undefined,
+          soundTitle: d.soundTitle || undefined,
+          soundAuthorId: d.soundAuthorId || undefined,
+          soundAuthorName: d.soundAuthorName || undefined,
           backgroundColor: d.backgroundColor || undefined,
           upvotes: typeof d.upvotes === 'number' ? d.upvotes : (d.upvoters?.length || 0),
           upvoters: Array.isArray(d.upvoters) ? d.upvoters : [],
@@ -680,6 +844,7 @@ export function subscribeToCommunityPosts(
         };
       }).filter((p) => p.videoStatus !== 'uploading');
 
+      latestCommunityPostsSnapshot = rawPosts;
       if (rawPosts.length > 0) {
         saveCachedPostsSnapshot(rawPosts);
       }

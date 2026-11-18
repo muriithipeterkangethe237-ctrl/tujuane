@@ -10,6 +10,10 @@ export interface CitizenStory {
   mediaUrl: string; // compressed data URI (photo or video)
   caption?: string;
   duration?: number; // duration in seconds (e.g. 6s for image, up to 30s for video)
+  soundSourcePostId?: string;
+  soundTitle?: string;
+  soundAuthorId?: string;
+  soundAuthorName?: string;
   viewers: string[]; // UIDs of users who viewed this story
   viewsCount: number;
   reactions?: Record<string, string>; // userId -> emoji (e.g. 🔥, ❤️, 👏, 🇰🇪)
@@ -33,4 +37,8 @@ export interface CreateStoryParams {
   caption?: string;
   duration?: number;
   authorCounty?: string;
+  soundSourcePostId?: string;
+  soundTitle?: string;
+  soundAuthorId?: string;
+  soundAuthorName?: string;
 }

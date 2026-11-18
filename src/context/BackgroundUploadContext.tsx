@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { UserProfile } from '../types/chat';
-import { CreatePostParams } from '../types/community';
-import { createCommunityPost } from '../services/communityService';
+import { CreatePostParams, PostedVideoSound, SoundMixMode } from '../types/community';
+import { createCommunityPost, resolvePostVideoAudioSource } from '../services/communityService';
 import { publishCitizenStory } from '../services/storyService';
 import {
   EncodedStoryVideoResult,
@@ -37,6 +37,7 @@ export interface EnqueuePostVideoUploadInput {
   processedVideo?: ProcessedFeedVideo | null;
   pendingVideoPromise?: Promise<ProcessedFeedVideo> | null;
   rawVideoFile?: File | null;
+  soundTrack?: { sound: PostedVideoSound; mode: SoundMixMode; url?: string } | null;
   initialProgress?: number;
   onCompleted?: (postId: string) => void;
   onFailed?: (errorMessage: string) => void;
@@ -49,6 +50,7 @@ export interface EnqueueStoryVideoUploadInput {
   encodedStory?: EncodedStoryVideoResult | null;
   pendingStoryPromise?: Promise<EncodedStoryVideoResult> | null;
   rawVideoFile?: File | null;
+  soundTrack?: { sound: PostedVideoSound; mode: SoundMixMode; url?: string } | null;
   initialProgress?: number;
   onCompleted?: (storyId: string) => void;
   onFailed?: (errorMessage: string) => void;
@@ -150,10 +152,21 @@ export const BackgroundUploadProvider: React.FC<{
           if (!forceReprocess && input.pendingVideoPromise) {
             processed = await input.pendingVideoPromise;
           } else if (input.rawVideoFile) {
+            let soundTrackOption: { url: string; mode: SoundMixMode } | undefined;
+            if (input.soundTrack?.sound) {
+              const resolvedSoundUrl =
+                input.soundTrack.url ||
+                (await resolvePostVideoAudioSource(input.soundTrack.sound));
+              soundTrackOption = {
+                url: resolvedSoundUrl,
+                mode: input.soundTrack.mode
+              };
+            }
             processed = await processFeedVideoFile(input.rawVideoFile, {
               maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
               autoTrim: true,
               autoCompress: true,
+              soundTrack: soundTrackOption,
               onProgress: (pct, stage) => {
                 updateJob(jobId, {
                   status: 'compressing',
@@ -186,6 +199,7 @@ export const BackgroundUploadProvider: React.FC<{
           error: undefined
         });
 
+        const selectedSound = input.soundTrack?.sound;
         const finalParams: CreatePostParams & Record<string, any> = {
           ...input.basePostParams,
           mediaType: 'video',
@@ -194,7 +208,18 @@ export const BackgroundUploadProvider: React.FC<{
           videoThumbnail: processed.thumbnailDataUrl,
           videoDuration: processed.duration,
           videoSizeBytes: processed.sizeBytes,
-          videoMimeType: processed.mimeType
+          videoMimeType: processed.mimeType,
+          ...(selectedSound
+            ? {
+                soundSourcePostId:
+                  input.basePostParams.soundSourcePostId ||
+                  selectedSound.sourceSoundPostId ||
+                  selectedSound.postId,
+                soundTitle: input.basePostParams.soundTitle || selectedSound.soundTitle,
+                soundAuthorId: input.basePostParams.soundAuthorId || selectedSound.authorId,
+                soundAuthorName: input.basePostParams.soundAuthorName || selectedSound.authorName
+              }
+            : {})
         };
 
         const postId = await createCommunityPost(input.author, finalParams, (pct) => {
@@ -262,12 +287,25 @@ export const BackgroundUploadProvider: React.FC<{
           if (!forceReprocess && input.pendingStoryPromise) {
             encoded = await input.pendingStoryPromise;
           } else if (input.rawVideoFile) {
-            encoded = await trimAndEncodeStoryVideo(input.rawVideoFile, (pct, stage) => {
-              updateJob(jobId, {
-                status: 'compressing',
-                progress: pct,
-                stageLabel: stage || 'Auto-compressing story video...'
-              });
+            let soundTrackOption: { url: string; mode: SoundMixMode } | undefined;
+            if (input.soundTrack?.sound) {
+              const resolvedSoundUrl =
+                input.soundTrack.url ||
+                (await resolvePostVideoAudioSource(input.soundTrack.sound));
+              soundTrackOption = {
+                url: resolvedSoundUrl,
+                mode: input.soundTrack.mode
+              };
+            }
+            encoded = await trimAndEncodeStoryVideo(input.rawVideoFile, {
+              soundTrack: soundTrackOption,
+              onProgress: (pct, stage) => {
+                updateJob(jobId, {
+                  status: 'compressing',
+                  progress: pct,
+                  stageLabel: stage || 'Auto-compressing story video...'
+                });
+              }
             });
           } else {
             throw new Error('Story video source is unavailable.');
@@ -291,12 +329,21 @@ export const BackgroundUploadProvider: React.FC<{
           error: undefined
         });
 
+        const storySound = input.soundTrack?.sound;
         const storyId = await publishCitizenStory(input.author, {
           type: 'video',
           mediaUrl: encoded.dataUrl,
           caption: input.caption?.trim() || undefined,
           duration: encoded.duration,
-          authorCounty: input.county
+          authorCounty: input.county,
+          ...(storySound
+            ? {
+                soundSourcePostId: storySound.sourceSoundPostId || storySound.postId,
+                soundTitle: storySound.soundTitle,
+                soundAuthorId: storySound.authorId,
+                soundAuthorName: storySound.authorName
+              }
+            : {})
         });
 
         updateJob(jobId, {

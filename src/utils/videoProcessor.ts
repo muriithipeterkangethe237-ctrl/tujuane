@@ -24,10 +24,17 @@ export interface ProcessedFeedVideo {
   chunks?: string[];
   chunkCount: number;
   previewObjectUrl: string;
+  /** In-memory working video File for non-destructive sound re-mixing before posting */
+  sourceFile?: File;
   /** True when the video exceeded limits and was automatically trimmed/compressed */
   wasAutoTrimmed?: boolean;
   /** Original duration (in seconds) before auto-trimming */
   originalDuration?: number;
+}
+
+export interface VideoSoundTrackOption {
+  url: string;
+  mode?: 'replace' | 'mix';
 }
 
 export interface ProcessVideoOptions {
@@ -37,6 +44,7 @@ export interface ProcessVideoOptions {
   maxDimension?: number;
   autoTrim?: boolean;
   autoCompress?: boolean;
+  soundTrack?: VideoSoundTrackOption;
   onProgress?: (percent: number, stage?: string) => void;
 }
 
@@ -163,6 +171,7 @@ export async function trimVideoToLength(
     compressThresholdBytes?: number;
     autoCompress?: boolean;
     maxDimension?: number;
+    soundTrack?: VideoSoundTrackOption;
     onProgress?: (percent: number, stage?: string) => void;
   } = {}
 ): Promise<TrimmedVideoResult> {
@@ -171,6 +180,8 @@ export async function trimVideoToLength(
   const compressThresholdBytes = options.compressThresholdBytes ?? AUTO_COMPRESS_FEED_THRESHOLD_BYTES;
   const autoCompress = options.autoCompress ?? true;
   const maxDimension = options.maxDimension ?? 720;
+  const soundTrack = options.soundTrack;
+  const hasSoundOverlay = Boolean(soundTrack?.url);
   const onProgress = options.onProgress;
 
   const sourceUrl = URL.createObjectURL(file);
@@ -186,7 +197,7 @@ export async function trimVideoToLength(
       file.size > maxBytes ||
       (autoCompress && (file.size > compressThresholdBytes || needsDimensionScale));
 
-    if (!needsDurationTrim && !needsSizeCompress) {
+    if (!needsDurationTrim && !needsSizeCompress && !hasSoundOverlay) {
       return {
         file,
         duration: hasFiniteDuration ? Math.max(1, Math.min(targetDurationSec, Math.round(meta.rawDuration))) : targetDurationSec,
@@ -264,7 +275,11 @@ export async function trimVideoToLength(
 
     onProgress?.(
       2,
-      needsDurationTrim
+      hasSoundOverlay
+        ? needsDurationTrim
+          ? `Applying sound & trimming video to ${formatVideoDuration(clipDuration)}...`
+          : 'Applying posted sound & compressing video...'
+        : needsDurationTrim
         ? `Auto-trimming & compressing video to ${formatVideoDuration(clipDuration)}...`
         : 'Auto-compressing video file size...'
     );
@@ -291,6 +306,7 @@ export async function trimVideoToLength(
       let recorder: MediaRecorder | null = null;
       let audioCtx: AudioContext | null = null;
       let combinedStream: MediaStream | null = null;
+      let soundVideoEl: HTMLVideoElement | null = null;
       let safetyTimer: ReturnType<typeof setTimeout> | null = null;
       let finished = false;
       const chunks: BlobPart[] = [];
@@ -324,6 +340,17 @@ export async function trimVideoToLength(
         video.removeAttribute('src');
         video.load();
 
+        if (soundVideoEl) {
+          try {
+            soundVideoEl.pause();
+          } catch {
+            // ignore
+          }
+          soundVideoEl.removeAttribute('src');
+          soundVideoEl.load();
+          soundVideoEl = null;
+        }
+
         if (combinedStream) {
           combinedStream.getTracks().forEach((t) => t.stop());
           combinedStream = null;
@@ -340,6 +367,7 @@ export async function trimVideoToLength(
         clearScheduledFrame();
         try {
           video.pause();
+          soundVideoEl?.pause();
         } catch {
           // ignore
         }
@@ -361,7 +389,30 @@ export async function trimVideoToLength(
           const canvasStream = canvas.captureStream(24);
           const tracks: MediaStreamTrack[] = [...canvasStream.getVideoTracks()];
 
-          // Attach audio silently via Web Audio API so user does not hear playback while compressing
+          // Prepare posted sound element if soundTrack overlay is requested
+          if (hasSoundOverlay && soundTrack?.url) {
+            soundVideoEl = document.createElement('video');
+            soundVideoEl.playsInline = true;
+            soundVideoEl.crossOrigin = 'anonymous';
+            soundVideoEl.preload = 'auto';
+            soundVideoEl.loop = true;
+            soundVideoEl.src = soundTrack.url;
+            await new Promise<void>((res) => {
+              if (!soundVideoEl || soundVideoEl.readyState >= 2) {
+                res();
+                return;
+              }
+              const timer = setTimeout(res, 3000);
+              const done = () => {
+                clearTimeout(timer);
+                res();
+              };
+              soundVideoEl.onloadeddata = done;
+              soundVideoEl.onerror = done;
+            });
+          }
+
+          // Attach audio silently via Web Audio API so user does not hear playback while compressing/mixing
           try {
             const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
             if (AudioCtx) {
@@ -369,14 +420,33 @@ export async function trimVideoToLength(
               if (audioCtx.state === 'suspended') {
                 await audioCtx.resume().catch(() => {});
               }
-              const srcNode = audioCtx.createMediaElementSource(video);
               const destNode = audioCtx.createMediaStreamDestination();
-              srcNode.connect(destNode);
+
+              const srcNode = audioCtx.createMediaElementSource(video);
+              const origGain = audioCtx.createGain();
+              // In replace mode mute original video's audio; in mix mode blend it at 45%
+              origGain.gain.value = hasSoundOverlay
+                ? soundTrack?.mode === 'mix'
+                  ? 0.45
+                  : 0
+                : 1;
+              srcNode.connect(origGain);
+              origGain.connect(destNode);
+              video.muted = false;
+
+              if (soundVideoEl) {
+                const soundNode = audioCtx.createMediaElementSource(soundVideoEl);
+                const soundGain = audioCtx.createGain();
+                soundGain.gain.value = soundTrack?.mode === 'mix' ? 0.85 : 1.0;
+                soundNode.connect(soundGain);
+                soundGain.connect(destNode);
+                soundVideoEl.muted = false;
+              }
+
               const audioTracks = destNode.stream.getAudioTracks();
               if (audioTracks.length > 0) {
                 tracks.push(...audioTracks);
               }
-              video.muted = false;
             } else {
               video.muted = true;
             }
@@ -447,6 +517,10 @@ export async function trimVideoToLength(
 
           video.currentTime = 0;
           recorder.start(250);
+          if (soundVideoEl) {
+            soundVideoEl.currentTime = 0;
+            void soundVideoEl.play().catch(() => {});
+          }
           await video.play();
           scheduleNextFrame();
 
@@ -480,8 +554,8 @@ export async function trimVideoToLength(
       type: outMime
     });
 
-    // If trimming wasn't required and original is already within maxBytes and smaller, keep original file
-    if (!needsDurationTrim && file.size <= maxBytes && compressedFile.size >= file.size) {
+    // If trimming wasn't required and no sound overlay applied and original is smaller, keep original file
+    if (!needsDurationTrim && !hasSoundOverlay && file.size <= maxBytes && compressedFile.size >= file.size) {
       return {
         file,
         duration: Math.max(1, Math.round(clipDuration)),
@@ -618,13 +692,14 @@ export async function processFeedVideoFile(
   let originalDuration: number | undefined;
   const originalSizeBytes = file.size;
 
-  if (autoTrim || autoCompress) {
+  if (autoTrim || autoCompress || opts.soundTrack?.url) {
     const trimRes = await trimVideoToLength(file, autoTrim ? maxDurationSec : 3600, {
       maxBytes,
       targetCompressBytes: TARGET_COMPRESSED_FEED_VIDEO_BYTES,
       compressThresholdBytes: AUTO_COMPRESS_FEED_THRESHOLD_BYTES,
       autoCompress,
       maxDimension: opts.maxDimension ?? 720,
+      soundTrack: opts.soundTrack,
       onProgress: opts.onProgress
     });
     workingFile = trimRes.file;
@@ -727,6 +802,7 @@ export async function processFeedVideoFile(
       inlineDataUrl: fullDataUrl,
       chunkCount: 0,
       previewObjectUrl,
+      sourceFile: workingFile,
       wasAutoTrimmed,
       originalDuration
     };
@@ -752,6 +828,7 @@ export async function processFeedVideoFile(
     chunks,
     chunkCount: chunks.length,
     previewObjectUrl,
+    sourceFile: workingFile,
     wasAutoTrimmed,
     originalDuration
   };
@@ -762,8 +839,20 @@ export async function processFeedVideoFile(
  */
 export async function trimAndEncodeStoryVideo(
   file: File,
-  onProgress?: (percent: number, stage?: string) => void
+  onProgressOrOptions?:
+    | ((percent: number, stage?: string) => void)
+    | {
+        soundTrack?: VideoSoundTrackOption;
+        onProgress?: (percent: number, stage?: string) => void;
+      }
 ): Promise<EncodedStoryVideoResult> {
+  const onProgress =
+    typeof onProgressOrOptions === 'function'
+      ? onProgressOrOptions
+      : onProgressOrOptions?.onProgress;
+  const soundTrack =
+    typeof onProgressOrOptions === 'object' ? onProgressOrOptions?.soundTrack : undefined;
+
   const mimeType = file.type || 'video/mp4';
   const isVideoExt = /\.(mp4|webm|mov|m4v|3gp|mkv)$/i.test(file.name || '');
 
@@ -785,6 +874,7 @@ export async function trimAndEncodeStoryVideo(
     compressThresholdBytes: AUTO_COMPRESS_STORY_THRESHOLD_BYTES,
     autoCompress: true,
     maxDimension: 480,
+    soundTrack,
     onProgress
   });
 

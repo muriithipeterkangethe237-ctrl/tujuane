@@ -8,7 +8,12 @@ import {
   MicOff,
   AlertCircle,
   Upload,
-  X
+  X,
+  Music,
+  Play,
+  Pause,
+  Loader2,
+  Trash2
 } from 'lucide-react';
 import {
   MAX_FEED_VIDEO_DURATION_SEC,
@@ -16,12 +21,34 @@ import {
   formatVideoDuration,
   processFeedVideoFile
 } from '../utils/videoProcessor';
+import { PostedVideoSound, SoundMixMode } from '../types/community';
+import { resolvePostVideoAudioSource } from '../services/communityService';
+import { PostedSoundPickerModal } from './PostedSoundPickerModal';
+
+export interface RecordedVideoSoundMeta {
+  sound: PostedVideoSound | null;
+  mixMode: SoundMixMode;
+  soundAlreadyBaked: boolean;
+}
 
 interface ShortVideoCameraRecorderProps {
-  onVideoReady: (video: ProcessedFeedVideo) => void;
+  onVideoReady: (video: ProcessedFeedVideo, soundMeta?: RecordedVideoSoundMeta) => void;
   onCancel: () => void;
   onFallbackUploadClick?: () => void;
   disabled?: boolean;
+  initialSound?: PostedVideoSound | null;
+  initialMixMode?: SoundMixMode;
+  onSoundChange?: (sound: PostedVideoSound | null, mode: SoundMixMode) => void;
+}
+
+interface SoundAudioGraph {
+  ctx: AudioContext;
+  dest: MediaStreamAudioDestinationNode;
+  soundEl: HTMLVideoElement;
+  soundSource: MediaElementAudioSourceNode;
+  monitorGain: GainNode;
+  recordSoundGain: GainNode;
+  recordMicGain: GainNode;
 }
 
 function pickSupportedVideoMimeType(): string | undefined {
@@ -38,11 +65,40 @@ function pickSupportedVideoMimeType(): string | undefined {
   return candidates.find((type) => MediaRecorder.isTypeSupported(type));
 }
 
+async function waitForMediaReady(el: HTMLVideoElement, timeoutMs: number = 6000): Promise<void> {
+  if (el.readyState >= 2) return;
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const finish = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      el.removeEventListener('canplay', onReady);
+      el.removeEventListener('loadeddata', onReady);
+      el.removeEventListener('error', onErr);
+      if (err) reject(err);
+      else resolve();
+    };
+    const onReady = () => finish();
+    const onErr = () => finish(new Error('Could not decode selected sound audio.'));
+    const timer = window.setTimeout(() => {
+      if (el.readyState >= 1) finish();
+      else finish(new Error('Timed out loading selected sound.'));
+    }, timeoutMs);
+    el.addEventListener('canplay', onReady);
+    el.addEventListener('loadeddata', onReady);
+    el.addEventListener('error', onErr);
+  });
+}
+
 export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> = ({
   onVideoReady,
   onCancel,
   onFallbackUploadClick,
-  disabled = false
+  disabled = false,
+  initialSound = null,
+  initialMixMode = 'replace',
+  onSoundChange
 }) => {
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [withAudio, setWithAudio] = useState(true);
@@ -55,6 +111,17 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [resolvedFrontCamera, setResolvedFrontCamera] = useState(false);
 
+  // Posted Video Sound state
+  const [activeSound, setActiveSound] = useState<PostedVideoSound | null>(initialSound);
+  const [mixMode, setMixMode] = useState<SoundMixMode>(initialMixMode);
+  const [soundPlayableUrl, setSoundPlayableUrl] = useState<string | null>(
+    initialSound?.resolvedPlayableUrl || null
+  );
+  const [isLoadingSound, setIsLoadingSound] = useState(false);
+  const [soundError, setSoundError] = useState<string | null>(null);
+  const [isAuditioningSound, setIsAuditioningSound] = useState(false);
+  const [isSoundPickerOpen, setIsSoundPickerOpen] = useState(false);
+
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -64,6 +131,216 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
   const startTimeRef = useRef<number>(0);
   const stoppingRef = useRef<boolean>(false);
   const isMountedRef = useRef<boolean>(true);
+
+  // Single-lifetime detached <video> + WebAudio graph refs
+  const soundElRef = useRef<HTMLVideoElement | null>(null);
+  const soundGraphRef = useRef<SoundAudioGraph | null>(null);
+  const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const soundMixedInRecordingRef = useRef<boolean>(false);
+
+  // Sync external initialSound/initialMixMode if changed before recording
+  useEffect(() => {
+    setActiveSound(initialSound ?? null);
+  }, [initialSound?.postId]);
+
+  useEffect(() => {
+    setMixMode(initialMixMode);
+  }, [initialMixMode]);
+
+  const teardownSoundElementAndGraph = useCallback(() => {
+    if (micSourceRef.current) {
+      try {
+        micSourceRef.current.disconnect();
+      } catch {
+        // ignore
+      }
+      micSourceRef.current = null;
+    }
+    if (soundGraphRef.current) {
+      try {
+        soundGraphRef.current.soundSource.disconnect();
+        soundGraphRef.current.monitorGain.disconnect();
+        soundGraphRef.current.recordSoundGain.disconnect();
+        soundGraphRef.current.recordMicGain.disconnect();
+        void soundGraphRef.current.ctx.close().catch(() => {});
+      } catch {
+        // ignore
+      }
+      soundGraphRef.current = null;
+    }
+    if (soundElRef.current) {
+      try {
+        soundElRef.current.pause();
+        soundElRef.current.currentTime = 0;
+        soundElRef.current.removeAttribute('src');
+        soundElRef.current.load();
+      } catch {
+        // ignore
+      }
+      soundElRef.current = null;
+    }
+    setIsAuditioningSound(false);
+  }, []);
+
+  // Resolve playable URL for the active sound whenever activeSound changes
+  useEffect(() => {
+    let cancelled = false;
+    setSoundError(null);
+    teardownSoundElementAndGraph();
+
+    if (!activeSound) {
+      setSoundPlayableUrl(null);
+      setIsLoadingSound(false);
+      return;
+    }
+
+    if (activeSound.resolvedPlayableUrl) {
+      setSoundPlayableUrl(activeSound.resolvedPlayableUrl);
+      setIsLoadingSound(false);
+      return;
+    }
+
+    setSoundPlayableUrl(null);
+    setIsLoadingSound(true);
+    resolvePostVideoAudioSource(activeSound)
+      .then((url) => {
+        if (cancelled || !isMountedRef.current) return;
+        setSoundPlayableUrl(url);
+      })
+      .catch((err: any) => {
+        if (cancelled || !isMountedRef.current) return;
+        setSoundError(err?.message || 'Could not load audio from this posted video.');
+      })
+      .finally(() => {
+        if (!cancelled && isMountedRef.current) {
+          setIsLoadingSound(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSound?.postId, activeSound?.resolvedPlayableUrl, teardownSoundElementAndGraph]);
+
+  // Create detached <video> once per resolved soundPlayableUrl
+  useEffect(() => {
+    teardownSoundElementAndGraph();
+    if (!soundPlayableUrl) return;
+
+    const el = document.createElement('video');
+    el.playsInline = true;
+    el.loop = true;
+    el.muted = false;
+    el.volume = 1;
+    el.preload = 'auto';
+    el.src = soundPlayableUrl;
+    el.onpause = () => {
+      if (isMountedRef.current) setIsAuditioningSound(false);
+    };
+    el.onplay = () => {
+      if (isMountedRef.current) setIsAuditioningSound(true);
+    };
+    soundElRef.current = el;
+
+    return () => {
+      teardownSoundElementAndGraph();
+    };
+  }, [soundPlayableUrl, teardownSoundElementAndGraph]);
+
+  // Keep gain nodes updated if user toggles mixMode
+  useEffect(() => {
+    const graph = soundGraphRef.current;
+    if (!graph) return;
+    graph.recordSoundGain.gain.value = mixMode === 'mix' ? 0.85 : 1.0;
+    graph.recordMicGain.gain.value =
+      activeSound && mixMode === 'replace' ? 0 : withAudio && audioAvailable ? 0.85 : 0;
+  }, [mixMode, activeSound, withAudio, audioAvailable]);
+
+  const ensureSoundAudioGraph = useCallback(async (): Promise<SoundAudioGraph | null> => {
+    const soundEl = soundElRef.current;
+    if (!soundEl) return null;
+
+    if (soundGraphRef.current && soundGraphRef.current.soundEl === soundEl) {
+      if (soundGraphRef.current.ctx.state === 'suspended') {
+        await soundGraphRef.current.ctx.resume().catch(() => {});
+      }
+      return soundGraphRef.current;
+    }
+
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return null;
+
+    const ctx = new AudioCtx();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {});
+    }
+
+    const dest = ctx.createMediaStreamDestination();
+    const soundSource = ctx.createMediaElementSource(soundEl);
+    const monitorGain = ctx.createGain();
+    monitorGain.gain.value = 1.0;
+
+    const recordSoundGain = ctx.createGain();
+    recordSoundGain.gain.value = mixMode === 'mix' ? 0.85 : 1.0;
+
+    const recordMicGain = ctx.createGain();
+    recordMicGain.gain.value =
+      activeSound && mixMode === 'replace' ? 0 : withAudio && audioAvailable ? 0.85 : 0;
+
+    soundSource.connect(monitorGain);
+    monitorGain.connect(ctx.destination);
+    soundSource.connect(recordSoundGain);
+    recordSoundGain.connect(dest);
+    recordMicGain.connect(dest);
+
+    const graph: SoundAudioGraph = {
+      ctx,
+      dest,
+      soundEl,
+      soundSource,
+      monitorGain,
+      recordSoundGain,
+      recordMicGain
+    };
+    soundGraphRef.current = graph;
+    return graph;
+  }, [mixMode, activeSound, withAudio, audioAvailable]);
+
+  const stopSoundPlayback = useCallback(() => {
+    const el = soundElRef.current;
+    if (el) {
+      try {
+        el.pause();
+        el.currentTime = 0;
+      } catch {
+        // ignore
+      }
+    }
+    setIsAuditioningSound(false);
+  }, []);
+
+  const handleToggleAuditionSound = async () => {
+    if (!soundElRef.current || isRecording || isProcessing || isLoadingSound) return;
+    setSoundError(null);
+
+    if (isAuditioningSound) {
+      stopSoundPlayback();
+      return;
+    }
+
+    try {
+      await ensureSoundAudioGraph();
+      await waitForMediaReady(soundElRef.current, 5000);
+      soundElRef.current.currentTime = 0;
+      await soundElRef.current.play();
+      setIsAuditioningSound(true);
+    } catch (err: any) {
+      setSoundError(err?.message || 'Could not preview this sound.');
+      stopSoundPlayback();
+    }
+  };
 
   const isSupported =
     typeof window !== 'undefined' &&
@@ -75,6 +352,14 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
     if (timerRef.current !== null) {
       window.clearInterval(timerRef.current);
       timerRef.current = null;
+    }
+    if (micSourceRef.current) {
+      try {
+        micSourceRef.current.disconnect();
+      } catch {
+        // ignore
+      }
+      micSourceRef.current = null;
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => {
@@ -127,7 +412,6 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
             : false
         });
       } catch (primaryErr: any) {
-        // Fallback to video-only if audio permission/device caused the failure
         if (enableAudio && primaryErr?.name !== 'NotAllowedError' && primaryErr?.name !== 'PermissionDeniedError') {
           try {
             stream = await navigator.mediaDevices.getUserMedia({
@@ -141,7 +425,6 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
             return;
           }
         } else if (enableAudio) {
-          // Even if audio permission was denied, still check if video-only is allowed
           try {
             stream = await navigator.mediaDevices.getUserMedia({
               video: videoConstraints,
@@ -216,9 +499,11 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
           // ignore
         }
       }
+      stopSoundPlayback();
+      teardownSoundElementAndGraph();
       stopMediaStream();
     };
-  }, [facingMode, withAudio, startCamera, stopMediaStream]);
+  }, [facingMode, withAudio, startCamera, stopMediaStream, stopSoundPlayback, teardownSoundElementAndGraph]);
 
   const stopRecording = useCallback(() => {
     if (stoppingRef.current) return;
@@ -226,6 +511,16 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
     if (timerRef.current !== null) {
       window.clearInterval(timerRef.current);
       timerRef.current = null;
+    }
+
+    stopSoundPlayback();
+    if (micSourceRef.current) {
+      try {
+        micSourceRef.current.disconnect();
+      } catch {
+        // ignore
+      }
+      micSourceRef.current = null;
     }
 
     const recorder = mediaRecorderRef.current;
@@ -240,34 +535,92 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
       setIsRecording(false);
       stoppingRef.current = false;
     }
-  }, []);
+  }, [stopSoundPlayback]);
 
-  const handleStartRecording = () => {
+  const handleStartRecording = async () => {
     if (disabled || isRecording || isProcessing || !streamRef.current) return;
-    setCameraError(null);
-    stoppingRef.current = false;
+    if (isLoadingSound) {
+      setCameraError('Please wait a moment while the selected sound loads.');
+      return;
+    }
 
-    const stream = streamRef.current;
+    setCameraError(null);
+    setSoundError(null);
+    stoppingRef.current = false;
+    soundMixedInRecordingRef.current = false;
+
+    const cameraStream = streamRef.current;
+    let streamToRecord: MediaStream = cameraStream;
+    const soundSnapshot = activeSound;
+    const mixSnapshot = mixMode;
+    const playableSnapshot = soundPlayableUrl;
+
+    // If recording with a posted video sound, build a clean combined stream (Camera video + Web Audio mixed stream)
+    if (soundSnapshot && soundElRef.current) {
+      try {
+        const graph = await ensureSoundAudioGraph();
+        await waitForMediaReady(soundElRef.current, 6000);
+        if (graph) {
+          // Connect microphone ONLY to dest (via recordMicGain), never to speakers (monitorGain) -> zero echo
+          if (micSourceRef.current) {
+            try {
+              micSourceRef.current.disconnect();
+            } catch {
+              // ignore
+            }
+            micSourceRef.current = null;
+          }
+          const micTracks = cameraStream.getAudioTracks();
+          if (micTracks.length > 0 && withAudio && audioAvailable && mixSnapshot === 'mix') {
+            const micOnlyStream = new MediaStream([micTracks[0]]);
+            const micSrc = graph.ctx.createMediaStreamSource(micOnlyStream);
+            micSrc.connect(graph.recordMicGain);
+            graph.recordMicGain.gain.value = 0.85;
+            micSourceRef.current = micSrc;
+          } else {
+            graph.recordMicGain.gain.value = 0;
+          }
+
+          graph.recordSoundGain.gain.value = mixSnapshot === 'mix' ? 0.85 : 1.0;
+
+          const combinedTracks: MediaStreamTrack[] = [
+            ...cameraStream.getVideoTracks(),
+            ...graph.dest.stream.getAudioTracks()
+          ];
+          streamToRecord = new MediaStream(combinedTracks);
+          soundMixedInRecordingRef.current = true;
+        }
+        soundElRef.current.currentTime = 0;
+        await soundElRef.current.play();
+      } catch (err: any) {
+        soundMixedInRecordingRef.current = false;
+        setSoundError(
+          err?.message || 'Live sound mixing unavailable on this browser — sound will be applied right after recording.'
+        );
+      }
+    }
+
     const preferredMime = pickSupportedVideoMimeType();
 
     let recorder: MediaRecorder;
     try {
       recorder = preferredMime
-        ? new MediaRecorder(stream, {
+        ? new MediaRecorder(streamToRecord, {
             mimeType: preferredMime,
             videoBitsPerSecond: 900_000,
             audioBitsPerSecond: 64_000
           })
-        : new MediaRecorder(stream, {
+        : new MediaRecorder(streamToRecord, {
             videoBitsPerSecond: 900_000,
             audioBitsPerSecond: 64_000
           });
     } catch {
       try {
         recorder = preferredMime
-          ? new MediaRecorder(stream, { mimeType: preferredMime })
-          : new MediaRecorder(stream);
+          ? new MediaRecorder(streamToRecord, { mimeType: preferredMime })
+          : new MediaRecorder(streamToRecord);
       } catch {
+        stopSoundPlayback();
         setCameraError('Could not initialize video recorder on this browser.');
         return;
       }
@@ -288,12 +641,14 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
         window.clearInterval(timerRef.current);
         timerRef.current = null;
       }
+      stopSoundPlayback();
       setIsRecording(false);
       stoppingRef.current = false;
       setCameraError('Camera recording was interrupted. Please try again.');
     };
 
     recorder.onstop = async () => {
+      stopSoundPlayback();
       const finalDuration = Math.min(
         MAX_FEED_VIDEO_DURATION_SEC,
         Math.max(0, Number(((Date.now() - startTimeRef.current) / 1000).toFixed(1)))
@@ -324,13 +679,29 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
         const recordedFile = new File([blob], `tujuane-short-${Date.now()}.${ext}`, {
           type: actualMime
         });
-        const processed = await processFeedVideoFile(recordedFile, finalDuration);
+
+        // If live WebAudio mixing wasn't active but user had selected a sound, bake it into the clip now
+        const needsPostMix = Boolean(soundSnapshot && playableSnapshot && !soundMixedInRecordingRef.current);
+        const processed = await processFeedVideoFile(
+          recordedFile,
+          needsPostMix && playableSnapshot
+            ? {
+                overrideDurationSec: finalDuration,
+                soundTrack: { url: playableSnapshot, mode: mixSnapshot }
+              }
+            : finalDuration
+        );
+
         if (!isMountedRef.current) {
           URL.revokeObjectURL(processed.previewObjectUrl);
           return;
         }
         stopMediaStream();
-        onVideoReady(processed);
+        onVideoReady(processed, {
+          sound: soundSnapshot,
+          mixMode: mixSnapshot,
+          soundAlreadyBaked: Boolean(soundSnapshot && (soundMixedInRecordingRef.current || needsPostMix))
+        });
       } catch (err: any) {
         if (!isMountedRef.current) return;
         setCameraError(err?.message || 'Could not process recorded video. Please try a shorter clip.');
@@ -363,14 +734,30 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
     if (!file) return;
     setIsProcessing(true);
     setCameraError(null);
+    const soundSnapshot = activeSound;
+    const mixSnapshot = mixMode;
     try {
-      const processed = await processFeedVideoFile(file);
+      let resolvedUrl = soundPlayableUrl;
+      if (soundSnapshot && !resolvedUrl) {
+        resolvedUrl = await resolvePostVideoAudioSource(soundSnapshot).catch(() => null);
+      }
+
+      const processed = await processFeedVideoFile(
+        file,
+        soundSnapshot && resolvedUrl
+          ? { soundTrack: { url: resolvedUrl, mode: mixSnapshot } }
+          : undefined
+      );
       if (!isMountedRef.current) {
         URL.revokeObjectURL(processed.previewObjectUrl);
         return;
       }
       stopMediaStream();
-      onVideoReady(processed);
+      onVideoReady(processed, {
+        sound: soundSnapshot,
+        mixMode: mixSnapshot,
+        soundAlreadyBaked: Boolean(soundSnapshot && resolvedUrl)
+      });
     } catch (err: any) {
       if (isMountedRef.current) {
         setCameraError(err?.message || 'Could not load video from device camera.');
@@ -393,6 +780,25 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
   const handleToggleAudio = () => {
     if (isRecording || isProcessing || isInitializing) return;
     setWithAudio((prev) => !prev);
+  };
+
+  const handleSelectPickerSound = (nextSound: PostedVideoSound, nextMode: SoundMixMode) => {
+    setActiveSound(nextSound);
+    setMixMode(nextMode);
+    onSoundChange?.(nextSound, nextMode);
+  };
+
+  const handleClearActiveSound = () => {
+    stopSoundPlayback();
+    setActiveSound(null);
+    setSoundError(null);
+    onSoundChange?.(null, mixMode);
+  };
+
+  const handleToggleMixMode = (nextMode: SoundMixMode) => {
+    if (isRecording || isProcessing) return;
+    setMixMode(nextMode);
+    onSoundChange?.(activeSound, nextMode);
   };
 
   const progressPct = Math.min(100, (elapsedSeconds / MAX_FEED_VIDEO_DURATION_SEC) * 100);
@@ -462,6 +868,7 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
             type="button"
             onClick={() => {
               if (isRecording) stopRecording();
+              stopSoundPlayback();
               stopMediaStream();
               onCancel();
             }}
@@ -473,6 +880,106 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
             <X className="w-4 h-4" />
           </button>
         </div>
+      </div>
+
+      {/* Sound Bar for Using Posted Video Sound while Recording */}
+      <div className="px-3.5 py-2 bg-indigo-950/75 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
+        {activeSound ? (
+          <>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={handleToggleAuditionSound}
+                disabled={isRecording || isProcessing || isLoadingSound}
+                className="w-7 h-7 rounded-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white flex items-center justify-center shrink-0 cursor-pointer transition-colors"
+                title={isAuditioningSound ? 'Stop sound preview' : 'Preview selected sound'}
+              >
+                {isLoadingSound ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : isAuditioningSound ? (
+                  <Pause className="w-3.5 h-3.5 fill-white" />
+                ) : (
+                  <Play className="w-3.5 h-3.5 fill-white ml-0.5" />
+                )}
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1 text-[11px] font-bold text-indigo-200 truncate">
+                  <Music className="w-3 h-3 text-indigo-400 shrink-0" />
+                  <span className="truncate">{activeSound.soundTitle}</span>
+                </div>
+                <div className="text-[10px] text-slate-400 truncate">
+                  {soundError ? (
+                    <span className="text-amber-300">{soundError}</span>
+                  ) : isLoadingSound ? (
+                    'Loading audio...'
+                  ) : (
+                    `by ${activeSound.authorName} · plays live during recording`
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="inline-flex rounded-lg bg-black/40 p-0.5 text-[10px] font-bold">
+                <button
+                  type="button"
+                  disabled={isRecording || isProcessing}
+                  onClick={() => handleToggleMixMode('replace')}
+                  className={`px-2 py-1 rounded-md cursor-pointer transition-colors disabled:opacity-50 ${
+                    mixMode === 'replace' ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  Sound Only
+                </button>
+                <button
+                  type="button"
+                  disabled={isRecording || isProcessing}
+                  onClick={() => handleToggleMixMode('mix')}
+                  className={`px-2 py-1 rounded-md cursor-pointer transition-colors disabled:opacity-50 ${
+                    mixMode === 'mix' ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  Mix + Mic
+                </button>
+              </div>
+
+              <button
+                type="button"
+                disabled={isRecording || isProcessing}
+                onClick={() => setIsSoundPickerOpen(true)}
+                className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[10px] font-bold text-white cursor-pointer disabled:opacity-40"
+              >
+                Change
+              </button>
+              <button
+                type="button"
+                disabled={isRecording || isProcessing}
+                onClick={handleClearActiveSound}
+                className="p-1 rounded-lg bg-white/10 hover:bg-rose-600 text-slate-300 hover:text-white cursor-pointer disabled:opacity-40"
+                title="Remove selected sound"
+                aria-label="Remove selected sound"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="w-full flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-300">
+              <Music className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Optional: Record with a posted video sound</span>
+            </span>
+            <button
+              type="button"
+              disabled={isRecording || isProcessing || disabled}
+              onClick={() => setIsSoundPickerOpen(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold transition-colors cursor-pointer disabled:opacity-40"
+            >
+              <Music className="w-3 h-3" />
+              <span>Add Sound</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Live Camera Preview Area */}
@@ -497,7 +1004,11 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
         {isProcessing && (
           <div className="absolute inset-0 bg-black/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2.5 text-white text-xs font-semibold z-20">
             <div className="w-7 h-7 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-            <span>Preparing recorded short video...</span>
+            <span>
+              {activeSound
+                ? 'Preparing recorded video with selected sound...'
+                : 'Preparing recorded short video...'}
+            </span>
           </div>
         )}
 
@@ -528,6 +1039,7 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
                 <button
                   type="button"
                   onClick={() => {
+                    stopSoundPlayback();
                     stopMediaStream();
                     onFallbackUploadClick();
                   }}
@@ -557,6 +1069,8 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
         <div className="text-[11px] text-slate-300">
           {isRecording
             ? `${remainingSec}s left · auto-stops at 1:00`
+            : activeSound
+            ? `Sound ready (${mixMode === 'mix' ? 'Sound + Mic' : 'Sound Only'}) · up to 60s`
             : 'Record up to 60s · keeps size friendly for 3G/4G'}
         </div>
 
@@ -588,15 +1102,26 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
             <button
               type="button"
               onClick={handleStartRecording}
-              disabled={!cameraReady || isProcessing || isInitializing || disabled}
+              disabled={!cameraReady || isProcessing || isInitializing || isLoadingSound || disabled}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white text-xs font-extrabold shadow-md transition-colors cursor-pointer"
             >
               <span className="w-2.5 h-2.5 rounded-full bg-white" />
-              <span>Start Recording</span>
+              <span>{isLoadingSound ? 'Loading Sound...' : 'Start Recording'}</span>
             </button>
           )}
         </div>
       </div>
+
+      {/* Sound Picker Modal */}
+      <PostedSoundPickerModal
+        isOpen={isSoundPickerOpen}
+        selectedSound={activeSound}
+        initialMixMode={mixMode}
+        audioSourceLabel="Camera Mic"
+        onSelectSound={handleSelectPickerSound}
+        onClearSound={handleClearActiveSound}
+        onClose={() => setIsSoundPickerOpen(false)}
+      />
     </div>
   );
 };

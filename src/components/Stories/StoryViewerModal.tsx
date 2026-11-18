@@ -12,7 +12,8 @@ import {
   Sparkles,
   AlertCircle,
   Pause,
-  Play
+  Play,
+  Music
 } from 'lucide-react';
 import { UserProfile } from '../../types/chat';
 import { CitizenStory, UserStoryGroup } from '../../types/story';
@@ -712,6 +713,16 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
           className="absolute bottom-0 inset-x-0 z-30 p-4 space-y-2.5 bg-gradient-to-t from-black/90 via-black/70 to-transparent"
           onClick={(e) => e.stopPropagation()}
         >
+          {/* Sound Attribution Badge */}
+          {activeStory.soundTitle && (
+            <div className="flex justify-center">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/65 border border-emerald-400/35 text-[11px] font-bold text-emerald-200 max-w-full shadow-md backdrop-blur-md">
+                <Music className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span className="truncate">{activeStory.soundTitle}</span>
+              </div>
+            </div>
+          )}
+
           {/* Caption */}
           {activeStory.caption && (
             <div className="p-3 bg-black/60 backdrop-blur-md rounded-2xl text-white text-xs sm:text-sm text-center font-medium border border-white/10 shadow-lg">

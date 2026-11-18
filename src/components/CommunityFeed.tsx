@@ -10,7 +10,10 @@ import {
   PostMediaType,
   SOLID_POST_BACKGROUNDS,
   REACTION_TYPES,
-  ReactionKey
+  ReactionKey,
+  PostedVideoSound,
+  SoundMixMode,
+  buildSoundFromPost
 } from '../types/community';
 import {
   createCommunityPost,
@@ -21,7 +24,9 @@ import {
   deleteCommunityPost,
   reactToCommunityPost,
   reactToCommunityComment,
-  prefetchVideoHeadFrames
+  prefetchVideoHeadFrames,
+  resolvePostVideoAudioSource,
+  getCachedPostVideoUrl
 } from '../services/communityService';
 import { DailyCommunityPoll } from './DailyCommunityPoll';
 import { CitizenStoriesBar } from './Stories/CitizenStoriesBar';
@@ -35,7 +40,8 @@ import {
   RecordedVoiceShout,
   formatShoutSeconds
 } from './VoiceShoutRecorder';
-import { ShortVideoCameraRecorder } from './ShortVideoCameraRecorder';
+import { ShortVideoCameraRecorder, RecordedVideoSoundMeta } from './ShortVideoCameraRecorder';
+import { PostedSoundPickerModal } from './PostedSoundPickerModal';
 import { compressImage, formatFileSize } from '../utils/imageCompressor';
 import {
   processFeedVideoFile,
@@ -105,7 +111,8 @@ import {
   Mic,
   Camera,
   RotateCcw,
-  UploadCloud
+  UploadCloud,
+  Music
 } from 'lucide-react';
 
 export interface ExternalCreateRequest {
@@ -190,7 +197,12 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [modalBgColor, setModalBgColor] = useState<PostBackgroundColor>('default');
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
   const [isStoryModalOpen, setIsStoryModalOpen] = useState(false);
+  const [modalSound, setModalSound] = useState<PostedVideoSound | null>(null);
+  const [modalSoundMixMode, setModalSoundMixMode] = useState<SoundMixMode>('replace');
+  const [soundPickerTarget, setSoundPickerTarget] = useState<'quick' | 'modal' | null>(null);
   const modalVideoFileRef = useRef<File | null>(null);
+  const modalUnbakedFileRef = useRef<File | null>(null);
+  const modalSoundBakedInRecorderRef = useRef<boolean>(false);
   const modalVideoPromiseRef = useRef<Promise<ProcessedFeedVideo> | null>(null);
   const modalVideoGenerationRef = useRef<number>(0);
 
@@ -304,9 +316,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [quickCounty, setQuickCounty] = useState('Nairobi');
   const [quickConstituency, setQuickConstituency] = useState('');
   const [quickBgColor, setQuickBgColor] = useState<PostBackgroundColor>('default');
+  const [quickSound, setQuickSound] = useState<PostedVideoSound | null>(null);
+  const [quickSoundMixMode, setQuickSoundMixMode] = useState<SoundMixMode>('replace');
   const quickFileInputRef = useRef<HTMLInputElement | null>(null);
   const quickVideoInputRef = useRef<HTMLInputElement | null>(null);
   const quickVideoFileRef = useRef<File | null>(null);
+  const quickUnbakedFileRef = useRef<File | null>(null);
+  const quickSoundBakedInRecorderRef = useRef<boolean>(false);
   const quickVideoPromiseRef = useRef<Promise<ProcessedFeedVideo> | null>(null);
   const quickVideoGenerationRef = useRef<number>(0);
 
@@ -443,6 +459,168 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     return () => unsub();
   }, []);
 
+  // Re-mix or clear a posted video sound onto an already chosen/recorded video clip
+  const applySoundToExistingVideo = async (
+    target: 'quick' | 'modal',
+    nextSound: PostedVideoSound | null,
+    nextMode: SoundMixMode
+  ) => {
+    if (target === 'modal') {
+      setModalSound(nextSound);
+      setModalSoundMixMode(nextMode);
+      const sourceFile = modalUnbakedFileRef.current;
+      if (modalMediaType !== 'video' || !sourceFile) return;
+
+      // If sound was baked during live camera recording and user clears it, keep clip playable and note re-record option
+      if (!nextSound && modalSoundBakedInRecorderRef.current) {
+        triggerToast('Sound attribution removed. Tap Re-record to record fresh audio without the beat.');
+        return;
+      }
+
+      const gen = ++modalVideoGenerationRef.current;
+      modalVideoFileRef.current = sourceFile;
+      setIsCompressing(true);
+      setModalTrimProgress(5);
+      setModalTrimStage(
+        nextSound
+          ? 'Applying posted video sound & compressing...'
+          : 'Restoring original video audio...'
+      );
+      setFormError(null);
+
+      const promise = (async () => {
+        let soundTrack: { url: string; mode: SoundMixMode } | undefined;
+        if (nextSound) {
+          const url =
+            nextSound.resolvedPlayableUrl || (await resolvePostVideoAudioSource(nextSound));
+          soundTrack = { url, mode: nextMode };
+        }
+        return processFeedVideoFile(sourceFile, {
+          maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
+          autoTrim: true,
+          autoCompress: true,
+          soundTrack,
+          onProgress: (pct, stage) => {
+            if (modalVideoGenerationRef.current !== gen) return;
+            setModalTrimProgress(pct);
+            if (stage) setModalTrimStage(stage);
+          }
+        });
+      })();
+
+      modalVideoPromiseRef.current = promise;
+
+      try {
+        const processed = await promise;
+        if (modalVideoGenerationRef.current !== gen) return;
+        modalVideoPromiseRef.current = null;
+        if (modalVideoData?.previewObjectUrl) {
+          URL.revokeObjectURL(modalVideoData.previewObjectUrl);
+        }
+        setModalVideoData(processed);
+        setCompressedImage(processed.previewObjectUrl);
+        setVideoMeta({
+          size: processed.sizeBytes,
+          originalSize: processed.originalSizeBytes,
+          wasCompressed: processed.wasCompressed,
+          duration: processed.duration,
+          wasAutoTrimmed: processed.wasAutoTrimmed,
+          originalDuration: processed.originalDuration
+        });
+        if (nextSound) {
+          triggerToast(`🎵 Applied "${nextSound.soundTitle}"!`);
+        }
+      } catch (err: any) {
+        if (modalVideoGenerationRef.current !== gen) return;
+        modalVideoPromiseRef.current = null;
+        setFormError(err?.message || 'Could not apply selected sound to this video.');
+      } finally {
+        if (modalVideoGenerationRef.current === gen) {
+          setIsCompressing(false);
+          setModalTrimProgress(null);
+        }
+      }
+      return;
+    }
+
+    // Quick composer target
+    setQuickSound(nextSound);
+    setQuickSoundMixMode(nextMode);
+    const sourceFile = quickUnbakedFileRef.current;
+    if (quickMediaType !== 'video' || !sourceFile) return;
+
+    if (!nextSound && quickSoundBakedInRecorderRef.current) {
+      triggerToast('Sound attribution removed. Tap Re-record to record fresh audio without the beat.');
+      return;
+    }
+
+    const gen = ++quickVideoGenerationRef.current;
+    quickVideoFileRef.current = sourceFile;
+    setIsQuickCompressing(true);
+    setQuickTrimProgress(5);
+    setQuickTrimStage(
+      nextSound
+        ? 'Applying posted video sound & compressing...'
+        : 'Restoring original video audio...'
+    );
+    setQuickError(null);
+
+    const promise = (async () => {
+      let soundTrack: { url: string; mode: SoundMixMode } | undefined;
+      if (nextSound) {
+        const url =
+          nextSound.resolvedPlayableUrl || (await resolvePostVideoAudioSource(nextSound));
+        soundTrack = { url, mode: nextMode };
+      }
+      return processFeedVideoFile(sourceFile, {
+        maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
+        autoTrim: true,
+        autoCompress: true,
+        soundTrack,
+        onProgress: (pct, stage) => {
+          if (quickVideoGenerationRef.current !== gen) return;
+          setQuickTrimProgress(pct);
+          if (stage) setQuickTrimStage(stage);
+        }
+      });
+    })();
+
+    quickVideoPromiseRef.current = promise;
+
+    try {
+      const processed = await promise;
+      if (quickVideoGenerationRef.current !== gen) return;
+      quickVideoPromiseRef.current = null;
+      if (quickVideoData?.previewObjectUrl) {
+        URL.revokeObjectURL(quickVideoData.previewObjectUrl);
+      }
+      setQuickVideoData(processed);
+      setQuickImage(processed.previewObjectUrl);
+      setQuickVideoMeta({
+        size: processed.sizeBytes,
+        originalSize: processed.originalSizeBytes,
+        wasCompressed: processed.wasCompressed,
+        duration: processed.duration,
+        wasAutoTrimmed: processed.wasAutoTrimmed,
+        originalDuration: processed.originalDuration
+      });
+      if (nextSound) {
+        triggerToast(`🎵 Applied "${nextSound.soundTitle}"!`);
+      }
+    } catch (err: any) {
+      if (quickVideoGenerationRef.current !== gen) return;
+      quickVideoPromiseRef.current = null;
+      const msg = err?.message || 'Could not apply selected sound to this video.';
+      setQuickError(msg);
+      triggerToast(msg);
+    } finally {
+      if (quickVideoGenerationRef.current === gen) {
+        setIsQuickCompressing(false);
+        setQuickTrimProgress(null);
+      }
+    }
+  };
+
   // Handle image or short video upload in Create Modal
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -453,24 +631,41 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
     if (isVideoFile) {
       const gen = ++modalVideoGenerationRef.current;
+      const activeSound = modalSound;
+      const activeMode = modalSoundMixMode;
       modalVideoFileRef.current = file;
+      modalUnbakedFileRef.current = file;
+      modalSoundBakedInRecorderRef.current = false;
       setIsCompressing(true);
       setModalTrimProgress(5);
-      setModalTrimStage('Auto-compressing video file size...');
+      setModalTrimStage(
+        activeSound
+          ? 'Mixing selected sound & auto-compressing video...'
+          : 'Auto-compressing video file size...'
+      );
       setFormError(null);
       setModalShowVideoRecorder(false);
       setModalMediaType('video');
 
-      const promise = processFeedVideoFile(file, {
-        maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
-        autoTrim: true,
-        autoCompress: true,
-        onProgress: (pct, stage) => {
-          if (modalVideoGenerationRef.current !== gen) return;
-          setModalTrimProgress(pct);
-          if (stage) setModalTrimStage(stage);
+      const promise = (async () => {
+        let soundTrack: { url: string; mode: SoundMixMode } | undefined;
+        if (activeSound) {
+          const url =
+            activeSound.resolvedPlayableUrl || (await resolvePostVideoAudioSource(activeSound));
+          soundTrack = { url, mode: activeMode };
         }
-      });
+        return processFeedVideoFile(file, {
+          maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
+          autoTrim: true,
+          autoCompress: true,
+          soundTrack,
+          onProgress: (pct, stage) => {
+            if (modalVideoGenerationRef.current !== gen) return;
+            setModalTrimProgress(pct);
+            if (stage) setModalTrimStage(stage);
+          }
+        });
+      })();
       modalVideoPromiseRef.current = promise;
 
       try {
@@ -524,7 +719,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
     modalVideoGenerationRef.current += 1;
     modalVideoFileRef.current = null;
+    modalUnbakedFileRef.current = null;
+    modalSoundBakedInRecorderRef.current = false;
     modalVideoPromiseRef.current = null;
+    setModalSound(null);
     setIsCompressing(true);
     setFormError(null);
 
@@ -550,10 +748,19 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
   };
 
-  const handleModalRecordedVideo = (processed: ProcessedFeedVideo) => {
+  const handleModalRecordedVideo = (
+    processed: ProcessedFeedVideo,
+    soundMeta?: RecordedVideoSoundMeta
+  ) => {
     modalVideoGenerationRef.current += 1;
-    modalVideoFileRef.current = null;
+    modalVideoFileRef.current = processed.sourceFile || null;
+    modalUnbakedFileRef.current = processed.sourceFile || null;
+    modalSoundBakedInRecorderRef.current = Boolean(soundMeta?.soundAlreadyBaked);
     modalVideoPromiseRef.current = null;
+    if (soundMeta) {
+      setModalSound(soundMeta.sound);
+      setModalSoundMixMode(soundMeta.mixMode);
+    }
     if (modalVideoData?.previewObjectUrl) {
       URL.revokeObjectURL(modalVideoData.previewObjectUrl);
     }
@@ -579,6 +786,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const handleRemoveImage = () => {
     modalVideoGenerationRef.current += 1;
     modalVideoFileRef.current = null;
+    modalUnbakedFileRef.current = null;
+    modalSoundBakedInRecorderRef.current = false;
     modalVideoPromiseRef.current = null;
     if (modalVideoData?.previewObjectUrl) {
       URL.revokeObjectURL(modalVideoData.previewObjectUrl);
@@ -613,24 +822,41 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
     if (isVideoFile) {
       const gen = ++quickVideoGenerationRef.current;
+      const activeSound = quickSound;
+      const activeMode = quickSoundMixMode;
       quickVideoFileRef.current = file;
+      quickUnbakedFileRef.current = file;
+      quickSoundBakedInRecorderRef.current = false;
       setIsQuickCompressing(true);
       setQuickTrimProgress(5);
-      setQuickTrimStage('Auto-compressing video file size...');
+      setQuickTrimStage(
+        activeSound
+          ? 'Mixing selected sound & auto-compressing video...'
+          : 'Auto-compressing video file size...'
+      );
       setQuickError(null);
       setQuickShowVideoRecorder(false);
       setQuickMediaType('video');
 
-      const promise = processFeedVideoFile(file, {
-        maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
-        autoTrim: true,
-        autoCompress: true,
-        onProgress: (pct, stage) => {
-          if (quickVideoGenerationRef.current !== gen) return;
-          setQuickTrimProgress(pct);
-          if (stage) setQuickTrimStage(stage);
+      const promise = (async () => {
+        let soundTrack: { url: string; mode: SoundMixMode } | undefined;
+        if (activeSound) {
+          const url =
+            activeSound.resolvedPlayableUrl || (await resolvePostVideoAudioSource(activeSound));
+          soundTrack = { url, mode: activeMode };
         }
-      });
+        return processFeedVideoFile(file, {
+          maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
+          autoTrim: true,
+          autoCompress: true,
+          soundTrack,
+          onProgress: (pct, stage) => {
+            if (quickVideoGenerationRef.current !== gen) return;
+            setQuickTrimProgress(pct);
+            if (stage) setQuickTrimStage(stage);
+          }
+        });
+      })();
       quickVideoPromiseRef.current = promise;
 
       try {
@@ -688,7 +914,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
     quickVideoGenerationRef.current += 1;
     quickVideoFileRef.current = null;
+    quickUnbakedFileRef.current = null;
+    quickSoundBakedInRecorderRef.current = false;
     quickVideoPromiseRef.current = null;
+    setQuickSound(null);
     setIsQuickCompressing(true);
     setQuickError(null);
     setQuickShowVideoRecorder(false);
@@ -713,10 +942,19 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
   };
 
-  const handleQuickRecordedVideo = (processed: ProcessedFeedVideo) => {
+  const handleQuickRecordedVideo = (
+    processed: ProcessedFeedVideo,
+    soundMeta?: RecordedVideoSoundMeta
+  ) => {
     quickVideoGenerationRef.current += 1;
-    quickVideoFileRef.current = null;
+    quickVideoFileRef.current = processed.sourceFile || null;
+    quickUnbakedFileRef.current = processed.sourceFile || null;
+    quickSoundBakedInRecorderRef.current = Boolean(soundMeta?.soundAlreadyBaked);
     quickVideoPromiseRef.current = null;
+    if (soundMeta) {
+      setQuickSound(soundMeta.sound);
+      setQuickSoundMixMode(soundMeta.mixMode);
+    }
     if (quickVideoData?.previewObjectUrl) {
       URL.revokeObjectURL(quickVideoData.previewObjectUrl);
     }
@@ -737,6 +975,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const handleRemoveQuickImage = () => {
     quickVideoGenerationRef.current += 1;
     quickVideoFileRef.current = null;
+    quickUnbakedFileRef.current = null;
+    quickSoundBakedInRecorderRef.current = false;
     quickVideoPromiseRef.current = null;
     if (quickVideoData?.previewObjectUrl) {
       URL.revokeObjectURL(quickVideoData.previewObjectUrl);
@@ -794,6 +1034,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       mediaType: isVideo ? 'video' : quickImage ? 'image' : undefined
     };
 
+    if (isVideo && quickSound) {
+      baseParams.soundSourcePostId = quickSound.sourceSoundPostId || quickSound.postId;
+      baseParams.soundTitle = quickSound.soundTitle;
+      baseParams.soundAuthorId = quickSound.authorId;
+      baseParams.soundAuthorName = quickSound.authorName;
+    }
+
     if (quickBgColor && quickBgColor !== 'default' && !quickImage && !quickVideoData && !hasPendingQuickVideo) {
       baseParams.backgroundColor = quickBgColor;
     }
@@ -810,10 +1057,15 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       const processedSnap = quickVideoData;
       const promiseSnap = quickVideoPromiseRef.current;
       const fileSnap = quickVideoFileRef.current;
+      const soundSnap = quickSound
+        ? { sound: quickSound, mode: quickSoundMixMode, url: quickSound.resolvedPlayableUrl }
+        : null;
       const initialPct = quickTrimProgress ?? 5;
 
       quickVideoGenerationRef.current += 1;
       quickVideoFileRef.current = null;
+      quickUnbakedFileRef.current = null;
+      quickSoundBakedInRecorderRef.current = false;
       quickVideoPromiseRef.current = null;
 
       enqueuePostVideoUpload({
@@ -823,6 +1075,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         processedVideo: processedSnap,
         pendingVideoPromise: promiseSnap,
         rawVideoFile: fileSnap,
+        soundTrack: soundSnap,
         initialProgress: initialPct
       });
 
@@ -832,6 +1085,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       setQuickMediaType('image');
       setQuickImageMeta(null);
       setQuickVideoMeta(null);
+      setQuickSound(null);
       setQuickShowLocation(false);
       setQuickConstituency('');
       setQuickBgColor('default');
@@ -873,6 +1127,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         URL.revokeObjectURL(quickVideoData.previewObjectUrl);
       }
       quickVideoFileRef.current = null;
+      quickUnbakedFileRef.current = null;
+      quickSoundBakedInRecorderRef.current = false;
       quickVideoPromiseRef.current = null;
       setQuickCaption('');
       setQuickVideoData(null);
@@ -880,6 +1136,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       setQuickMediaType('image');
       setQuickImageMeta(null);
       setQuickVideoMeta(null);
+      setQuickSound(null);
       setQuickShowLocation(false);
       setQuickConstituency('');
       setQuickBgColor('default');
@@ -920,6 +1177,46 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     setIsTypeSelectorOpen(true);
   };
 
+  const handleUseSoundFromPost = (post: CommunityPost) => {
+    if (!currentUser) {
+      openAuthModal('register');
+      return;
+    }
+    if (isBanned) {
+      triggerToast(`⛔ Account permanently banned: ${userProfile?.banReason || 'Policy violation'}`);
+      return;
+    }
+    if (isSuspended) {
+      triggerToast(`⚠️ Account suspended: ${userProfile?.banReason || 'Policy violation'}`);
+      return;
+    }
+
+    const liveAuthor = resolveLiveAuthor(
+      post.authorId,
+      { displayName: post.authorName },
+      usersById
+    );
+    const picked = buildSoundFromPost(post, liveAuthor.displayName);
+    const cachedUrl = getCachedPostVideoUrl(post.id);
+    if (cachedUrl) {
+      picked.resolvedPlayableUrl = cachedUrl;
+    }
+
+    handleRemoveImage();
+    handleClearModalAudio();
+    setPostCategory('general');
+    setModalBgColor('default');
+    setFormError(null);
+    setModalUploadProgress(null);
+    setModalHighlightVideo(true);
+    setModalShowVoiceRecorder(false);
+    setModalShowVideoRecorder(false);
+    setModalMediaType('video');
+    setModalSound(picked);
+    setModalSoundMixMode('replace');
+    setIsCreateModalOpen(true);
+  };
+
   const handleSelectPostType = (type: PostCreationType, option?: PostTypeOption) => {
     setIsTypeSelectorOpen(false);
     if (!currentUser) {
@@ -951,6 +1248,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       setModalMediaType('video');
     } else if (option?.requiresAudio) {
       handleRemoveImage();
+      setModalSound(null);
       setModalMediaType('audio');
     }
     setIsCreateModalOpen(true);
@@ -1027,6 +1325,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       mediaCaption: mediaCaption.trim() || undefined
     };
 
+    if (isVideo && modalSound) {
+      baseParams.soundSourcePostId = modalSound.sourceSoundPostId || modalSound.postId;
+      baseParams.soundTitle = modalSound.soundTitle;
+      baseParams.soundAuthorId = modalSound.authorId;
+      baseParams.soundAuthorName = modalSound.authorName;
+    }
+
     if (modalBgColor && modalBgColor !== 'default' && !compressedImage && !modalVideoData && !modalAudioData && !hasPendingModalVideo) {
       baseParams.backgroundColor = modalBgColor;
     }
@@ -1043,10 +1348,15 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       const processedSnap = modalVideoData;
       const promiseSnap = modalVideoPromiseRef.current;
       const fileSnap = modalVideoFileRef.current;
+      const soundSnap = modalSound
+        ? { sound: modalSound, mode: modalSoundMixMode, url: modalSound.resolvedPlayableUrl }
+        : null;
       const initialPct = modalTrimProgress ?? 5;
 
       modalVideoGenerationRef.current += 1;
       modalVideoFileRef.current = null;
+      modalUnbakedFileRef.current = null;
+      modalSoundBakedInRecorderRef.current = false;
       modalVideoPromiseRef.current = null;
 
       enqueuePostVideoUpload({
@@ -1056,6 +1366,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         processedVideo: processedSnap,
         pendingVideoPromise: promiseSnap,
         rawVideoFile: fileSnap,
+        soundTrack: soundSnap,
         initialProgress: initialPct
       });
 
@@ -1065,6 +1376,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       setPostConstituency('');
       setModalVideoData(null);
       setModalAudioData(null);
+      setModalSound(null);
       setModalShowVoiceRecorder(false);
       setModalShowVideoRecorder(false);
       setCompressedImage(null);
@@ -1121,6 +1433,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         URL.revokeObjectURL(modalAudioData.previewObjectUrl);
       }
       modalVideoFileRef.current = null;
+      modalUnbakedFileRef.current = null;
+      modalSoundBakedInRecorderRef.current = false;
       modalVideoPromiseRef.current = null;
       setIsCreateModalOpen(false);
       // Reset form
@@ -1129,6 +1443,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       setPostConstituency('');
       setModalVideoData(null);
       setModalAudioData(null);
+      setModalSound(null);
       setModalShowVoiceRecorder(false);
       setModalShowVideoRecorder(false);
       setCompressedImage(null);
@@ -1574,6 +1889,27 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     [filteredPosts]
   );
 
+  const availablePostedSounds = useMemo(
+    () =>
+      posts
+        .filter(
+          (p) =>
+            (p.mediaType === 'video' ||
+              (p.mediaUrl?.startsWith('data:video/') ?? false) ||
+              (p.videoChunkCount ?? 0) > 0) &&
+            p.videoStatus !== 'uploading'
+        )
+        .map((p) => {
+          const live = resolveLiveAuthor(
+            p.authorId,
+            { displayName: p.authorName },
+            usersById
+          );
+          return buildSoundFromPost(p, live.displayName);
+        }),
+    [posts, usersById]
+  );
+
   const handleFeedVideoActiveChange = useCallback((postId: string, isVisible: boolean) => {
     setActiveFeedVideoId((prev) => {
       if (isVisible) return postId;
@@ -2017,6 +2353,12 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         {quickShowVideoRecorder && !quickImage && (
           <div className="animate-in fade-in">
             <ShortVideoCameraRecorder
+              initialSound={quickSound}
+              initialMixMode={quickSoundMixMode}
+              onSoundChange={(sound, mode) => {
+                setQuickSound(sound);
+                setQuickSoundMixMode(mode);
+              }}
               onVideoReady={handleQuickRecordedVideo}
               onCancel={() => setQuickShowVideoRecorder(false)}
               onFallbackUploadClick={() => {
@@ -2110,6 +2452,90 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               <p className="text-[10px] text-slate-600 dark:text-slate-300">
                 Tap <strong>Post in Background</strong> anytime to queue & keep browsing while it finishes.
               </p>
+            )}
+          </div>
+        )}
+
+        {/* Quick Video Sound Selector Strip (when sound pre-selected or video attached) */}
+        {(quickSound || (quickMediaType === 'video' && quickImage)) && (
+          <div className="p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/50 flex flex-wrap items-center justify-between gap-2">
+            {quickSound ? (
+              <>
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <Music className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold text-indigo-950 dark:text-indigo-200 truncate">
+                      {quickSound.soundTitle}
+                    </div>
+                    <div className="text-[10px] text-indigo-700 dark:text-indigo-300 truncate">
+                      Sound by {quickSound.authorName} · {quickSoundMixMode === 'mix' ? 'Mix + Original' : 'Sound Only'}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                  {quickMediaType === 'video' && quickImage && !quickSoundBakedInRecorderRef.current && (
+                    <div className="inline-flex rounded-lg bg-white dark:bg-slate-800 p-0.5 text-[10px] font-bold border border-indigo-200 dark:border-indigo-700">
+                      <button
+                        type="button"
+                        disabled={isQuickSubmitting || isQuickCompressing}
+                        onClick={() => applySoundToExistingVideo('quick', quickSound, 'replace')}
+                        className={`px-2 py-0.5 rounded-md cursor-pointer ${
+                          quickSoundMixMode === 'replace'
+                            ? 'bg-indigo-600 text-white'
+                            : 'text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        Sound Only
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isQuickSubmitting || isQuickCompressing}
+                        onClick={() => applySoundToExistingVideo('quick', quickSound, 'mix')}
+                        className={`px-2 py-0.5 rounded-md cursor-pointer ${
+                          quickSoundMixMode === 'mix'
+                            ? 'bg-indigo-600 text-white'
+                            : 'text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        Mix + Orig
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    disabled={isQuickSubmitting || isQuickCompressing}
+                    onClick={() => setSoundPickerTarget('quick')}
+                    className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold cursor-pointer disabled:opacity-40"
+                  >
+                    Change
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isQuickSubmitting || isQuickCompressing}
+                    onClick={() => applySoundToExistingVideo('quick', null, quickSoundMixMode)}
+                    className="p-1 rounded-lg bg-white dark:bg-slate-800 text-slate-500 hover:text-rose-600 cursor-pointer disabled:opacity-40"
+                    title="Remove selected sound"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                  <Music className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>Add a posted video sound to this clip</span>
+                </div>
+                <button
+                  type="button"
+                  disabled={isQuickSubmitting || isQuickCompressing}
+                  onClick={() => setSoundPickerTarget('quick')}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold cursor-pointer disabled:opacity-40"
+                >
+                  <Music className="w-3 h-3" />
+                  <span>Use Posted Sound</span>
+                </button>
+              </>
             )}
           </div>
         )}
@@ -2254,6 +2680,28 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             >
               <Camera className="w-4 h-4 text-rose-600 dark:text-rose-400" />
               <span>Record Video</span>
+            </button>
+
+            {/* Pick Posted Video Sound Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!currentUser) {
+                  openAuthModal();
+                  return;
+                }
+                setSoundPickerTarget('quick');
+              }}
+              disabled={isQuickCompressing || isQuickSubmitting}
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 ${
+                quickSound
+                  ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-400 hover:bg-slate-100/70 dark:hover:bg-white/10'
+              }`}
+              title="Use sound from any posted video for recording or posting"
+            >
+              <Music className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>{quickSound ? 'Sound Selected' : 'Use Sound'}</span>
             </button>
 
             {/* Record 30s Voice Shout Button (opens post modal directly in Voice Recorder mode) */}
@@ -2809,6 +3257,29 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                             </div>
                           </>
                         )}
+
+                        {isVideoPost && (() => {
+                          const postSound = buildSoundFromPost(post, liveAuthor.displayName);
+                          return (
+                            <div className="bg-slate-900/95 border-t border-white/10 px-3 py-2 flex items-center justify-between gap-2 text-white">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Music className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                                <span className="text-[11px] font-semibold text-slate-200 truncate">
+                                  {postSound.soundTitle}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleUseSoundFromPost(post)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold transition-colors cursor-pointer shrink-0"
+                                title="Record or upload a video using this video's sound"
+                              >
+                                <Music className="w-3 h-3" />
+                                <span>Use Sound</span>
+                              </button>
+                            </div>
+                          );
+                        })()}
 
                         {post.mediaCaption && (
                           <div className="bg-slate-950/80 text-white text-[11px] px-3 py-1.5">
@@ -3518,7 +3989,38 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       <Video className="w-4 h-4" />
                       <span>{isCompressing ? 'Preparing Video...' : 'Choose Video File'}</span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setSoundPickerTarget('modal')}
+                      disabled={isCompressing}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-700 hover:border-indigo-500 text-indigo-700 dark:text-indigo-300 text-xs font-bold shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <Music className="w-4 h-4" />
+                      <span>{modalSound ? 'Change Sound' : 'Pick Posted Sound'}</span>
+                    </button>
                   </div>
+                  {modalSound && (
+                    <div className="pt-2 border-t border-indigo-200/70 dark:border-indigo-800/60 flex items-center justify-between gap-2 text-left">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Music className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-indigo-950 dark:text-indigo-100 truncate">
+                            Sound: {modalSound.soundTitle}
+                          </div>
+                          <div className="text-[10px] text-indigo-700 dark:text-indigo-300 truncate">
+                            by {modalSound.authorName} · {modalSoundMixMode === 'mix' ? 'Mix + Original' : 'Sound Only'}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setModalSound(null)}
+                        className="text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer shrink-0"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -3654,6 +4156,12 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   </div>
                 ) : modalShowVideoRecorder && !compressedImage ? (
                   <ShortVideoCameraRecorder
+                    initialSound={modalSound}
+                    initialMixMode={modalSoundMixMode}
+                    onSoundChange={(sound, mode) => {
+                      setModalSound(sound);
+                      setModalSoundMixMode(mode);
+                    }}
                     onVideoReady={handleModalRecordedVideo}
                     onCancel={() => setModalShowVideoRecorder(false)}
                     onFallbackUploadClick={() => {
@@ -3695,6 +4203,22 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       >
                         <Camera className="w-4 h-4 text-rose-600 dark:text-rose-400" />
                         <span>Record Short Video</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalMediaType('video');
+                          setSoundPickerTarget('modal');
+                        }}
+                        disabled={isCompressing}
+                        className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-bold shadow-2xs transition-colors cursor-pointer ${
+                          modalSound
+                            ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-400 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200'
+                        }`}
+                      >
+                        <Music className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <span>{modalSound ? 'Sound Selected' : 'Use Video Sound'}</span>
                       </button>
                       <button
                         type="button"
@@ -3814,6 +4338,89 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                             ? '✓ Auto-compressed'
                             : '✓ Ready for Feed'}
                         </span>
+                      </div>
+                    )}
+
+                    {modalMediaType === 'video' && (
+                      <div className="p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/60 flex flex-wrap items-center justify-between gap-2">
+                        {modalSound ? (
+                          <>
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <Music className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-indigo-950 dark:text-indigo-200 truncate">
+                                  {modalSound.soundTitle}
+                                </div>
+                                <div className="text-[10px] text-indigo-700 dark:text-indigo-300 truncate">
+                                  Sound by {modalSound.authorName}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                              {!modalSoundBakedInRecorderRef.current && (
+                                <div className="inline-flex rounded-lg bg-white dark:bg-slate-800 p-0.5 text-[10px] font-bold border border-indigo-200 dark:border-indigo-700">
+                                  <button
+                                    type="button"
+                                    disabled={isSubmitting || isCompressing}
+                                    onClick={() => applySoundToExistingVideo('modal', modalSound, 'replace')}
+                                    className={`px-2 py-0.5 rounded-md cursor-pointer ${
+                                      modalSoundMixMode === 'replace'
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'text-slate-600 dark:text-slate-300'
+                                    }`}
+                                  >
+                                    Sound Only
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isSubmitting || isCompressing}
+                                    onClick={() => applySoundToExistingVideo('modal', modalSound, 'mix')}
+                                    className={`px-2 py-0.5 rounded-md cursor-pointer ${
+                                      modalSoundMixMode === 'mix'
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'text-slate-600 dark:text-slate-300'
+                                    }`}
+                                  >
+                                    Mix + Orig
+                                  </button>
+                                </div>
+                              )}
+                              <button
+                                type="button"
+                                disabled={isSubmitting || isCompressing}
+                                onClick={() => setSoundPickerTarget('modal')}
+                                className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold cursor-pointer disabled:opacity-40"
+                              >
+                                Change
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isSubmitting || isCompressing}
+                                onClick={() => applySoundToExistingVideo('modal', null, modalSoundMixMode)}
+                                className="p-1 rounded-lg bg-white dark:bg-slate-800 text-slate-500 hover:text-rose-600 cursor-pointer disabled:opacity-40"
+                                title="Remove sound"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              <Music className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                              <span>Use audio from a posted video</span>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={isSubmitting || isCompressing}
+                              onClick={() => setSoundPickerTarget('modal')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold cursor-pointer disabled:opacity-40"
+                            >
+                              <Music className="w-3 h-3" />
+                              <span>Use Posted Sound</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
 
@@ -3994,6 +4601,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           onOpenAuthModal={(mode) => {
             setVideoTheatreState(null);
             openAuthModal(mode);
+          }}
+          onUseVideoSound={(post) => {
+            setVideoTheatreState(null);
+            handleUseSoundFromPost(post);
           }}
           onClose={() => setVideoTheatreState(null)}
         />
@@ -4331,6 +4942,35 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           }}
         />
       )}
+
+      {/* Posted Video Sound Picker Modal (for Quick Post or Create Post Modal) */}
+      <PostedSoundPickerModal
+        isOpen={soundPickerTarget !== null}
+        selectedSound={soundPickerTarget === 'quick' ? quickSound : modalSound}
+        initialMixMode={soundPickerTarget === 'quick' ? quickSoundMixMode : modalSoundMixMode}
+        availableSounds={availablePostedSounds}
+        audioSourceLabel={
+          (soundPickerTarget === 'quick' && quickShowVideoRecorder) ||
+          (soundPickerTarget === 'modal' && modalShowVideoRecorder)
+            ? 'Camera Mic'
+            : 'Original Video Audio'
+        }
+        onSelectSound={(sound, mode) => {
+          const target = soundPickerTarget;
+          if (!target) return;
+          void applySoundToExistingVideo(target, sound, mode);
+        }}
+        onClearSound={() => {
+          const target = soundPickerTarget;
+          if (!target) return;
+          void applySoundToExistingVideo(
+            target,
+            null,
+            target === 'quick' ? quickSoundMixMode : modalSoundMixMode
+          );
+        }}
+        onClose={() => setSoundPickerTarget(null)}
+      />
     </div>
   );
 };
