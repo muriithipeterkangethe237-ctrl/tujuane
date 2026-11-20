@@ -32,9 +32,11 @@ import {
   CommunityComment,
   CreatePostParams,
   PostedVideoSound,
+  TaggedUserRef,
   buildSoundFromPost
 } from '../types/community';
-import { base64ChunksToBlob, resolvePlayableVideoUrl } from '../utils/videoProcessor';
+import { extractHashtagKeys } from '../utils/tagParser';
+import { base64ChunksToBlobAsync, resolvePlayableVideoUrl } from '../utils/videoProcessor';
 
 const videoBlobUrlCache = new Map<string, string>();
 const inFlightVideoLoads = new Map<string, Promise<string>>();
@@ -49,9 +51,13 @@ const VIDEO_IDB_STORE = 'videos';
 const MAX_CACHED_VIDEO_BLOBS = 12;
 const MAX_CACHED_VIDEO_HEADS = 20;
 
+let videoCacheDBPromise: Promise<IDBDatabase | null> | null = null;
+
 function openVideoCacheDB(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
-  return new Promise((resolve) => {
+  if (videoCacheDBPromise) return videoCacheDBPromise;
+
+  videoCacheDBPromise = new Promise((resolve) => {
     try {
       const req = indexedDB.open(VIDEO_IDB_NAME, 1);
       req.onupgradeneeded = () => {
@@ -60,12 +66,24 @@ function openVideoCacheDB(): Promise<IDBDatabase | null> {
           dbInst.createObjectStore(VIDEO_IDB_STORE, { keyPath: 'postId' });
         }
       };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(null);
+      req.onsuccess = () => {
+        const dbInst = req.result;
+        dbInst.onclose = () => {
+          videoCacheDBPromise = null;
+        };
+        resolve(dbInst);
+      };
+      req.onerror = () => {
+        videoCacheDBPromise = null;
+        resolve(null);
+      };
     } catch {
+      videoCacheDBPromise = null;
       resolve(null);
     }
   });
+
+  return videoCacheDBPromise;
 }
 
 async function getVideoBlobFromIDB(postId: string): Promise<Blob | null> {
@@ -266,6 +284,33 @@ export async function createCommunityPost(
     postData.soundAuthorName = params.soundAuthorName.trim().slice(0, 100);
   }
 
+  const combinedHashtags = new Set<string>(
+    extractHashtagKeys(`${derivedTitle} ${trimmedContent} ${params.mediaCaption || ''}`)
+  );
+  if (Array.isArray(params.hashtags)) {
+    for (const h of params.hashtags) {
+      const clean = String(h || '').replace(/^#/, '').trim().toLowerCase().slice(0, 40);
+      if (clean.length >= 2) combinedHashtags.add(clean);
+      if (combinedHashtags.size >= 20) break;
+    }
+  }
+  if (combinedHashtags.size > 0) {
+    postData.hashtags = Array.from(combinedHashtags).slice(0, 20);
+  }
+
+  if (Array.isArray(params.taggedUsers) && params.taggedUsers.length > 0) {
+    const cleanTagged = params.taggedUsers
+      .filter((t) => t && t.uid && t.displayName)
+      .slice(0, 15)
+      .map((t) => ({
+        uid: String(t.uid).slice(0, 128),
+        displayName: String(t.displayName).trim().slice(0, 100)
+      }));
+    if (cleanTagged.length > 0) {
+      postData.taggedUsers = cleanTagged;
+    }
+  }
+
   try {
     onProgress?.(hasChunkedVideo ? 5 : 50);
     await setDoc(postRef, postData);
@@ -273,7 +318,7 @@ export async function createCommunityPost(
     if (hasChunkedVideo && params.videoChunks) {
       const total = params.videoChunks.length;
       const uploadedChunkIds: string[] = [];
-      const BATCH_CONCURRENCY = 4;
+      const BATCH_CONCURRENCY = 6;
 
       try {
         for (let i = 0; i < total; i += BATCH_CONCURRENCY) {
@@ -319,16 +364,21 @@ export async function createCommunityPost(
           onProgress?.(pct);
         }
 
-        await updateDoc(postRef, { videoStatus: 'ready' });
-        // Pre-seed local cache so author's newly published video plays immediately
+        // Pre-populate local Blob URL cache BEFORE setting videoStatus='ready' so the author's
+        // newly mounted feed card resolves instantly from memory without bumpy Firestore chunk refetching.
         try {
-          const blob = base64ChunksToBlob(params.videoChunks, params.videoMimeType || 'video/mp4');
+          const blob = await base64ChunksToBlobAsync(
+            params.videoChunks,
+            params.videoMimeType || 'video/mp4'
+          );
           const objectUrl = URL.createObjectURL(blob);
           videoBlobUrlCache.set(postId, objectUrl);
-          saveVideoBlobToIDB(postId, blob);
+          void saveVideoBlobToIDB(postId, blob);
         } catch {
-          // Non-critical cache seed
+          // Non-critical cache seed — never block finalizing the post
         }
+
+        await updateDoc(postRef, { videoStatus: 'ready' });
         onProgress?.(100);
       } catch (chunkErr) {
         // Rollback partial chunks & post document cleanly
@@ -408,7 +458,7 @@ export async function fetchPostVideoHeadSegment(
       }
 
       try {
-        const blob = base64ChunksToBlob([chunkData], mimeType);
+        const blob = await base64ChunksToBlobAsync([chunkData], mimeType);
         const objectUrl = URL.createObjectURL(blob);
 
         if (totalChunkCount === 1) {
@@ -512,11 +562,11 @@ export async function fetchAndAssemblePostVideo(
       }
 
       try {
-        const blob = base64ChunksToBlob(orderedData, mimeType);
+        const blob = await base64ChunksToBlobAsync(orderedData, mimeType);
         const objectUrl = URL.createObjectURL(blob);
         videoBlobUrlCache.set(postId, objectUrl);
         // Persist in background for instant replay across page loads
-        saveVideoBlobToIDB(postId, blob);
+        void saveVideoBlobToIDB(postId, blob);
         return objectUrl;
       } catch (decodeErr) {
         console.warn(`Could not decode video chunks for ${postId}:`, decodeErr);
@@ -827,6 +877,8 @@ export function subscribeToCommunityPosts(
           soundTitle: d.soundTitle || undefined,
           soundAuthorId: d.soundAuthorId || undefined,
           soundAuthorName: d.soundAuthorName || undefined,
+          hashtags: Array.isArray(d.hashtags) ? d.hashtags : undefined,
+          taggedUsers: Array.isArray(d.taggedUsers) ? d.taggedUsers : undefined,
           backgroundColor: d.backgroundColor || undefined,
           upvotes: typeof d.upvotes === 'number' ? d.upvotes : (d.upvoters?.length || 0),
           upvoters: Array.isArray(d.upvoters) ? d.upvoters : [],
@@ -900,7 +952,8 @@ export async function addCommunityComment(
   content: string,
   mediaUrl?: string,
   replyToCommentId?: string,
-  replyToAuthorName?: string
+  replyToAuthorName?: string,
+  taggedUsers?: TaggedUserRef[]
 ): Promise<string> {
   const commentId = `comment_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const commentRef = doc(db, POSTS_COLLECTION, postId, 'comments', commentId);
@@ -926,6 +979,19 @@ export async function addCommunityComment(
 
   if (replyToAuthorName) {
     commentPayload.replyToAuthorName = replyToAuthorName;
+  }
+
+  if (Array.isArray(taggedUsers) && taggedUsers.length > 0) {
+    const cleanTagged = taggedUsers
+      .filter((t) => t && t.uid && t.displayName)
+      .slice(0, 15)
+      .map((t) => ({
+        uid: String(t.uid).slice(0, 128),
+        displayName: String(t.displayName).trim().slice(0, 100)
+      }));
+    if (cleanTagged.length > 0) {
+      commentPayload.taggedUsers = cleanTagged;
+    }
   }
 
   try {
@@ -970,6 +1036,7 @@ export function subscribeToPostComments(
           mediaUrl: d.mediaUrl || undefined,
           replyToCommentId: d.replyToCommentId || undefined,
           replyToAuthorName: d.replyToAuthorName || undefined,
+          taggedUsers: Array.isArray(d.taggedUsers) ? d.taggedUsers : undefined,
           reactions: d.reactions && typeof d.reactions === 'object' ? d.reactions : {},
           reactionsCount: d.reactionsCount && typeof d.reactionsCount === 'object' ? d.reactionsCount : {},
           createdAt: d.createdAt?.toDate ? d.createdAt.toDate().toISOString() : new Date().toISOString(),

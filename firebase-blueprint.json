@@ -100,6 +100,8 @@
         "soundTitle": { "type": "string", "maxLength": 160 },
         "soundAuthorId": { "type": "string", "maxLength": 128 },
         "soundAuthorName": { "type": "string", "maxLength": 100 },
+        "hashtags": { "type": "array" },
+        "taggedUsers": { "type": "array" },
         "upvotes": { "type": "integer" },
         "upvoters": { "type": "array" },
         "commentsCount": { "type": "integer" },
@@ -109,7 +111,7 @@
     },
     "VideoChunk": {
       "title": "VideoChunk",
-      "description": "Ordered Base64 video segment belonging to a community post short video",
+      "description": "Ordered Base64 video segment belonging to a community post feed video (up to 5 min Full HD 1080p)",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
@@ -135,6 +137,7 @@
         "mediaUrl": { "type": "string", "maxLength": 600000 },
         "replyToCommentId": { "type": "string", "maxLength": 128 },
         "replyToAuthorName": { "type": "string", "maxLength": 100 },
+        "taggedUsers": { "type": "array" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "postId", "authorId", "authorName", "content", "createdAt"]
@@ -330,6 +333,30 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "fingerprint", "userId", "sessionId", "message", "name", "category", "severity", "screen", "status", "createdAt"]
+    },
+    "AppIssueReport": {
+      "title": "AppIssueReport",
+      "description": "Citizen-submitted app bug, performance issue, or feedback report",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "reporterId": { "type": "string", "maxLength": 128 },
+        "reporterName": { "type": "string", "maxLength": 100 },
+        "reporterEmail": { "type": "string", "maxLength": 128 },
+        "reporterCounty": { "type": "string", "maxLength": 50 },
+        "category": { "type": "string", "enum": ["bug", "ui_glitch", "video_audio", "performance", "account_auth", "notifications", "feature_request", "other"] },
+        "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+        "title": { "type": "string", "maxLength": 150 },
+        "description": { "type": "string", "maxLength": 1500 },
+        "currentScreen": { "type": "string", "maxLength": 60 },
+        "deviceInfo": { "type": "string", "maxLength": 300 },
+        "status": { "type": "string", "enum": ["open", "in_progress", "resolved", "dismissed"] },
+        "developerNotes": { "type": "string", "maxLength": 500 },
+        "resolvedBy": { "type": "string", "maxLength": 128 },
+        "resolvedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "reporterId", "reporterName", "category", "severity", "title", "description", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -396,6 +423,10 @@
     "/crash_reports/{crashId}": {
       "schema": "CrashReport",
       "description": "Real-time crash and error reports with stack traces and breadcrumbs for developer monitoring"
+    },
+    "/app_issue_reports/{issueId}": {
+      "schema": "AppIssueReport",
+      "description": "User-submitted app issue reports, bug tickets, and feature feedback"
     }
   }
 }

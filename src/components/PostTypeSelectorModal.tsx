@@ -74,10 +74,10 @@ export const POST_TYPE_OPTIONS: PostTypeOption[] = [
   },
   {
     type: 'video',
-    title: 'Short Video (Feed)',
-    badge: 'Record or Upload · 60s',
+    title: 'Video Post (Full HD)',
+    badge: '1080p · Up to 5 min',
     badgeColor: 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800',
-    description: 'Record live with your camera or upload short clips (MP4, WebM, MOV) up to 60s directly onto the community feed.',
+    description: 'Record live in Full HD 1080p or upload videos (MP4, WebM, MOV) up to 5 minutes directly onto the community feed.',
     icon: <Video className="w-5 h-5" />,
     iconBg: 'bg-indigo-100 dark:bg-indigo-950/60',
     iconColor: 'text-indigo-600 dark:text-indigo-400',

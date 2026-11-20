@@ -13,7 +13,8 @@ import {
   ReactionKey,
   PostedVideoSound,
   SoundMixMode,
-  buildSoundFromPost
+  buildSoundFromPost,
+  TaggedUserRef
 } from '../types/community';
 import {
   createCommunityPost,
@@ -42,12 +43,18 @@ import {
 } from './VoiceShoutRecorder';
 import { ShortVideoCameraRecorder, RecordedVideoSoundMeta } from './ShortVideoCameraRecorder';
 import { PostedSoundPickerModal } from './PostedSoundPickerModal';
+import { VideoTrimmerPanel } from './VideoTrimmerPanel';
 import { compressImage, formatFileSize } from '../utils/imageCompressor';
 import {
   processFeedVideoFile,
+  probeVideoFileMetadata,
   formatVideoDuration,
+  normalizePlaybackSpeed,
   ProcessedFeedVideo,
+  DEFAULT_VIDEO_PLAYBACK_SPEED,
   MAX_FEED_VIDEO_DURATION_SEC,
+  MAX_RAW_VIDEO_INPUT_BYTES,
+  VIDEO_PLAYBACK_SPEED_OPTIONS,
   resolvePlayableVideoUrl
 } from '../utils/videoProcessor';
 import { FeedPostSkeletonList } from './Skeletons';
@@ -65,6 +72,14 @@ import { sendUserNotification } from '../services/userNotificationService';
 import { UserProfile } from '../types/chat';
 import { resolveLiveAuthor } from '../utils/profileUtils';
 import { trackFunnelMilestone, trackDropOffPoint } from '../services/telemetryService';
+import { RichSocialText } from './RichSocialText';
+import { InlineTagSuggestions, ProfileTagBar } from './SocialTagControls';
+import {
+  extractHashtagKeys,
+  resolveMentionedUsers,
+  computeTrendingHashtags,
+  postMatchesHashtag
+} from '../utils/tagParser';
 import {
   MessageSquare,
   Sparkles,
@@ -112,7 +127,11 @@ import {
   Camera,
   RotateCcw,
   UploadCloud,
-  Music
+  Music,
+  Hash,
+  AtSign,
+  Scissors,
+  Gauge
 } from 'lucide-react';
 
 export interface ExternalCreateRequest {
@@ -160,9 +179,18 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedCounty, setSelectedCounty] = useState<string>('All');
+  const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'latest' | 'popular'>('latest');
   const [searchQuery, setSearchQuery] = useState('');
   const [showDailyPoll, setShowDailyPoll] = useState(false);
+  const feedTopRef = useRef<HTMLDivElement>(null);
+
+  // Profile tagging state across composers
+  const [quickTaggedUsers, setQuickTaggedUsers] = useState<TaggedUserRef[]>([]);
+  const [showQuickTagPicker, setShowQuickTagPicker] = useState(false);
+  const [modalTaggedUsers, setModalTaggedUsers] = useState<TaggedUserRef[]>([]);
+  const [showModalTagPicker, setShowModalTagPicker] = useState(false);
+  const [commentTaggedUsers, setCommentTaggedUsers] = useState<TaggedUserRef[]>([]);
 
   // Post creation modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -199,11 +227,19 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [isStoryModalOpen, setIsStoryModalOpen] = useState(false);
   const [modalSound, setModalSound] = useState<PostedVideoSound | null>(null);
   const [modalSoundMixMode, setModalSoundMixMode] = useState<SoundMixMode>('replace');
+  const [modalShowVideoTrimmer, setModalShowVideoTrimmer] = useState(false);
+  const [modalTrimmerMeta, setModalTrimmerMeta] = useState<{ duration: number; notice?: string } | null>(null);
+  const [modalPlaybackSpeed, setModalPlaybackSpeed] = useState<number>(DEFAULT_VIDEO_PLAYBACK_SPEED);
   const [soundPickerTarget, setSoundPickerTarget] = useState<'quick' | 'modal' | null>(null);
   const modalVideoFileRef = useRef<File | null>(null);
   const modalUnbakedFileRef = useRef<File | null>(null);
   const modalSoundBakedInRecorderRef = useRef<boolean>(false);
+  const modalTrimRangeRef = useRef<{ startTimeSec: number; endTimeSec: number } | null>(null);
+  const modalPlaybackSpeedRef = useRef<number>(DEFAULT_VIDEO_PLAYBACK_SPEED);
+  const modalPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
   const modalVideoPromiseRef = useRef<Promise<ProcessedFeedVideo> | null>(null);
+  const modalVideoAbortRef = useRef<AbortController | null>(null);
+  const modalBgProgressRef = useRef<((pct: number, stage?: string) => void) | null>(null);
   const modalVideoGenerationRef = useRef<number>(0);
 
   // Handle external create request from Header or App level
@@ -277,7 +313,6 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     postId: string;
     resolvedUrls: Record<string, string>;
   } | null>(null);
-  const [activeFeedVideoId, setActiveFeedVideoId] = useState<string | null>(null);
   const commentUnsubsRef = useRef<Record<string, () => void>>({});
 
   useEffect(() => {
@@ -318,13 +353,50 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   const [quickBgColor, setQuickBgColor] = useState<PostBackgroundColor>('default');
   const [quickSound, setQuickSound] = useState<PostedVideoSound | null>(null);
   const [quickSoundMixMode, setQuickSoundMixMode] = useState<SoundMixMode>('replace');
+  const [quickShowVideoTrimmer, setQuickShowVideoTrimmer] = useState(false);
+  const [quickTrimmerMeta, setQuickTrimmerMeta] = useState<{ duration: number; notice?: string } | null>(null);
+  const [quickPlaybackSpeed, setQuickPlaybackSpeed] = useState<number>(DEFAULT_VIDEO_PLAYBACK_SPEED);
   const quickFileInputRef = useRef<HTMLInputElement | null>(null);
   const quickVideoInputRef = useRef<HTMLInputElement | null>(null);
   const quickVideoFileRef = useRef<File | null>(null);
   const quickUnbakedFileRef = useRef<File | null>(null);
   const quickSoundBakedInRecorderRef = useRef<boolean>(false);
+  const quickTrimRangeRef = useRef<{ startTimeSec: number; endTimeSec: number } | null>(null);
+  const quickPlaybackSpeedRef = useRef<number>(DEFAULT_VIDEO_PLAYBACK_SPEED);
+  const quickPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
   const quickVideoPromiseRef = useRef<Promise<ProcessedFeedVideo> | null>(null);
+  const quickVideoAbortRef = useRef<AbortController | null>(null);
+  const quickBgProgressRef = useRef<((pct: number, stage?: string) => void) | null>(null);
   const quickVideoGenerationRef = useRef<number>(0);
+
+  // Sync live preview playbackRate accurately without double-applying speed on already-baked clips
+  useEffect(() => {
+    const v = quickPreviewVideoRef.current as (HTMLVideoElement & { preservesPitch?: boolean; webkitPreservesPitch?: boolean }) | null;
+    if (!v || !quickImage || quickMediaType !== 'video') return;
+    const encodedSpeed = quickVideoData?.playbackSpeed || 1;
+    const ratio = Math.min(4, Math.max(0.25, quickPlaybackSpeed / encodedSpeed));
+    try {
+      v.playbackRate = ratio;
+      if ('preservesPitch' in v) v.preservesPitch = true;
+      if ('webkitPreservesPitch' in v) v.webkitPreservesPitch = true;
+    } catch {
+      // ignore unsupported rate
+    }
+  }, [quickImage, quickMediaType, quickPlaybackSpeed, quickVideoData]);
+
+  useEffect(() => {
+    const v = modalPreviewVideoRef.current as (HTMLVideoElement & { preservesPitch?: boolean; webkitPreservesPitch?: boolean }) | null;
+    if (!v || !compressedImage || modalMediaType !== 'video') return;
+    const encodedSpeed = modalVideoData?.playbackSpeed || 1;
+    const ratio = Math.min(4, Math.max(0.25, modalPlaybackSpeed / encodedSpeed));
+    try {
+      v.playbackRate = ratio;
+      if ('preservesPitch' in v) v.preservesPitch = true;
+      if ('webkitPreservesPitch' in v) v.webkitPreservesPitch = true;
+    } catch {
+      // ignore unsupported rate
+    }
+  }, [compressedImage, modalMediaType, modalPlaybackSpeed, modalVideoData]);
 
   // Full Modal optional location toggle
   const [modalIncludeLocation, setModalIncludeLocation] = useState(false);
@@ -411,6 +483,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
     setIsCreateModalOpen(false);
     setModalShowVideoRecorder(false);
+    setModalShowVideoTrimmer(false);
   }, [postTitle, postContent, compressedImage, modalVideoData, modalAudioData, isSubmitting]);
 
   // Handle ESC key to close any active dialogs
@@ -477,6 +550,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         return;
       }
 
+      modalVideoAbortRef.current?.abort();
+      const abortCtrl = new AbortController();
+      modalVideoAbortRef.current = abortCtrl;
+      modalBgProgressRef.current = null;
       const gen = ++modalVideoGenerationRef.current;
       modalVideoFileRef.current = sourceFile;
       setIsCompressing(true);
@@ -499,8 +576,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
           autoTrim: true,
           autoCompress: true,
+          overrideDurationSec: modalTrimmerMeta?.duration,
+          startTimeSec: modalTrimRangeRef.current?.startTimeSec,
+          endTimeSec: modalTrimRangeRef.current?.endTimeSec,
+          playbackSpeed: modalPlaybackSpeedRef.current,
           soundTrack,
+          signal: abortCtrl.signal,
           onProgress: (pct, stage) => {
+            modalBgProgressRef.current?.(pct, stage);
             if (modalVideoGenerationRef.current !== gen) return;
             setModalTrimProgress(pct);
             if (stage) setModalTrimStage(stage);
@@ -531,7 +614,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           triggerToast(`🎵 Applied "${nextSound.soundTitle}"!`);
         }
       } catch (err: any) {
-        if (modalVideoGenerationRef.current !== gen) return;
+        if (abortCtrl.signal.aborted || modalVideoGenerationRef.current !== gen) return;
         modalVideoPromiseRef.current = null;
         setFormError(err?.message || 'Could not apply selected sound to this video.');
       } finally {
@@ -554,6 +637,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       return;
     }
 
+    quickVideoAbortRef.current?.abort();
+    const abortCtrl = new AbortController();
+    quickVideoAbortRef.current = abortCtrl;
+    quickBgProgressRef.current = null;
     const gen = ++quickVideoGenerationRef.current;
     quickVideoFileRef.current = sourceFile;
     setIsQuickCompressing(true);
@@ -576,8 +663,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
         autoTrim: true,
         autoCompress: true,
+        overrideDurationSec: quickTrimmerMeta?.duration,
+        startTimeSec: quickTrimRangeRef.current?.startTimeSec,
+        endTimeSec: quickTrimRangeRef.current?.endTimeSec,
+        playbackSpeed: quickPlaybackSpeedRef.current,
         soundTrack,
+        signal: abortCtrl.signal,
         onProgress: (pct, stage) => {
+          quickBgProgressRef.current?.(pct, stage);
           if (quickVideoGenerationRef.current !== gen) return;
           setQuickTrimProgress(pct);
           if (stage) setQuickTrimStage(stage);
@@ -608,7 +701,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         triggerToast(`🎵 Applied "${nextSound.soundTitle}"!`);
       }
     } catch (err: any) {
-      if (quickVideoGenerationRef.current !== gen) return;
+      if (abortCtrl.signal.aborted || quickVideoGenerationRef.current !== gen) return;
       quickVideoPromiseRef.current = null;
       const msg = err?.message || 'Could not apply selected sound to this video.';
       setQuickError(msg);
@@ -621,6 +714,124 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
   };
 
+  const runModalVideoProcessing = async (
+    file: File,
+    trimRange?: { startTimeSec: number; endTimeSec: number },
+    overrideSpeed?: number
+  ) => {
+    modalVideoAbortRef.current?.abort();
+    const abortCtrl = new AbortController();
+    modalVideoAbortRef.current = abortCtrl;
+    modalBgProgressRef.current = null;
+    const gen = ++modalVideoGenerationRef.current;
+    const activeSound = modalSoundBakedInRecorderRef.current ? null : modalSound;
+    const activeMode = modalSoundMixMode;
+    const appliedSpeed = normalizePlaybackSpeed(overrideSpeed ?? modalPlaybackSpeedRef.current);
+    modalPlaybackSpeedRef.current = appliedSpeed;
+    setModalPlaybackSpeed(appliedSpeed);
+    modalVideoFileRef.current = file;
+    modalTrimRangeRef.current = trimRange ?? null;
+    setIsCompressing(true);
+    setModalTrimProgress(5);
+    setModalTrimStage(
+      trimRange
+        ? `Processing clip (${formatVideoDuration(trimRange.startTimeSec)} – ${formatVideoDuration(trimRange.endTimeSec)}${appliedSpeed !== 1 ? ` @ ${appliedSpeed}x` : ''})...`
+        : appliedSpeed !== 1
+        ? `Applying ${appliedSpeed}x playback speed...`
+        : activeSound
+        ? 'Mixing selected sound & auto-compressing video...'
+        : 'Auto-compressing video file size...'
+    );
+    setFormError(null);
+    setModalShowVideoRecorder(false);
+    setModalShowVideoTrimmer(false);
+    setModalMediaType('video');
+
+    const promise = (async () => {
+      let soundTrack: { url: string; mode: SoundMixMode } | undefined;
+      if (activeSound) {
+        const url =
+          activeSound.resolvedPlayableUrl || (await resolvePostVideoAudioSource(activeSound));
+        soundTrack = { url, mode: activeMode };
+      }
+      return processFeedVideoFile(file, {
+        maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
+        autoTrim: true,
+        autoCompress: true,
+        overrideDurationSec: modalTrimmerMeta?.duration,
+        startTimeSec: trimRange?.startTimeSec,
+        endTimeSec: trimRange?.endTimeSec,
+        playbackSpeed: appliedSpeed,
+        soundTrack,
+        signal: abortCtrl.signal,
+        onProgress: (pct, stage) => {
+          modalBgProgressRef.current?.(pct, stage);
+          if (modalVideoGenerationRef.current !== gen) return;
+          setModalTrimProgress(pct);
+          if (stage) setModalTrimStage(stage);
+        }
+      });
+    })();
+    modalVideoPromiseRef.current = promise;
+
+    try {
+      const processed = await promise;
+      if (modalVideoGenerationRef.current !== gen) return;
+      modalVideoPromiseRef.current = null;
+
+      if (modalVideoData?.previewObjectUrl) {
+        URL.revokeObjectURL(modalVideoData.previewObjectUrl);
+      }
+      setModalVideoData(processed);
+      setCompressedImage(processed.previewObjectUrl);
+      setImageMeta(null);
+      setVideoMeta({
+        size: processed.sizeBytes,
+        originalSize: processed.originalSizeBytes,
+        wasCompressed: processed.wasCompressed,
+        duration: processed.duration,
+        wasAutoTrimmed: processed.wasAutoTrimmed,
+        originalDuration: processed.originalDuration
+      });
+      if (trimRange) {
+        triggerToast(
+          `Clip updated: ${formatVideoDuration(processed.duration)}${appliedSpeed !== 1 ? ` at ${appliedSpeed}x` : ''} (${formatFileSize(processed.sizeBytes)}).`
+        );
+      } else if (appliedSpeed !== 1) {
+        triggerToast(`Playback speed set to ${appliedSpeed}x (${formatVideoDuration(processed.duration)}).`);
+      } else if (processed.wasAutoTrimmed) {
+        triggerToast(
+          `Video auto-trimmed from ${formatVideoDuration(processed.originalDuration)} to ${formatVideoDuration(processed.duration)}.`
+        );
+      } else if (processed.wasCompressed && processed.originalSizeBytes) {
+        const savedPct = Math.round(
+          ((processed.originalSizeBytes - processed.sizeBytes) / processed.originalSizeBytes) * 100
+        );
+        triggerToast(
+          `Video auto-compressed: ${formatFileSize(processed.originalSizeBytes)} → ${formatFileSize(processed.sizeBytes)} (-${savedPct}%).`
+        );
+      }
+    } catch (err: any) {
+      if (abortCtrl.signal.aborted || modalVideoGenerationRef.current !== gen) return;
+      modalVideoPromiseRef.current = null;
+      setFormError(err?.message || 'Could not process selected video.');
+    } finally {
+      if (modalVideoGenerationRef.current === gen) {
+        setIsCompressing(false);
+        setModalTrimProgress(null);
+      }
+    }
+  };
+
+  const handleModalPlaybackSpeedChange = (nextRaw: number) => {
+    const nextSpeed = normalizePlaybackSpeed(nextRaw);
+    modalPlaybackSpeedRef.current = nextSpeed;
+    setModalPlaybackSpeed(nextSpeed);
+    const sourceFile = modalUnbakedFileRef.current;
+    if (!sourceFile || modalMediaType !== 'video') return;
+    void runModalVideoProcessing(sourceFile, modalTrimRangeRef.current ?? undefined, nextSpeed);
+  };
+
   // Handle image or short video upload in Create Modal
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -630,90 +841,54 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v|3gp|mkv)$/i.test(file.name || '');
 
     if (isVideoFile) {
-      const gen = ++modalVideoGenerationRef.current;
-      const activeSound = modalSound;
-      const activeMode = modalSoundMixMode;
+      if (file.size === 0) {
+        setFormError('Selected video file appears to be empty.');
+        return;
+      }
+      if (file.size > MAX_RAW_VIDEO_INPUT_BYTES) {
+        const mb = (file.size / (1024 * 1024)).toFixed(0);
+        setFormError(`Video is ${mb} MB. Please choose a video under 500 MB so it can be processed safely.`);
+        return;
+      }
+
       modalVideoFileRef.current = file;
       modalUnbakedFileRef.current = file;
       modalSoundBakedInRecorderRef.current = false;
-      setIsCompressing(true);
-      setModalTrimProgress(5);
-      setModalTrimStage(
-        activeSound
-          ? 'Mixing selected sound & auto-compressing video...'
-          : 'Auto-compressing video file size...'
-      );
+      modalTrimRangeRef.current = null;
+      modalPlaybackSpeedRef.current = DEFAULT_VIDEO_PLAYBACK_SPEED;
+      setModalPlaybackSpeed(DEFAULT_VIDEO_PLAYBACK_SPEED);
       setFormError(null);
-      setModalShowVideoRecorder(false);
-      setModalMediaType('video');
 
-      const promise = (async () => {
-        let soundTrack: { url: string; mode: SoundMixMode } | undefined;
-        if (activeSound) {
-          const url =
-            activeSound.resolvedPlayableUrl || (await resolvePostVideoAudioSource(activeSound));
-          soundTrack = { url, mode: activeMode };
-        }
-        return processFeedVideoFile(file, {
-          maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
-          autoTrim: true,
-          autoCompress: true,
-          soundTrack,
-          onProgress: (pct, stage) => {
-            if (modalVideoGenerationRef.current !== gen) return;
-            setModalTrimProgress(pct);
-            if (stage) setModalTrimStage(stage);
-          }
-        });
-      })();
-      modalVideoPromiseRef.current = promise;
-
-      try {
-        const processed = await promise;
-        if (modalVideoGenerationRef.current !== gen) return;
+      const probed = await probeVideoFileMetadata(file).catch(() => null);
+      if (probed && probed.duration > MAX_FEED_VIDEO_DURATION_SEC + 0.5) {
+        modalVideoGenerationRef.current += 1;
         modalVideoPromiseRef.current = null;
-
         if (modalVideoData?.previewObjectUrl) {
           URL.revokeObjectURL(modalVideoData.previewObjectUrl);
         }
-        setModalVideoData(processed);
-        setCompressedImage(processed.previewObjectUrl);
+        setModalVideoData(null);
+        setCompressedImage(null);
         setImageMeta(null);
-        setVideoMeta({
-          size: processed.sizeBytes,
-          originalSize: processed.originalSizeBytes,
-          wasCompressed: processed.wasCompressed,
-          duration: processed.duration,
-          wasAutoTrimmed: processed.wasAutoTrimmed,
-          originalDuration: processed.originalDuration
+        setVideoMeta(null);
+        setIsCompressing(false);
+        setModalTrimProgress(null);
+        setModalShowVideoRecorder(false);
+        setModalMediaType('video');
+        setModalTrimmerMeta({
+          duration: probed.duration,
+          notice: `This video is ${formatVideoDuration(probed.duration)} long. Crop any segment up to ${formatVideoDuration(MAX_FEED_VIDEO_DURATION_SEC)} and tap Apply Trim.`
         });
-        if (processed.wasAutoTrimmed) {
-          triggerToast(
-            `Video auto-trimmed from ${formatVideoDuration(processed.originalDuration)} to ${formatVideoDuration(processed.duration)}.`
-          );
-        } else if (processed.wasCompressed && processed.originalSizeBytes) {
-          const savedPct = Math.round(
-            ((processed.originalSizeBytes - processed.sizeBytes) / processed.originalSizeBytes) * 100
-          );
-          triggerToast(
-            `Video auto-compressed: ${formatFileSize(processed.originalSizeBytes)} → ${formatFileSize(processed.sizeBytes)} (-${savedPct}%).`
-          );
-        }
-      } catch (err: any) {
-        if (modalVideoGenerationRef.current !== gen) return;
-        modalVideoPromiseRef.current = null;
-        setFormError(err?.message || 'Could not process selected short video.');
-      } finally {
-        if (modalVideoGenerationRef.current === gen) {
-          setIsCompressing(false);
-          setModalTrimProgress(null);
-        }
+        setModalShowVideoTrimmer(true);
+        return;
       }
+
+      setModalTrimmerMeta(probed ? { duration: probed.duration } : null);
+      await runModalVideoProcessing(file);
       return;
     }
 
     if (!file.type.startsWith('image/')) {
-      setFormError('Please select a valid image (JPG, PNG, WebP) or short video (MP4, WebM, MOV) file.');
+      setFormError('Please select a valid image (JPG, PNG, WebP) or video (MP4, WebM, MOV) file.');
       return;
     }
 
@@ -721,7 +896,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     modalVideoFileRef.current = null;
     modalUnbakedFileRef.current = null;
     modalSoundBakedInRecorderRef.current = false;
+    modalTrimRangeRef.current = null;
     modalVideoPromiseRef.current = null;
+    setModalShowVideoTrimmer(false);
+    setModalTrimmerMeta(null);
     setModalSound(null);
     setIsCompressing(true);
     setFormError(null);
@@ -752,11 +930,18 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     processed: ProcessedFeedVideo,
     soundMeta?: RecordedVideoSoundMeta
   ) => {
+    const rawFile = soundMeta?.rawSourceFile || processed.sourceFile || null;
+    const speedUsed = normalizePlaybackSpeed(soundMeta?.playbackSpeed ?? processed.playbackSpeed);
     modalVideoGenerationRef.current += 1;
-    modalVideoFileRef.current = processed.sourceFile || null;
-    modalUnbakedFileRef.current = processed.sourceFile || null;
+    modalVideoFileRef.current = rawFile;
+    modalUnbakedFileRef.current = rawFile;
     modalSoundBakedInRecorderRef.current = Boolean(soundMeta?.soundAlreadyBaked);
+    modalTrimRangeRef.current = null;
+    modalPlaybackSpeedRef.current = speedUsed;
     modalVideoPromiseRef.current = null;
+    setModalPlaybackSpeed(speedUsed);
+    setModalShowVideoTrimmer(false);
+    setModalTrimmerMeta({ duration: processed.duration * speedUsed });
     if (soundMeta) {
       setModalSound(soundMeta.sound);
       setModalSoundMixMode(soundMeta.mixMode);
@@ -784,11 +969,19 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   };
 
   const handleRemoveImage = () => {
+    modalVideoAbortRef.current?.abort();
+    modalVideoAbortRef.current = null;
+    modalBgProgressRef.current = null;
     modalVideoGenerationRef.current += 1;
     modalVideoFileRef.current = null;
     modalUnbakedFileRef.current = null;
     modalSoundBakedInRecorderRef.current = false;
+    modalTrimRangeRef.current = null;
+    modalPlaybackSpeedRef.current = DEFAULT_VIDEO_PLAYBACK_SPEED;
     modalVideoPromiseRef.current = null;
+    setModalPlaybackSpeed(DEFAULT_VIDEO_PLAYBACK_SPEED);
+    setModalShowVideoTrimmer(false);
+    setModalTrimmerMeta(null);
     if (modalVideoData?.previewObjectUrl) {
       URL.revokeObjectURL(modalVideoData.previewObjectUrl);
     }
@@ -812,7 +1005,127 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
   };
 
-  // Handle quick post image or short video attachment
+  const runQuickVideoProcessing = async (
+    file: File,
+    trimRange?: { startTimeSec: number; endTimeSec: number },
+    overrideSpeed?: number
+  ) => {
+    quickVideoAbortRef.current?.abort();
+    const abortCtrl = new AbortController();
+    quickVideoAbortRef.current = abortCtrl;
+    quickBgProgressRef.current = null;
+    const gen = ++quickVideoGenerationRef.current;
+    const activeSound = quickSoundBakedInRecorderRef.current ? null : quickSound;
+    const activeMode = quickSoundMixMode;
+    const appliedSpeed = normalizePlaybackSpeed(overrideSpeed ?? quickPlaybackSpeedRef.current);
+    quickPlaybackSpeedRef.current = appliedSpeed;
+    setQuickPlaybackSpeed(appliedSpeed);
+    quickVideoFileRef.current = file;
+    quickTrimRangeRef.current = trimRange ?? null;
+    setIsQuickCompressing(true);
+    setQuickTrimProgress(5);
+    setQuickTrimStage(
+      trimRange
+        ? `Processing clip (${formatVideoDuration(trimRange.startTimeSec)} – ${formatVideoDuration(trimRange.endTimeSec)}${appliedSpeed !== 1 ? ` @ ${appliedSpeed}x` : ''})...`
+        : appliedSpeed !== 1
+        ? `Applying ${appliedSpeed}x playback speed...`
+        : activeSound
+        ? 'Mixing selected sound & auto-compressing video...'
+        : 'Auto-compressing video file size...'
+    );
+    setQuickError(null);
+    setQuickShowVideoRecorder(false);
+    setQuickShowVideoTrimmer(false);
+    setQuickMediaType('video');
+
+    const promise = (async () => {
+      let soundTrack: { url: string; mode: SoundMixMode } | undefined;
+      if (activeSound) {
+        const url =
+          activeSound.resolvedPlayableUrl || (await resolvePostVideoAudioSource(activeSound));
+        soundTrack = { url, mode: activeMode };
+      }
+      return processFeedVideoFile(file, {
+        maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
+        autoTrim: true,
+        autoCompress: true,
+        overrideDurationSec: quickTrimmerMeta?.duration,
+        startTimeSec: trimRange?.startTimeSec,
+        endTimeSec: trimRange?.endTimeSec,
+        playbackSpeed: appliedSpeed,
+        soundTrack,
+        signal: abortCtrl.signal,
+        onProgress: (pct, stage) => {
+          quickBgProgressRef.current?.(pct, stage);
+          if (quickVideoGenerationRef.current !== gen) return;
+          setQuickTrimProgress(pct);
+          if (stage) setQuickTrimStage(stage);
+        }
+      });
+    })();
+    quickVideoPromiseRef.current = promise;
+
+    try {
+      const processed = await promise;
+      if (quickVideoGenerationRef.current !== gen) return;
+      quickVideoPromiseRef.current = null;
+
+      if (quickVideoData?.previewObjectUrl) {
+        URL.revokeObjectURL(quickVideoData.previewObjectUrl);
+      }
+      setQuickVideoData(processed);
+      setQuickImage(processed.previewObjectUrl);
+      setQuickImageMeta(null);
+      setQuickVideoMeta({
+        size: processed.sizeBytes,
+        originalSize: processed.originalSizeBytes,
+        wasCompressed: processed.wasCompressed,
+        duration: processed.duration,
+        wasAutoTrimmed: processed.wasAutoTrimmed,
+        originalDuration: processed.originalDuration
+      });
+      if (trimRange) {
+        triggerToast(
+          `Clip updated: ${formatVideoDuration(processed.duration)}${appliedSpeed !== 1 ? ` at ${appliedSpeed}x` : ''} (${formatFileSize(processed.sizeBytes)}).`
+        );
+      } else if (appliedSpeed !== 1) {
+        triggerToast(`Playback speed set to ${appliedSpeed}x (${formatVideoDuration(processed.duration)}).`);
+      } else if (processed.wasAutoTrimmed) {
+        triggerToast(
+          `Video auto-trimmed from ${formatVideoDuration(processed.originalDuration)} to ${formatVideoDuration(processed.duration)}.`
+        );
+      } else if (processed.wasCompressed && processed.originalSizeBytes) {
+        const savedPct = Math.round(
+          ((processed.originalSizeBytes - processed.sizeBytes) / processed.originalSizeBytes) * 100
+        );
+        triggerToast(
+          `Video auto-compressed: ${formatFileSize(processed.originalSizeBytes)} → ${formatFileSize(processed.sizeBytes)} (-${savedPct}%).`
+        );
+      }
+    } catch (err: any) {
+      if (abortCtrl.signal.aborted || quickVideoGenerationRef.current !== gen) return;
+      quickVideoPromiseRef.current = null;
+      const msg = err?.message || 'Could not load video.';
+      setQuickError(msg);
+      triggerToast(msg);
+    } finally {
+      if (quickVideoGenerationRef.current === gen) {
+        setIsQuickCompressing(false);
+        setQuickTrimProgress(null);
+      }
+    }
+  };
+
+  const handleQuickPlaybackSpeedChange = (nextRaw: number) => {
+    const nextSpeed = normalizePlaybackSpeed(nextRaw);
+    quickPlaybackSpeedRef.current = nextSpeed;
+    setQuickPlaybackSpeed(nextSpeed);
+    const sourceFile = quickUnbakedFileRef.current;
+    if (!sourceFile || quickMediaType !== 'video') return;
+    void runQuickVideoProcessing(sourceFile, quickTrimRangeRef.current ?? undefined, nextSpeed);
+  };
+
+  // Handle quick post image or video attachment
   const handleQuickImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -821,92 +1134,56 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v|3gp|mkv)$/i.test(file.name || '');
 
     if (isVideoFile) {
-      const gen = ++quickVideoGenerationRef.current;
-      const activeSound = quickSound;
-      const activeMode = quickSoundMixMode;
+      if (file.size === 0) {
+        setQuickError('Selected video file appears to be empty.');
+        return;
+      }
+      if (file.size > MAX_RAW_VIDEO_INPUT_BYTES) {
+        const mb = (file.size / (1024 * 1024)).toFixed(0);
+        const msg = `Video is ${mb} MB. Please choose a video under 500 MB so it can be processed safely.`;
+        setQuickError(msg);
+        triggerToast(msg);
+        return;
+      }
+
       quickVideoFileRef.current = file;
       quickUnbakedFileRef.current = file;
       quickSoundBakedInRecorderRef.current = false;
-      setIsQuickCompressing(true);
-      setQuickTrimProgress(5);
-      setQuickTrimStage(
-        activeSound
-          ? 'Mixing selected sound & auto-compressing video...'
-          : 'Auto-compressing video file size...'
-      );
+      quickTrimRangeRef.current = null;
+      quickPlaybackSpeedRef.current = DEFAULT_VIDEO_PLAYBACK_SPEED;
+      setQuickPlaybackSpeed(DEFAULT_VIDEO_PLAYBACK_SPEED);
       setQuickError(null);
-      setQuickShowVideoRecorder(false);
-      setQuickMediaType('video');
 
-      const promise = (async () => {
-        let soundTrack: { url: string; mode: SoundMixMode } | undefined;
-        if (activeSound) {
-          const url =
-            activeSound.resolvedPlayableUrl || (await resolvePostVideoAudioSource(activeSound));
-          soundTrack = { url, mode: activeMode };
-        }
-        return processFeedVideoFile(file, {
-          maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
-          autoTrim: true,
-          autoCompress: true,
-          soundTrack,
-          onProgress: (pct, stage) => {
-            if (quickVideoGenerationRef.current !== gen) return;
-            setQuickTrimProgress(pct);
-            if (stage) setQuickTrimStage(stage);
-          }
-        });
-      })();
-      quickVideoPromiseRef.current = promise;
-
-      try {
-        const processed = await promise;
-        if (quickVideoGenerationRef.current !== gen) return;
+      const probed = await probeVideoFileMetadata(file).catch(() => null);
+      if (probed && probed.duration > MAX_FEED_VIDEO_DURATION_SEC + 0.5) {
+        quickVideoGenerationRef.current += 1;
         quickVideoPromiseRef.current = null;
-
         if (quickVideoData?.previewObjectUrl) {
           URL.revokeObjectURL(quickVideoData.previewObjectUrl);
         }
-        setQuickVideoData(processed);
-        setQuickImage(processed.previewObjectUrl);
+        setQuickVideoData(null);
+        setQuickImage(null);
         setQuickImageMeta(null);
-        setQuickVideoMeta({
-          size: processed.sizeBytes,
-          originalSize: processed.originalSizeBytes,
-          wasCompressed: processed.wasCompressed,
-          duration: processed.duration,
-          wasAutoTrimmed: processed.wasAutoTrimmed,
-          originalDuration: processed.originalDuration
+        setQuickVideoMeta(null);
+        setIsQuickCompressing(false);
+        setQuickTrimProgress(null);
+        setQuickShowVideoRecorder(false);
+        setQuickMediaType('video');
+        setQuickTrimmerMeta({
+          duration: probed.duration,
+          notice: `This video is ${formatVideoDuration(probed.duration)} long. Crop any segment up to ${formatVideoDuration(MAX_FEED_VIDEO_DURATION_SEC)} and tap Apply Trim.`
         });
-        if (processed.wasAutoTrimmed) {
-          triggerToast(
-            `Video auto-trimmed from ${formatVideoDuration(processed.originalDuration)} to ${formatVideoDuration(processed.duration)}.`
-          );
-        } else if (processed.wasCompressed && processed.originalSizeBytes) {
-          const savedPct = Math.round(
-            ((processed.originalSizeBytes - processed.sizeBytes) / processed.originalSizeBytes) * 100
-          );
-          triggerToast(
-            `Video auto-compressed: ${formatFileSize(processed.originalSizeBytes)} → ${formatFileSize(processed.sizeBytes)} (-${savedPct}%).`
-          );
-        }
-      } catch (err: any) {
-        if (quickVideoGenerationRef.current !== gen) return;
-        quickVideoPromiseRef.current = null;
-        const msg = err?.message || 'Could not load short video.';
-        setQuickError(msg);
-        triggerToast(msg);
-      } finally {
-        if (quickVideoGenerationRef.current === gen) {
-          setIsQuickCompressing(false);
-          setQuickTrimProgress(null);
-        }
+        setQuickShowVideoTrimmer(true);
+        return;
       }
+
+      setQuickTrimmerMeta(probed ? { duration: probed.duration } : null);
+      await runQuickVideoProcessing(file);
       return;
     }
 
     if (!file.type.startsWith('image/')) {
-      const msg = 'Please select a valid image (JPG, PNG, WebP) or short video (MP4, WebM, MOV).';
+      const msg = 'Please select a valid image (JPG, PNG, WebP) or video (MP4, WebM, MOV).';
       setQuickError(msg);
       triggerToast(msg);
       return;
@@ -916,7 +1193,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     quickVideoFileRef.current = null;
     quickUnbakedFileRef.current = null;
     quickSoundBakedInRecorderRef.current = false;
+    quickTrimRangeRef.current = null;
     quickVideoPromiseRef.current = null;
+    setQuickShowVideoTrimmer(false);
+    setQuickTrimmerMeta(null);
     setQuickSound(null);
     setIsQuickCompressing(true);
     setQuickError(null);
@@ -946,11 +1226,18 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     processed: ProcessedFeedVideo,
     soundMeta?: RecordedVideoSoundMeta
   ) => {
+    const rawFile = soundMeta?.rawSourceFile || processed.sourceFile || null;
+    const speedUsed = normalizePlaybackSpeed(soundMeta?.playbackSpeed ?? processed.playbackSpeed);
     quickVideoGenerationRef.current += 1;
-    quickVideoFileRef.current = processed.sourceFile || null;
-    quickUnbakedFileRef.current = processed.sourceFile || null;
+    quickVideoFileRef.current = rawFile;
+    quickUnbakedFileRef.current = rawFile;
     quickSoundBakedInRecorderRef.current = Boolean(soundMeta?.soundAlreadyBaked);
+    quickTrimRangeRef.current = null;
+    quickPlaybackSpeedRef.current = speedUsed;
     quickVideoPromiseRef.current = null;
+    setQuickPlaybackSpeed(speedUsed);
+    setQuickShowVideoTrimmer(false);
+    setQuickTrimmerMeta({ duration: processed.duration * speedUsed });
     if (soundMeta) {
       setQuickSound(soundMeta.sound);
       setQuickSoundMixMode(soundMeta.mixMode);
@@ -973,11 +1260,19 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   };
 
   const handleRemoveQuickImage = () => {
+    quickVideoAbortRef.current?.abort();
+    quickVideoAbortRef.current = null;
+    quickBgProgressRef.current = null;
     quickVideoGenerationRef.current += 1;
     quickVideoFileRef.current = null;
     quickUnbakedFileRef.current = null;
     quickSoundBakedInRecorderRef.current = false;
+    quickTrimRangeRef.current = null;
+    quickPlaybackSpeedRef.current = DEFAULT_VIDEO_PLAYBACK_SPEED;
     quickVideoPromiseRef.current = null;
+    setQuickPlaybackSpeed(DEFAULT_VIDEO_PLAYBACK_SPEED);
+    setQuickShowVideoTrimmer(false);
+    setQuickTrimmerMeta(null);
     if (quickVideoData?.previewObjectUrl) {
       URL.revokeObjectURL(quickVideoData.previewObjectUrl);
     }
@@ -992,10 +1287,76 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     if (quickVideoInputRef.current) quickVideoInputRef.current.value = '';
   };
 
+  const allDirectoryUsers = useMemo(() => Object.values(usersById || {}), [usersById]);
+
+  const trendingHashtags = useMemo(() => computeTrendingHashtags(posts, 12), [posts]);
+
+  const replaceActiveTagRange = (
+    currentText: string,
+    startIndex: number,
+    endIndex: number,
+    replacement: string
+  ) => {
+    const before = currentText.slice(0, startIndex);
+    const after = currentText.slice(endIndex);
+    const spacer = after.startsWith(' ') ? '' : ' ';
+    return `${before}${replacement}${spacer}${after}`;
+  };
+
+  const addUniqueTaggedUser = (
+    setter: React.Dispatch<React.SetStateAction<TaggedUserRef[]>>,
+    user: UserProfile
+  ) => {
+    if (!user?.uid || user.uid === currentUser?.uid) return;
+    setter((prev) =>
+      prev.some((t) => t.uid === user.uid)
+        ? prev
+        : [...prev, { uid: user.uid, displayName: user.displayName }]
+    );
+  };
+
+  const handleFilterByHashtag = (hashtagKey: string) => {
+    const clean = hashtagKey.replace(/^#/, '').trim().toLowerCase();
+    setSelectedHashtag((prev) => (prev === clean ? null : clean));
+    feedTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const notifyTaggedUsers = (
+    tagged: TaggedUserRef[],
+    snippet: string,
+    postId?: string,
+    postTitle?: string,
+    excludeIds: string[] = []
+  ) => {
+    if (!currentUser || !userProfile || tagged.length === 0) return;
+    const excluded = new Set([currentUser.uid, ...excludeIds]);
+    for (const ref of tagged) {
+      if (!ref.uid || excluded.has(ref.uid)) continue;
+      sendUserNotification({
+        userId: ref.uid,
+        category: 'post_interaction',
+        type: 'profile_tag',
+        title: `${userProfile.displayName} tagged you`,
+        message: `${userProfile.displayName} tagged your profile: "${snippet.slice(0, 75)}${snippet.length > 75 ? '...' : ''}"`,
+        postId,
+        postTitle,
+        actorId: currentUser.uid,
+        actorName: userProfile.displayName,
+        actorPhoto: userProfile.photoURL,
+        actorCounty: userProfile.county
+      }).catch(() => {});
+    }
+  };
+
   // Submit direct quick post (Caption, photo, or short video — supports background compression & upload)
   const handleDirectQuickPost = async () => {
     if (!currentUser || !userProfile) {
       openAuthModal();
+      return;
+    }
+
+    if (quickShowVideoTrimmer) {
+      setQuickError('Please tap Apply Trim or Cancel in the video trimmer before posting.');
       return;
     }
 
@@ -1004,7 +1365,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       isQuickCompressing && quickMediaType === 'video' && !!quickVideoFileRef.current;
 
     if (!trimmedCaption && !quickImage && !quickVideoData && !hasPendingQuickVideo) {
-      setQuickError('Please write a caption or attach a photo / short video.');
+      setQuickError('Please write a caption or attach a photo / video.');
       return;
     }
 
@@ -1023,6 +1384,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       ? 'Citizen Short Video'
       : 'Citizen Photo Update';
 
+    const resolvedHashtags = extractHashtagKeys(trimmedCaption);
+    const resolvedTaggedUsers = resolveMentionedUsers(
+      trimmedCaption,
+      allDirectoryUsers,
+      quickTaggedUsers,
+      currentUser.uid
+    );
+
     const baseParams: any = {
       title: autoTitle,
       content:
@@ -1031,7 +1400,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       category: 'general',
       county: quickShowLocation ? quickCounty : '',
       constituency: quickShowLocation && quickConstituency ? quickConstituency : undefined,
-      mediaType: isVideo ? 'video' : quickImage ? 'image' : undefined
+      mediaType: isVideo ? 'video' : quickImage ? 'image' : undefined,
+      hashtags: resolvedHashtags,
+      taggedUsers: resolvedTaggedUsers
     };
 
     if (isVideo && quickSound) {
@@ -1054,18 +1425,23 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
     // Queue video upload into background manager so user can immediately keep browsing
     if (isVideo && quickBackgroundUpload && (quickVideoData || hasPendingQuickVideo)) {
-      const processedSnap = quickVideoData;
       const promiseSnap = quickVideoPromiseRef.current;
-      const fileSnap = quickVideoFileRef.current;
-      const soundSnap = quickSound
+      const processedSnap = promiseSnap ? null : quickVideoData;
+      const fileSnap = quickUnbakedFileRef.current || quickVideoFileRef.current;
+      const trimRangeSnap = quickTrimRangeRef.current;
+      const speedSnap = quickPlaybackSpeedRef.current;
+      const soundSnap = quickSound && !quickSoundBakedInRecorderRef.current
         ? { sound: quickSound, mode: quickSoundMixMode, url: quickSound.resolvedPlayableUrl }
         : null;
       const initialPct = quickTrimProgress ?? 5;
+      const taggedSnap = [...resolvedTaggedUsers];
 
       quickVideoGenerationRef.current += 1;
       quickVideoFileRef.current = null;
       quickUnbakedFileRef.current = null;
       quickSoundBakedInRecorderRef.current = false;
+      quickTrimRangeRef.current = null;
+      quickPlaybackSpeedRef.current = DEFAULT_VIDEO_PLAYBACK_SPEED;
       quickVideoPromiseRef.current = null;
 
       enqueuePostVideoUpload({
@@ -1074,12 +1450,31 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         basePostParams: baseParams,
         processedVideo: processedSnap,
         pendingVideoPromise: promiseSnap,
+        registerPendingProgress: promiseSnap
+          ? (cb) => {
+              quickBgProgressRef.current = cb;
+            }
+          : undefined,
         rawVideoFile: fileSnap,
+        trimRange: trimRangeSnap,
+        playbackSpeed: speedSnap,
         soundTrack: soundSnap,
-        initialProgress: initialPct
+        initialProgress: initialPct,
+        onCompleted: (publishedPostId) => {
+          quickBgProgressRef.current = null;
+          notifyTaggedUsers(taggedSnap, baseParams.content, publishedPostId, autoTitle);
+        },
+        onFailed: () => {
+          quickBgProgressRef.current = null;
+        }
       });
 
       setQuickCaption('');
+      setQuickTaggedUsers([]);
+      setShowQuickTagPicker(false);
+      setQuickShowVideoTrimmer(false);
+      setQuickTrimmerMeta(null);
+      setQuickPlaybackSpeed(DEFAULT_VIDEO_PLAYBACK_SPEED);
       setQuickVideoData(null);
       setQuickImage(null);
       setQuickMediaType('image');
@@ -1096,7 +1491,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       if (quickVideoInputRef.current) quickVideoInputRef.current.value = '';
       triggerToast(
         processedSnap
-          ? '🚀 Short video uploading in background — keep browsing!'
+          ? '🚀 Video uploading in background — keep browsing!'
           : '🚀 Video auto-compressing & uploading in background!'
       );
       return;
@@ -1104,33 +1499,52 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
     setIsQuickSubmitting(true);
     setQuickError(null);
-    setQuickUploadProgress(quickVideoData ? 5 : null);
+    setQuickUploadProgress(quickVideoData || hasPendingQuickVideo ? 5 : null);
     try {
       const params: any = { ...baseParams };
+      let resolvedQuickVideo = quickVideoData;
+      if (isVideo && quickVideoPromiseRef.current) {
+        resolvedQuickVideo = await quickVideoPromiseRef.current;
+        quickVideoPromiseRef.current = null;
+      }
 
-      if (isVideo && quickVideoData) {
-        params.mediaUrl = quickVideoData.inlineDataUrl || undefined;
-        params.videoChunks = quickVideoData.chunks;
-        params.videoThumbnail = quickVideoData.thumbnailDataUrl;
-        params.videoDuration = quickVideoData.duration;
-        params.videoSizeBytes = quickVideoData.sizeBytes;
-        params.videoMimeType = quickVideoData.mimeType;
+      if (isVideo && resolvedQuickVideo) {
+        params.mediaUrl = resolvedQuickVideo.inlineDataUrl || undefined;
+        params.videoChunks = resolvedQuickVideo.chunks;
+        params.videoThumbnail = resolvedQuickVideo.thumbnailDataUrl;
+        params.videoDuration = resolvedQuickVideo.duration;
+        params.videoSizeBytes = resolvedQuickVideo.sizeBytes;
+        params.videoMimeType = resolvedQuickVideo.mimeType;
       } else if (quickImage) {
         params.mediaUrl = quickImage;
       }
 
-      await createCommunityPost(userProfile, params, (pct) => {
-        if (quickVideoData) setQuickUploadProgress(pct);
+      const newPostId = await createCommunityPost(userProfile, params, (pct) => {
+        if (resolvedQuickVideo) setQuickUploadProgress(pct);
       });
+      notifyTaggedUsers(resolvedTaggedUsers, params.content, newPostId, autoTitle);
 
-      if (quickVideoData?.previewObjectUrl) {
+      if (resolvedQuickVideo?.previewObjectUrl) {
+        URL.revokeObjectURL(resolvedQuickVideo.previewObjectUrl);
+      }
+      if (
+        quickVideoData?.previewObjectUrl &&
+        quickVideoData.previewObjectUrl !== resolvedQuickVideo?.previewObjectUrl
+      ) {
         URL.revokeObjectURL(quickVideoData.previewObjectUrl);
       }
       quickVideoFileRef.current = null;
       quickUnbakedFileRef.current = null;
       quickSoundBakedInRecorderRef.current = false;
+      quickTrimRangeRef.current = null;
+      quickPlaybackSpeedRef.current = DEFAULT_VIDEO_PLAYBACK_SPEED;
       quickVideoPromiseRef.current = null;
+      setQuickPlaybackSpeed(DEFAULT_VIDEO_PLAYBACK_SPEED);
+      setQuickShowVideoTrimmer(false);
+      setQuickTrimmerMeta(null);
       setQuickCaption('');
+      setQuickTaggedUsers([]);
+      setShowQuickTagPicker(false);
       setQuickVideoData(null);
       setQuickImage(null);
       setQuickMediaType('image');
@@ -1278,12 +1692,17 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       return;
     }
 
+    if (modalShowVideoTrimmer) {
+      setFormError('Please tap Apply Trim or Cancel in the video trimmer before publishing.');
+      return;
+    }
+
     const trimmedContent = postContent.trim();
     const hasPendingModalVideo =
       isCompressing && modalMediaType === 'video' && !!modalVideoFileRef.current;
 
     if (!trimmedContent && !compressedImage && !modalVideoData && !modalAudioData && !hasPendingModalVideo) {
-      setFormError('Please enter caption details or attach a photo, short video, or voice shout.');
+      setFormError('Please enter caption details or attach a photo, video, or voice shout.');
       return;
     }
 
@@ -1315,6 +1734,15 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         ? 'Shared a community photo.'
         : '');
 
+    const combinedTagText = `${postTitle.trim()} ${safeContent} ${mediaCaption.trim()}`;
+    const resolvedModalHashtags = extractHashtagKeys(combinedTagText);
+    const resolvedModalTaggedUsers = resolveMentionedUsers(
+      combinedTagText,
+      allDirectoryUsers,
+      modalTaggedUsers,
+      currentUser.uid
+    );
+
     const baseParams: CreatePostParams & Record<string, any> = {
       title: derivedTitle,
       content: safeContent,
@@ -1322,7 +1750,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       county: modalIncludeLocation ? postCounty : '',
       constituency: modalIncludeLocation && postConstituency ? postConstituency : undefined,
       mediaType: isAudio ? 'audio' : isVideo ? 'video' : compressedImage ? 'image' : undefined,
-      mediaCaption: mediaCaption.trim() || undefined
+      mediaCaption: mediaCaption.trim() || undefined,
+      hashtags: resolvedModalHashtags,
+      taggedUsers: resolvedModalTaggedUsers
     };
 
     if (isVideo && modalSound) {
@@ -1345,18 +1775,23 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
     // Queue video upload into background manager and close modal immediately
     if (isVideo && modalBackgroundUpload && (modalVideoData || hasPendingModalVideo)) {
-      const processedSnap = modalVideoData;
       const promiseSnap = modalVideoPromiseRef.current;
-      const fileSnap = modalVideoFileRef.current;
-      const soundSnap = modalSound
+      const processedSnap = promiseSnap ? null : modalVideoData;
+      const fileSnap = modalUnbakedFileRef.current || modalVideoFileRef.current;
+      const trimRangeSnap = modalTrimRangeRef.current;
+      const speedSnap = modalPlaybackSpeedRef.current;
+      const soundSnap = modalSound && !modalSoundBakedInRecorderRef.current
         ? { sound: modalSound, mode: modalSoundMixMode, url: modalSound.resolvedPlayableUrl }
         : null;
       const initialPct = modalTrimProgress ?? 5;
+      const modalTaggedSnap = [...resolvedModalTaggedUsers];
 
       modalVideoGenerationRef.current += 1;
       modalVideoFileRef.current = null;
       modalUnbakedFileRef.current = null;
       modalSoundBakedInRecorderRef.current = false;
+      modalTrimRangeRef.current = null;
+      modalPlaybackSpeedRef.current = DEFAULT_VIDEO_PLAYBACK_SPEED;
       modalVideoPromiseRef.current = null;
 
       enqueuePostVideoUpload({
@@ -1365,15 +1800,34 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         basePostParams: baseParams,
         processedVideo: processedSnap,
         pendingVideoPromise: promiseSnap,
+        registerPendingProgress: promiseSnap
+          ? (cb) => {
+              modalBgProgressRef.current = cb;
+            }
+          : undefined,
         rawVideoFile: fileSnap,
+        trimRange: trimRangeSnap,
+        playbackSpeed: speedSnap,
         soundTrack: soundSnap,
-        initialProgress: initialPct
+        initialProgress: initialPct,
+        onCompleted: (publishedPostId) => {
+          modalBgProgressRef.current = null;
+          notifyTaggedUsers(modalTaggedSnap, safeContent, publishedPostId, derivedTitle);
+        },
+        onFailed: () => {
+          modalBgProgressRef.current = null;
+        }
       });
 
       setIsCreateModalOpen(false);
       setPostTitle('');
       setPostContent('');
+      setModalTaggedUsers([]);
+      setShowModalTagPicker(false);
       setPostConstituency('');
+      setModalShowVideoTrimmer(false);
+      setModalTrimmerMeta(null);
+      setModalPlaybackSpeed(DEFAULT_VIDEO_PLAYBACK_SPEED);
       setModalVideoData(null);
       setModalAudioData(null);
       setModalSound(null);
@@ -1394,7 +1848,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       if (videoInputRef.current) videoInputRef.current.value = '';
       triggerToast(
         processedSnap
-          ? '🚀 Uploading short video in background — keep browsing!'
+          ? '🚀 Uploading video in background — keep browsing!'
           : '🚀 Video auto-compressing & uploading in background!'
       );
       return;
@@ -1402,31 +1856,43 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
     setIsSubmitting(true);
     setFormError(null);
-    setModalUploadProgress(modalVideoData ? 5 : null);
-
-    const params: CreatePostParams & Record<string, any> = { ...baseParams };
-
-    if (isAudio && modalAudioData) {
-      params.mediaUrl = modalAudioData.dataUrl;
-      params.audioDuration = modalAudioData.duration;
-      params.audioSizeBytes = modalAudioData.sizeBytes;
-      params.audioMimeType = modalAudioData.mimeType;
-    } else if (isVideo && modalVideoData) {
-      params.mediaUrl = modalVideoData.inlineDataUrl || undefined;
-      params.videoChunks = modalVideoData.chunks;
-      params.videoThumbnail = modalVideoData.thumbnailDataUrl;
-      params.videoDuration = modalVideoData.duration;
-      params.videoSizeBytes = modalVideoData.sizeBytes;
-      params.videoMimeType = modalVideoData.mimeType;
-    } else if (compressedImage) {
-      params.mediaUrl = compressedImage;
-    }
+    setModalUploadProgress(modalVideoData || hasPendingModalVideo ? 5 : null);
 
     try {
-      await createCommunityPost(userProfile, params, (pct) => {
-        if (modalVideoData) setModalUploadProgress(pct);
+      const params: CreatePostParams & Record<string, any> = { ...baseParams };
+      let resolvedModalVideo = modalVideoData;
+      if (isVideo && modalVideoPromiseRef.current) {
+        resolvedModalVideo = await modalVideoPromiseRef.current;
+        modalVideoPromiseRef.current = null;
+      }
+
+      if (isAudio && modalAudioData) {
+        params.mediaUrl = modalAudioData.dataUrl;
+        params.audioDuration = modalAudioData.duration;
+        params.audioSizeBytes = modalAudioData.sizeBytes;
+        params.audioMimeType = modalAudioData.mimeType;
+      } else if (isVideo && resolvedModalVideo) {
+        params.mediaUrl = resolvedModalVideo.inlineDataUrl || undefined;
+        params.videoChunks = resolvedModalVideo.chunks;
+        params.videoThumbnail = resolvedModalVideo.thumbnailDataUrl;
+        params.videoDuration = resolvedModalVideo.duration;
+        params.videoSizeBytes = resolvedModalVideo.sizeBytes;
+        params.videoMimeType = resolvedModalVideo.mimeType;
+      } else if (compressedImage) {
+        params.mediaUrl = compressedImage;
+      }
+
+      const createdPostId = await createCommunityPost(userProfile, params, (pct) => {
+        if (resolvedModalVideo) setModalUploadProgress(pct);
       });
-      if (modalVideoData?.previewObjectUrl) {
+      notifyTaggedUsers(resolvedModalTaggedUsers, safeContent, createdPostId, derivedTitle);
+      if (resolvedModalVideo?.previewObjectUrl) {
+        URL.revokeObjectURL(resolvedModalVideo.previewObjectUrl);
+      }
+      if (
+        modalVideoData?.previewObjectUrl &&
+        modalVideoData.previewObjectUrl !== resolvedModalVideo?.previewObjectUrl
+      ) {
         URL.revokeObjectURL(modalVideoData.previewObjectUrl);
       }
       if (modalAudioData?.previewObjectUrl) {
@@ -1435,11 +1901,18 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       modalVideoFileRef.current = null;
       modalUnbakedFileRef.current = null;
       modalSoundBakedInRecorderRef.current = false;
+      modalTrimRangeRef.current = null;
+      modalPlaybackSpeedRef.current = DEFAULT_VIDEO_PLAYBACK_SPEED;
       modalVideoPromiseRef.current = null;
+      setModalPlaybackSpeed(DEFAULT_VIDEO_PLAYBACK_SPEED);
+      setModalShowVideoTrimmer(false);
+      setModalTrimmerMeta(null);
       setIsCreateModalOpen(false);
       // Reset form
       setPostTitle('');
       setPostContent('');
+      setModalTaggedUsers([]);
+      setShowModalTagPicker(false);
       setPostConstituency('');
       setModalVideoData(null);
       setModalAudioData(null);
@@ -1598,13 +2071,21 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     }
 
     try {
+      const resolvedCommentTagged = resolveMentionedUsers(
+        commentText,
+        allDirectoryUsers,
+        commentTaggedUsers,
+        currentUser.uid
+      );
+
       await addCommunityComment(
         postId,
         userProfile,
         commentText,
         mediaUrl,
         replyTo?.commentId,
-        replyTo?.authorName
+        replyTo?.authorName,
+        resolvedCommentTagged
       );
 
       if (replyTo && replyTo.authorId && replyTo.authorId !== currentUser.uid) {
@@ -1643,6 +2124,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           actorCounty: userProfile.county
         }).catch(() => {});
       }
+
+      notifyTaggedUsers(
+        resolvedCommentTagged,
+        commentText,
+        postId,
+        targetPost?.title,
+        replyTo?.authorId ? [replyTo.authorId] : []
+      );
       return true;
     } catch (err) {
       console.error('Error posting comment:', err);
@@ -1667,6 +2156,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         setCommentInput('');
         setCommentImage(null);
         setReplyingToComment(null);
+        setCommentTaggedUsers([]);
         if (commentFileInputRef.current) commentFileInputRef.current.value = '';
       }
     } finally {
@@ -1852,13 +2342,18 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
       } else if (selectedCategory !== 'all' && post.category !== selectedCategory) {
         return false;
       }
+      if (selectedHashtag && !postMatchesHashtag(post, selectedHashtag)) {
+        return false;
+      }
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase();
       const titleMatch = post.title.toLowerCase().includes(q);
       const contentMatch = post.content.toLowerCase().includes(q);
       const authorMatch = post.authorName.toLowerCase().includes(q);
       const countyMatch = (post.county || '').toLowerCase().includes(q);
-      return titleMatch || contentMatch || authorMatch || countyMatch;
+      const tagMatch = (post.hashtags || []).some((h) => h.toLowerCase().includes(q.replace(/^#/, '')));
+      const mentionMatch = (post.taggedUsers || []).some((t) => t.displayName.toLowerCase().includes(q.replace(/^@/, '')));
+      return titleMatch || contentMatch || authorMatch || countyMatch || tagMatch || mentionMatch;
     });
 
     if (sortBy === 'popular') {
@@ -1874,6 +2369,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
     followingIds,
     currentUser?.uid,
     selectedCategory,
+    selectedHashtag,
     searchQuery,
     sortBy
   ]);
@@ -1909,13 +2405,6 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         }),
     [posts, usersById]
   );
-
-  const handleFeedVideoActiveChange = useCallback((postId: string, isVisible: boolean) => {
-    setActiveFeedVideoId((prev) => {
-      if (isVisible) return postId;
-      return prev === postId ? null : prev;
-    });
-  }, []);
 
   // Category visual styles helper
   const getCategoryMeta = (cat: PostCategory) => {
@@ -2242,6 +2731,73 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
             </select>
           </div>
         </div>
+
+        {/* Trending # Tags Discovery Bar */}
+        <div ref={feedTopRef} className="pt-2.5 border-t tujuane-divider flex items-center gap-2 flex-wrap">
+          <div className="inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300 shrink-0">
+            <Flame className="w-3.5 h-3.5 text-amber-500" />
+            <span>Trending</span>
+          </div>
+
+          {selectedHashtag && (
+            <button
+              type="button"
+              onClick={() => setSelectedHashtag(null)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold shadow-xs cursor-pointer hover:bg-emerald-700 transition-colors"
+              title="Clear #tag filter"
+            >
+              <span>#{selectedHashtag}</span>
+              <X className="w-3 h-3" />
+            </button>
+          )}
+
+          {trendingHashtags.length > 0 ? (
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 flex-1">
+              {trendingHashtags.map((item) => {
+                const isActive = selectedHashtag === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setSelectedHashtag(isActive ? null : item.key)}
+                    className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer border ${
+                      isActive
+                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
+                    }`}
+                  >
+                    <Hash className="w-3 h-3 opacity-80" />
+                    <span>{item.tag}</span>
+                    <span className={`text-[10px] ${isActive ? 'text-emerald-100' : 'text-emerald-600/75 dark:text-emerald-400/75'}`}>
+                      · {item.postCount}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 flex-1">
+              {['KenyaVoices', 'CivicAction', 'CountyWatch', 'MtaaniUpdates'].map((starter) => (
+                <button
+                  key={starter}
+                  type="button"
+                  onClick={() => {
+                    if (currentUser) {
+                      setQuickCaption((prev) =>
+                        prev ? `${prev.trimEnd()} #${starter} ` : `#${starter} `
+                      );
+                    }
+                  }}
+                  className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold tujuane-surface-soft text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-300 cursor-pointer transition-colors"
+                  title={`Add #${starter} to your post`}
+                >
+                  <Hash className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                  <span>{starter}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* DIRECT QUICK POST COMPOSER - Post caption, photo, or short video directly */}
@@ -2297,7 +2853,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           </div>
 
           {/* Caption Input */}
-          <div className="flex-1">
+          <div className="flex-1 space-y-2">
             <textarea
               rows={quickBgColor !== 'default' && !quickImage ? 3 : 2}
               value={quickCaption}
@@ -2305,8 +2861,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               placeholder={
                 currentUser
                   ? quickMediaType === 'video' && quickImage
-                    ? 'Add a caption for your short video (optional)...'
-                    : "What's on your mind, Citizen? Share a thought, photo, or short video..."
+                    ? 'Add a caption, #hashtag, or @tag someone...'
+                    : "What's on your mind? Add #hashtags or @tag citizen profiles..."
                   : "Sign in to post captions, photos, or short videos..."
               }
               disabled={!currentUser}
@@ -2317,6 +2873,47 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   : 'tujuane-surface-soft focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500'
               }`}
             />
+
+            {currentUser && (
+              <>
+                <InlineTagSuggestions
+                  compact
+                  text={quickCaption}
+                  users={allDirectoryUsers}
+                  currentUserId={currentUser.uid}
+                  trendingHashtags={trendingHashtags}
+                  onSelectMention={(user, start, end) => {
+                    setQuickCaption((prev) =>
+                      replaceActiveTagRange(prev, start, end, `@${user.displayName}`)
+                    );
+                    addUniqueTaggedUser(setQuickTaggedUsers, user);
+                  }}
+                  onSelectHashtag={(tag, start, end) => {
+                    setQuickCaption((prev) =>
+                      replaceActiveTagRange(prev, start, end, `#${tag}`)
+                    );
+                  }}
+                />
+
+                <ProfileTagBar
+                  taggedUsers={quickTaggedUsers}
+                  onAddTaggedUser={(user) => addUniqueTaggedUser(setQuickTaggedUsers, user)}
+                  onRemoveTaggedUser={(uid) =>
+                    setQuickTaggedUsers((prev) => prev.filter((t) => t.uid !== uid))
+                  }
+                  allUsers={allDirectoryUsers}
+                  currentUserId={currentUser.uid}
+                  showPicker={showQuickTagPicker}
+                  onTogglePicker={() => setShowQuickTagPicker((prev) => !prev)}
+                  trendingHashtags={trendingHashtags}
+                  onInsertHashtag={(tag) =>
+                    setQuickCaption((prev) =>
+                      prev.trim() ? `${prev.trimEnd()} #${tag} ` : `#${tag} `
+                    )
+                  }
+                />
+              </>
+            )}
           </div>
         </div>
 
@@ -2350,7 +2947,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         )}
 
         {/* Quick Composer Live Camera Video Recorder */}
-        {quickShowVideoRecorder && !quickImage && (
+        {quickShowVideoRecorder && !quickImage && !quickShowVideoTrimmer && (
           <div className="animate-in fade-in">
             <ShortVideoCameraRecorder
               initialSound={quickSound}
@@ -2370,11 +2967,45 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           </div>
         )}
 
-        {/* Attached Photo or Short Video Preview */}
-        {quickImage && (
+        {/* Quick Composer Client-Side Video Trimmer */}
+        {quickShowVideoTrimmer && quickUnbakedFileRef.current && (
+          <div className="animate-in fade-in">
+            <VideoTrimmerPanel
+              sourceFile={quickUnbakedFileRef.current}
+              totalDurationSec={quickTrimmerMeta?.duration}
+              maxClipDurationSec={MAX_FEED_VIDEO_DURATION_SEC}
+              initialStartSec={quickTrimRangeRef.current?.startTimeSec ?? 0}
+              initialEndSec={quickTrimRangeRef.current?.endTimeSec}
+              initialPlaybackSpeed={quickPlaybackSpeed}
+              noticeText={quickTrimmerMeta?.notice}
+              onApplyTrim={(startSec, endSec, nextSpeed) => {
+                const file = quickUnbakedFileRef.current;
+                if (file) {
+                  void runQuickVideoProcessing(file, {
+                    startTimeSec: startSec,
+                    endTimeSec: endSec
+                  }, nextSpeed);
+                }
+              }}
+              onCancel={() => {
+                setQuickShowVideoTrimmer(false);
+                setQuickTrimmerMeta(null);
+                if (!quickImage && !isQuickCompressing && quickUnbakedFileRef.current) {
+                  // Video exceeded 5m and user cancelled initial prompt -> clear attachment cleanly
+                  handleRemoveQuickImage();
+                }
+              }}
+              disabled={isQuickSubmitting}
+            />
+          </div>
+        )}
+
+        {/* Attached Photo or Video Preview */}
+        {quickImage && !quickShowVideoTrimmer && (
           <div className="relative rounded-2xl overflow-hidden bg-slate-950/90 max-h-72 flex items-center justify-center">
             {quickMediaType === 'video' ? (
               <video
+                ref={quickPreviewVideoRef}
                 src={quickImage}
                 poster={quickVideoData?.thumbnailDataUrl}
                 controls
@@ -2382,12 +3013,38 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 muted
                 loop
                 playsInline
+                onLoadedMetadata={() => {
+                  const v = quickPreviewVideoRef.current as (HTMLVideoElement & { preservesPitch?: boolean; webkitPreservesPitch?: boolean }) | null;
+                  if (!v) return;
+                  const encodedSpeed = quickVideoData?.playbackSpeed || 1;
+                  try {
+                    v.playbackRate = Math.min(4, Math.max(0.25, quickPlaybackSpeed / encodedSpeed));
+                    if ('preservesPitch' in v) v.preservesPitch = true;
+                  } catch {
+                    // ignore
+                  }
+                }}
                 className="max-h-72 w-full object-contain bg-black"
               />
             ) : (
               <img src={quickImage} alt="Attachment" className="max-h-64 object-contain w-full" />
             )}
             <div className="absolute top-2 right-2 flex items-center gap-1.5 z-10">
+              {quickMediaType === 'video' && quickUnbakedFileRef.current && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuickTrimmerMeta((prev) => prev || (quickVideoMeta ? { duration: quickVideoMeta.originalDuration || quickVideoMeta.duration } : null));
+                    setQuickShowVideoTrimmer(true);
+                  }}
+                  disabled={isQuickSubmitting}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-black/75 hover:bg-emerald-600 text-white text-[11px] font-bold rounded-full transition-colors cursor-pointer disabled:opacity-40 whitespace-nowrap shrink-0"
+                  title="Crop start and end of this video"
+                >
+                  <Scissors className="w-3.5 h-3.5" />
+                  <span>Trim</span>
+                </button>
+              )}
               {quickMediaType === 'video' && (
                 <button
                   type="button"
@@ -2396,7 +3053,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     setQuickShowVideoRecorder(true);
                   }}
                   disabled={isQuickSubmitting}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-black/70 hover:bg-indigo-600 text-white text-[11px] font-bold rounded-full transition-colors cursor-pointer disabled:opacity-40"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-black/70 hover:bg-indigo-600 text-white text-[11px] font-bold rounded-full transition-colors cursor-pointer disabled:opacity-40 whitespace-nowrap shrink-0"
                   title="Re-record with camera"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
@@ -2419,13 +3076,15 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               </span>
             )}
             {quickMediaType === 'video' && quickVideoMeta && (
-              <span className="absolute top-2 left-2 px-2 py-0.5 bg-black/75 text-white text-[10px] font-semibold rounded-md flex items-center gap-1 backdrop-blur-xs">
+              <span className="absolute top-2 left-2 px-2 py-0.5 bg-black/75 text-white text-[10px] font-semibold font-mono tabular-nums rounded-md flex items-center gap-1 backdrop-blur-xs">
                 <Video className="w-3 h-3 text-indigo-400" />
                 <span>
                   {quickVideoMeta.wasAutoTrimmed
-                    ? `Auto-trimmed ${formatVideoDuration(quickVideoMeta.originalDuration)} → ${formatVideoDuration(quickVideoMeta.duration)}`
-                    : formatVideoDuration(quickVideoMeta.duration)}{' '}
-                  · {formatFileSize(quickVideoMeta.size)}
+                    ? `Trimmed ${formatVideoDuration(quickVideoMeta.originalDuration)} → ${formatVideoDuration(quickVideoMeta.duration)}`
+                    : formatVideoDuration(quickVideoMeta.duration)}
+                  {quickPlaybackSpeed !== 1 ? ` · ${quickPlaybackSpeed}x` : ''}
+                  {' · '}
+                  {formatFileSize(quickVideoMeta.size)}
                   {quickVideoMeta.wasCompressed && quickVideoMeta.originalSize && quickVideoMeta.originalSize > quickVideoMeta.size
                     ? ` (-${Math.round(((quickVideoMeta.originalSize - quickVideoMeta.size) / quickVideoMeta.originalSize) * 100)}%)`
                     : ''}
@@ -2435,12 +3094,42 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           </div>
         )}
 
+        {/* Quick Composer Playback Speed Controls */}
+        {quickMediaType === 'video' && (quickImage || isQuickCompressing) && !quickShowVideoTrimmer && quickUnbakedFileRef.current && (
+          <div className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 flex items-center justify-between gap-2 flex-wrap">
+            <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+              <Gauge className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>Playback Speed</span>
+            </div>
+            <div className="inline-flex items-center rounded-lg bg-slate-200/80 dark:bg-slate-900 p-0.5 gap-0.5 overflow-x-auto max-w-full">
+              {VIDEO_PLAYBACK_SPEED_OPTIONS.map((spd) => {
+                const active = Math.abs(quickPlaybackSpeed - spd) < 0.01;
+                return (
+                  <button
+                    key={spd}
+                    type="button"
+                    disabled={isQuickSubmitting}
+                    onClick={() => handleQuickPlaybackSpeedChange(spd)}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-mono tabular-nums font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-40 ${
+                      active
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {spd}x
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Quick Video Auto-Compression & Trimming Progress Bar */}
-        {isQuickCompressing && quickTrimProgress !== null && (
+        {isQuickCompressing && quickTrimProgress !== null && !quickShowVideoTrimmer && (
           <div className="space-y-1.5 p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/50">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
-              <span>{quickTrimStage}</span>
-              <span>{quickTrimProgress}%</span>
+            <div className="flex items-center justify-between text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 gap-2">
+              <span className="truncate">{quickTrimStage}</span>
+              <span className="font-mono tabular-nums shrink-0">{quickTrimProgress}%</span>
             </div>
             <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
               <div
@@ -2448,11 +3137,31 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 style={{ width: `${quickTrimProgress}%` }}
               />
             </div>
-            {quickBackgroundUpload && (
-              <p className="text-[10px] text-slate-600 dark:text-slate-300">
-                Tap <strong>Post in Background</strong> anytime to queue & keep browsing while it finishes.
-              </p>
-            )}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              {quickBackgroundUpload && (
+                <p className="text-[10px] text-slate-600 dark:text-slate-300">
+                  Tap <strong>Post in Background</strong> anytime to queue & keep browsing.
+                </p>
+              )}
+              {quickUnbakedFileRef.current && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    quickVideoAbortRef.current?.abort();
+                    quickVideoAbortRef.current = null;
+                    quickVideoGenerationRef.current += 1;
+                    quickVideoPromiseRef.current = null;
+                    setIsQuickCompressing(false);
+                    setQuickTrimProgress(null);
+                    setQuickShowVideoTrimmer(true);
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer ml-auto"
+                >
+                  <Scissors className="w-3 h-3" />
+                  <span>Trim Start/End Instead</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -2646,10 +3355,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               }}
               disabled={isQuickCompressing || isQuickSubmitting}
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-400 hover:bg-slate-100/70 dark:hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50"
-              title="Upload a short video file (MP4, WebM, MOV — up to 60s / 12 MB)"
+              title="Upload a video file (MP4, WebM, MOV — up to 5 min · Full HD 1080p)"
             >
               <Video className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <span>{isQuickCompressing && quickMediaType === 'video' ? 'Preparing...' : 'Short Video'}</span>
+              <span>{isQuickCompressing && quickMediaType === 'video' ? 'Preparing...' : 'Video'}</span>
             </button>
 
             {/* Record Live Camera Short Video Button */}
@@ -2676,7 +3385,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
                   : 'text-slate-600 dark:text-slate-300 hover:text-rose-700 dark:hover:text-rose-400 hover:bg-slate-100/70 dark:hover:bg-white/10'
               }`}
-              title="Record a live short video with your camera (up to 60s)"
+              title="Record a live Full HD video with your camera (up to 5 min)"
             >
               <Camera className="w-4 h-4 text-rose-600 dark:text-rose-400" />
               <span>Record Video</span>
@@ -2764,6 +3473,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                 onClick={handleDirectQuickPost}
                 disabled={
                   isQuickSubmitting ||
+                  quickShowVideoTrimmer ||
                   (isQuickCompressing && !(quickMediaType === 'video' && quickBackgroundUpload && !!quickVideoFileRef.current)) ||
                   (!quickCaption.trim() && !quickImage && !(isQuickCompressing && quickMediaType === 'video' && quickBackgroundUpload && !!quickVideoFileRef.current))
                 }
@@ -3142,11 +3852,25 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         post.title !== 'Citizen Post' &&
                         post.title !== 'Citizen Photo Update' && (
                           <h2 className="text-base sm:text-xl font-black leading-snug drop-shadow-xs mb-2">
-                            {post.title}
+                            <RichSocialText
+                              text={post.title}
+                              taggedUsers={post.taggedUsers}
+                              usersById={usersById}
+                              onHashtagClick={handleFilterByHashtag}
+                              onMentionClick={onViewUserProfile}
+                              inverted
+                            />
                           </h2>
                         )}
                       <p className="text-base sm:text-xl font-bold leading-relaxed whitespace-pre-line drop-shadow-xs">
-                        {post.content}
+                        <RichSocialText
+                          text={post.content}
+                          taggedUsers={post.taggedUsers}
+                          usersById={usersById}
+                          onHashtagClick={handleFilterByHashtag}
+                          onMentionClick={onViewUserProfile}
+                          inverted
+                        />
                       </p>
                     </div>
                   ) : (
@@ -3160,12 +3884,75 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         post.title !== 'Citizen Short Video' &&
                         post.title !== 'Citizen Voice Shout' && (
                           <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-snug">
-                            {post.title}
+                            <RichSocialText
+                              text={post.title}
+                              taggedUsers={post.taggedUsers}
+                              usersById={usersById}
+                              onHashtagClick={handleFilterByHashtag}
+                              onMentionClick={onViewUserProfile}
+                            />
                           </h2>
                         )}
                       <p className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line font-normal">
-                        {post.content}
+                        <RichSocialText
+                          text={post.content}
+                          taggedUsers={post.taggedUsers}
+                          usersById={usersById}
+                          onHashtagClick={handleFilterByHashtag}
+                          onMentionClick={onViewUserProfile}
+                        />
                       </p>
+                    </div>
+                  )}
+
+                  {/* Tagged Citizen Profiles & #Hashtag Chips */}
+                  {((post.taggedUsers && post.taggedUsers.length > 0) ||
+                    (post.hashtags && post.hashtags.length > 0)) && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      {post.taggedUsers && post.taggedUsers.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 inline-flex items-center gap-0.5">
+                            <AtSign className="w-3 h-3 text-sky-500" />
+                            <span>with</span>
+                          </span>
+                          {post.taggedUsers.map((tagged) => {
+                            const fullUser = usersById[tagged.uid] || ({
+                              uid: tagged.uid,
+                              displayName: tagged.displayName,
+                              email: ''
+                            } as UserProfile);
+                            return (
+                              <button
+                                key={tagged.uid}
+                                type="button"
+                                onClick={() => onViewUserProfile?.(fullUser)}
+                                className="px-2 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 border border-sky-200/70 dark:border-sky-800/60 text-[11px] font-bold cursor-pointer transition-colors"
+                              >
+                                @{fullUser.displayName || tagged.displayName}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {post.hashtags && post.hashtags.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1">
+                          {post.hashtags.slice(0, 6).map((tagKey) => (
+                            <button
+                              key={tagKey}
+                              type="button"
+                              onClick={() => handleFilterByHashtag(tagKey)}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold cursor-pointer transition-colors ${
+                                selectedHashtag === tagKey.toLowerCase()
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'
+                              }`}
+                            >
+                              #{tagKey}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -3186,7 +3973,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           <FeedAudioPlayer post={post} />
                           {post.mediaCaption && (
                             <p className="text-[11px] text-slate-600 dark:text-slate-300 px-1">
-                              {post.mediaCaption}
+                              <RichSocialText
+                                text={post.mediaCaption}
+                                taggedUsers={post.taggedUsers}
+                                usersById={usersById}
+                                onHashtagClick={handleFilterByHashtag}
+                                onMentionClick={onViewUserProfile}
+                              />
                             </p>
                           )}
                         </div>
@@ -3195,35 +3988,17 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
                     return (
                       <div className="rounded-xl overflow-hidden bg-slate-950/90 relative group">
-                        {isVideoPost ? (() => {
-                          const vIdx = videoPosts.findIndex((vp) => vp.id === post.id);
-                          const activeVIdx = activeFeedVideoId
-                            ? videoPosts.findIndex((vp) => vp.id === activeFeedVideoId)
-                            : -1;
-                          const preloadHint: 'active' | 'adjacent' | 'idle' =
-                            activeVIdx >= 0
-                              ? vIdx === activeVIdx
-                                ? 'active'
-                                : Math.abs(vIdx - activeVIdx) === 1
-                                ? 'adjacent'
-                                : 'idle'
-                              : vIdx >= 0 && vIdx <= 1
-                              ? 'adjacent'
-                              : 'idle';
-                          return (
-                            <FeedVideoPlayer
-                              post={post}
-                              preloadHint={preloadHint}
-                              onActiveInView={handleFeedVideoActiveChange}
-                              onOpenTheatre={(resolvedUrl) =>
-                                setVideoTheatreState({
-                                  postId: post.id,
-                                  resolvedUrls: resolvedUrl ? { [post.id]: resolvedUrl } : {}
-                                })
-                              }
-                            />
-                          );
-                        })() : (
+                        {isVideoPost ? (
+                          <FeedVideoPlayer
+                            post={post}
+                            onOpenTheatre={(resolvedUrl) =>
+                              setVideoTheatreState({
+                                postId: post.id,
+                                resolvedUrls: resolvedUrl ? { [post.id]: resolvedUrl } : {}
+                              })
+                            }
+                          />
+                        ) : (
                           <>
                             <img
                               src={post.mediaUrl}
@@ -3283,7 +4058,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
 
                         {post.mediaCaption && (
                           <div className="bg-slate-950/80 text-white text-[11px] px-3 py-1.5">
-                            {post.mediaCaption}
+                            <RichSocialText
+                              text={post.mediaCaption}
+                              taggedUsers={post.taggedUsers}
+                              usersById={usersById}
+                              onHashtagClick={handleFilterByHashtag}
+                              onMentionClick={onViewUserProfile}
+                              inverted
+                            />
                           </div>
                         )}
                       </div>
@@ -3515,7 +4297,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                               </div>
 
                               <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed pl-8">
-                                {comment.content}
+                                <RichSocialText
+                                  text={comment.content}
+                                  taggedUsers={comment.taggedUsers}
+                                  usersById={usersById}
+                                  onHashtagClick={handleFilterByHashtag}
+                                  onMentionClick={onViewUserProfile}
+                                />
                               </p>
 
                               {comment.mediaUrl && (
@@ -3641,43 +4429,64 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           </div>
                         )}
 
-                        <div className="flex items-start gap-1.5 sm:gap-2">
-                          <input
-                            type="text"
-                            value={commentInput}
-                            onChange={(e) => setCommentInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                handleSubmitComment(post.id);
+                        <div className="space-y-1.5">
+                          <div className="flex items-start gap-1.5 sm:gap-2">
+                            <input
+                              type="text"
+                              value={commentInput}
+                              onChange={(e) => setCommentInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleSubmitComment(post.id);
+                                }
+                              }}
+                              placeholder={
+                                replyingToComment
+                                  ? `Reply to @${replyingToComment.authorName}...`
+                                  : 'Write a reply (#tag or @mention a citizen)...'
                               }
+                              className="flex-1 min-w-0 px-3 py-2 text-xs tujuane-surface rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() => commentFileInputRef.current?.click()}
+                              className="p-2 tujuane-surface hover:opacity-90 rounded-xl text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                              title="Attach photo to reply"
+                            >
+                              <ImageIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleSubmitComment(post.id)}
+                              disabled={isSubmittingComment || (!commentInput.trim() && !commentImage)}
+                              className="p-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl transition-colors cursor-pointer"
+                              title="Send reply"
+                            >
+                              <Send className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <InlineTagSuggestions
+                            compact
+                            text={commentInput}
+                            users={allDirectoryUsers}
+                            currentUserId={currentUser.uid}
+                            trendingHashtags={trendingHashtags}
+                            onSelectMention={(user, start, end) => {
+                              setCommentInput((prev) =>
+                                replaceActiveTagRange(prev, start, end, `@${user.displayName}`)
+                              );
+                              addUniqueTaggedUser(setCommentTaggedUsers, user);
                             }}
-                            placeholder={
-                              replyingToComment
-                                ? `Reply to @${replyingToComment.authorName}...`
-                                : 'Write a reply to the community...'
-                            }
-                            className="flex-1 min-w-0 px-3 py-2 text-xs tujuane-surface rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                            onSelectHashtag={(tag, start, end) => {
+                              setCommentInput((prev) =>
+                                replaceActiveTagRange(prev, start, end, `#${tag}`)
+                              );
+                            }}
                           />
-
-                          <button
-                            type="button"
-                            onClick={() => commentFileInputRef.current?.click()}
-                            className="p-2 tujuane-surface hover:opacity-90 rounded-xl text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
-                            title="Attach photo to reply"
-                          >
-                            <ImageIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleSubmitComment(post.id)}
-                            disabled={isSubmittingComment || (!commentInput.trim() && !commentImage)}
-                            className="p-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl transition-colors cursor-pointer"
-                            title="Send reply"
-                          >
-                            <Send className="w-4 h-4" />
-                          </button>
                         </div>
 
                         {/* Hidden comment file input */}
@@ -3960,10 +4769,10 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   </div>
                   <div>
                     <div className="text-xs font-extrabold text-indigo-950 dark:text-indigo-200">
-                      Record or Upload a Short Video
+                      Record or Upload a Feed Video
                     </div>
                     <p className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-0.5">
-                      Use your live camera or pick MP4, WebM, MOV · up to 60s · max 12 MB
+                      Use your live camera or pick MP4, WebM, MOV · up to 5 min · Full HD 1080p
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center justify-center gap-2">
@@ -4065,7 +4874,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               )}
 
               {/* Content Body */}
-              <div>
+              <div className="space-y-2">
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                   Caption & Discussion Details {!compressedImage && !modalAudioData && <span className="text-rose-500">*</span>}
                 </label>
@@ -4075,8 +4884,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   onChange={(e) => setPostContent(e.target.value)}
                   placeholder={
                     modalShowVoiceRecorder || modalAudioData
-                      ? 'Add an optional text note or context for your 30s voice shout...'
-                      : 'Share your thoughts, caption, questions, or opportunities...'
+                      ? 'Add an optional text note, #hashtag, or @mention for your 30s voice shout...'
+                      : 'Share your thoughts, #hashtags, or @tag citizen profiles...'
                   }
                   maxLength={2000}
                   className={`w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl focus:outline-none resize-none leading-relaxed transition-all ${
@@ -4085,17 +4894,53 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       : 'bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500'
                   }`}
                 />
-                <div className="flex justify-between items-center text-[10px] text-slate-400 dark:text-slate-500 mt-1">
-                  <span>Be respectful and adhere to community guidelines.</span>
+                <div className="flex justify-between items-center text-[10px] text-slate-400 dark:text-slate-500">
+                  <span>Type # for trending tags or @ to tag a citizen profile.</span>
                   <span>{postContent.length}/2000</span>
                 </div>
+
+                <InlineTagSuggestions
+                  text={postContent}
+                  users={allDirectoryUsers}
+                  currentUserId={currentUser?.uid}
+                  trendingHashtags={trendingHashtags}
+                  onSelectMention={(user, start, end) => {
+                    setPostContent((prev) =>
+                      replaceActiveTagRange(prev, start, end, `@${user.displayName}`)
+                    );
+                    addUniqueTaggedUser(setModalTaggedUsers, user);
+                  }}
+                  onSelectHashtag={(tag, start, end) => {
+                    setPostContent((prev) =>
+                      replaceActiveTagRange(prev, start, end, `#${tag}`)
+                    );
+                  }}
+                />
+
+                <ProfileTagBar
+                  taggedUsers={modalTaggedUsers}
+                  onAddTaggedUser={(user) => addUniqueTaggedUser(setModalTaggedUsers, user)}
+                  onRemoveTaggedUser={(uid) =>
+                    setModalTaggedUsers((prev) => prev.filter((t) => t.uid !== uid))
+                  }
+                  allUsers={allDirectoryUsers}
+                  currentUserId={currentUser?.uid}
+                  showPicker={showModalTagPicker}
+                  onTogglePicker={() => setShowModalTagPicker((prev) => !prev)}
+                  trendingHashtags={trendingHashtags}
+                  onInsertHashtag={(tag) =>
+                    setPostContent((prev) =>
+                      prev.trim() ? `${prev.trimEnd()} #${tag} ` : `#${tag} `
+                    )
+                  }
+                />
               </div>
 
               {/* Media Photo, Short Video, or 30s Voice Shout Attachment */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-                    Photo, Short Video, or 30s Voice Shout (Optional)
+                    Photo, Full HD Video (up to 5m), or 30s Voice Shout (Optional)
                   </label>
                   {(modalShowVoiceRecorder || modalAudioData || modalShowVideoRecorder) && !isSubmitting && (
                     <button
@@ -4154,6 +4999,33 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                       />
                     )}
                   </div>
+                ) : modalShowVideoTrimmer && modalUnbakedFileRef.current ? (
+                  <VideoTrimmerPanel
+                    sourceFile={modalUnbakedFileRef.current}
+                    totalDurationSec={modalTrimmerMeta?.duration}
+                    maxClipDurationSec={MAX_FEED_VIDEO_DURATION_SEC}
+                    initialStartSec={modalTrimRangeRef.current?.startTimeSec ?? 0}
+                    initialEndSec={modalTrimRangeRef.current?.endTimeSec}
+                    initialPlaybackSpeed={modalPlaybackSpeed}
+                    noticeText={modalTrimmerMeta?.notice}
+                    onApplyTrim={(startSec, endSec, nextSpeed) => {
+                      const file = modalUnbakedFileRef.current;
+                      if (file) {
+                        void runModalVideoProcessing(file, {
+                          startTimeSec: startSec,
+                          endTimeSec: endSec
+                        }, nextSpeed);
+                      }
+                    }}
+                    onCancel={() => {
+                      setModalShowVideoTrimmer(false);
+                      setModalTrimmerMeta(null);
+                      if (!compressedImage && !isCompressing && modalUnbakedFileRef.current) {
+                        handleRemoveImage();
+                      }
+                    }}
+                    disabled={isSubmitting}
+                  />
                 ) : modalShowVideoRecorder && !compressedImage ? (
                   <ShortVideoCameraRecorder
                     initialSound={modalSound}
@@ -4189,7 +5061,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-2xs transition-colors cursor-pointer"
                       >
                         <Video className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                        <span>Upload Short Video</span>
+                        <span>Upload Video (1080p)</span>
                       </button>
                       <button
                         type="button"
@@ -4202,7 +5074,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-rose-500 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-2xs transition-colors cursor-pointer"
                       >
                         <Camera className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-                        <span>Record Short Video</span>
+                        <span>Record Video</span>
                       </button>
                       <button
                         type="button"
@@ -4237,9 +5109,9 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     </div>
                     {isCompressing && modalTrimProgress !== null ? (
                       <div className="max-w-xs mx-auto space-y-1.5 pt-1">
-                        <div className="flex items-center justify-between text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
-                          <span>{modalTrimStage}</span>
-                          <span>{modalTrimProgress}%</span>
+                        <div className="flex items-center justify-between text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 gap-2">
+                          <span className="truncate">{modalTrimStage}</span>
+                          <span className="font-mono tabular-nums shrink-0">{modalTrimProgress}%</span>
                         </div>
                         <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                           <div
@@ -4247,17 +5119,59 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                             style={{ width: `${modalTrimProgress}%` }}
                           />
                         </div>
-                        {modalMediaType === 'video' && modalBackgroundUpload && (
-                          <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                            You can tap <strong>Publish in Background</strong> now and keep browsing.
-                          </p>
+                        <div className="flex items-center justify-center gap-3 flex-wrap">
+                          {modalMediaType === 'video' && modalBackgroundUpload && (
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                              Tap <strong>Publish in Background</strong> anytime to keep browsing.
+                            </p>
+                          )}
+                          {modalMediaType === 'video' && modalUnbakedFileRef.current && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                modalVideoAbortRef.current?.abort();
+                                modalVideoAbortRef.current = null;
+                                modalVideoGenerationRef.current += 1;
+                                modalVideoPromiseRef.current = null;
+                                setIsCompressing(false);
+                                setModalTrimProgress(null);
+                                setModalShowVideoTrimmer(true);
+                              }}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
+                            >
+                              <Scissors className="w-3 h-3" />
+                              <span>Trim Start/End Instead</span>
+                            </button>
+                          )}
+                        </div>
+                        {modalMediaType === 'video' && modalUnbakedFileRef.current && (
+                          <div className="pt-1.5 flex items-center justify-center gap-1 flex-wrap">
+                            {VIDEO_PLAYBACK_SPEED_OPTIONS.map((spd) => {
+                              const active = Math.abs(modalPlaybackSpeed - spd) < 0.01;
+                              return (
+                                <button
+                                  key={spd}
+                                  type="button"
+                                  disabled={isSubmitting}
+                                  onClick={() => handleModalPlaybackSpeedChange(spd)}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-mono tabular-nums font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-40 ${
+                                    active
+                                      ? 'bg-emerald-600 text-white'
+                                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                                  }`}
+                                >
+                                  {spd}x
+                                </button>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                     ) : (
                       <p className="text-[10px] text-slate-400 dark:text-slate-500">
                         {isCompressing
                           ? 'Auto-compressing media...'
-                          : 'Photos & videos auto-compress for fast 3G/4G upload · Longer videos auto-trim to 60s'}
+                          : 'Full HD 1080p videos up to 5 min supported · Larger files auto-compress in background'}
                       </p>
                     )}
                   </div>
@@ -4266,6 +5180,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-950 max-h-56 flex items-center justify-center">
                       {modalMediaType === 'video' ? (
                         <video
+                          ref={modalPreviewVideoRef}
                           src={compressedImage}
                           poster={modalVideoData?.thumbnailDataUrl}
                           controls
@@ -4273,6 +5188,17 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                           muted
                           loop
                           playsInline
+                          onLoadedMetadata={() => {
+                            const v = modalPreviewVideoRef.current as (HTMLVideoElement & { preservesPitch?: boolean; webkitPreservesPitch?: boolean }) | null;
+                            if (!v) return;
+                            const encodedSpeed = modalVideoData?.playbackSpeed || 1;
+                            try {
+                              v.playbackRate = Math.min(4, Math.max(0.25, modalPlaybackSpeed / encodedSpeed));
+                              if ('preservesPitch' in v) v.preservesPitch = true;
+                            } catch {
+                              // ignore
+                            }
+                          }}
                           className="max-h-56 w-full object-contain bg-black"
                         />
                       ) : (
@@ -4283,6 +5209,21 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                         />
                       )}
                       <div className="absolute top-2 right-2 flex items-center gap-1.5 z-10">
+                        {modalMediaType === 'video' && modalUnbakedFileRef.current && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalTrimmerMeta((prev) => prev || (videoMeta ? { duration: videoMeta.originalDuration || videoMeta.duration } : null));
+                              setModalShowVideoTrimmer(true);
+                            }}
+                            disabled={isSubmitting}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-black/75 hover:bg-emerald-600 text-white text-[11px] font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-40 whitespace-nowrap shrink-0"
+                            title="Crop start and end of this video"
+                          >
+                            <Scissors className="w-3.5 h-3.5" />
+                            <span>Trim</span>
+                          </button>
+                        )}
                         {modalMediaType === 'video' && (
                           <button
                             type="button"
@@ -4292,8 +5233,8 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                               setModalShowVideoRecorder(true);
                             }}
                             disabled={isSubmitting}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-black/75 hover:bg-indigo-600 text-white text-[11px] font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-40"
-                            title="Re-record short video with camera"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-black/75 hover:bg-indigo-600 text-white text-[11px] font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-40 whitespace-nowrap shrink-0"
+                            title="Re-record video with camera"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
                             <span>Re-record</span>
@@ -4323,21 +5264,53 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     )}
 
                     {modalMediaType === 'video' && videoMeta && (
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1 gap-2 flex-wrap">
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1 gap-2 flex-wrap font-mono tabular-nums">
                         <span>
-                          Short Video: <strong>{formatVideoDuration(videoMeta.duration)}</strong> ({formatFileSize(videoMeta.size)}
+                          Video: <strong>{formatVideoDuration(videoMeta.duration)}</strong>
+                          {modalPlaybackSpeed !== 1 ? ` · ${modalPlaybackSpeed}x` : ''} ({formatFileSize(videoMeta.size)}
                           {videoMeta.wasCompressed && videoMeta.originalSize && videoMeta.originalSize > videoMeta.size
                             ? ` · compressed from ${formatFileSize(videoMeta.originalSize)}`
                             : ''}
                           )
                         </span>
-                        <span className="text-indigo-600 dark:text-indigo-400 font-semibold">
-                          {videoMeta.wasAutoTrimmed
-                            ? `✓ Auto-trimmed from ${formatVideoDuration(videoMeta.originalDuration)}`
+                        <span className="text-indigo-600 dark:text-indigo-400 font-semibold font-sans">
+                          {isCompressing && modalTrimProgress !== null
+                            ? `${modalTrimStage} (${modalTrimProgress}%)`
+                            : videoMeta.wasAutoTrimmed
+                            ? `✓ Trimmed from ${formatVideoDuration(videoMeta.originalDuration)}`
                             : videoMeta.wasCompressed
                             ? '✓ Auto-compressed'
                             : '✓ Ready for Feed'}
                         </span>
+                      </div>
+                    )}
+
+                    {modalMediaType === 'video' && modalUnbakedFileRef.current && (
+                      <div className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 flex items-center justify-between gap-2 flex-wrap">
+                        <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                          <Gauge className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span>Playback Speed</span>
+                        </div>
+                        <div className="inline-flex items-center rounded-lg bg-slate-200/80 dark:bg-slate-900 p-0.5 gap-0.5 overflow-x-auto max-w-full">
+                          {VIDEO_PLAYBACK_SPEED_OPTIONS.map((spd) => {
+                            const active = Math.abs(modalPlaybackSpeed - spd) < 0.01;
+                            return (
+                              <button
+                                key={spd}
+                                type="button"
+                                disabled={isSubmitting}
+                                onClick={() => handleModalPlaybackSpeedChange(spd)}
+                                className={`px-2.5 py-1 rounded-md text-[11px] font-mono tabular-nums font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-40 ${
+                                  active
+                                    ? 'bg-emerald-600 text-white shadow-2xs'
+                                    : 'text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'
+                                }`}
+                              >
+                                {spd}x
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
 
@@ -4484,6 +5457,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
                   type="submit"
                   disabled={
                     isSubmitting ||
+                    modalShowVideoTrimmer ||
                     (isCompressing && !(modalMediaType === 'video' && modalBackgroundUpload && !!modalVideoFileRef.current))
                   }
                   className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-xs inline-flex items-center gap-1.5"

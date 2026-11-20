@@ -16,6 +16,7 @@ export type NotificationType =
   | 'friend_request'
   | 'friend_request_accepted'
   | 'new_follower'
+  | 'profile_tag'
   // Direct Messages
   | 'direct_message';
 
@@ -23,6 +24,7 @@ export type NotificationFilterType =
   | 'all'
   | 'post_like'
   | 'post_comment'
+  | 'profile_tag'
   | 'direct_message'
   | 'friend_request'
   | 'new_follower'
@@ -37,6 +39,7 @@ export interface NotificationPreferences {
   typePreferences: {
     post_like: boolean;
     post_comment: boolean;
+    profile_tag?: boolean;
     direct_message: boolean;
     friend_request: boolean;
     friend_request_accepted: boolean;

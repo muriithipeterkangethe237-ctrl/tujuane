@@ -29,7 +29,8 @@ import {
   Info,
   Radio,
   Wifi,
-  RefreshCw
+  RefreshCw,
+  AtSign
 } from 'lucide-react';
 import {
   UserNotification,
@@ -129,6 +130,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
       all: notifications.length,
       post_like: 0,
       post_comment: 0,
+      profile_tag: 0,
       direct_message: 0,
       friend_request: 0,
       new_follower: 0,
@@ -139,6 +141,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
     notifications.forEach((n) => {
       if (n.type === 'post_like') counts.post_like++;
       else if (n.type === 'post_comment') counts.post_comment++;
+      else if (n.type === 'profile_tag') counts.profile_tag++;
       else if (n.type === 'direct_message') counts.direct_message++;
       else if (n.type === 'friend_request' || n.type === 'friend_request_accepted') counts.friend_request++;
       else if (n.type === 'new_follower') counts.new_follower++;
@@ -167,6 +170,8 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
           return n.type === 'post_like';
         case 'post_comment':
           return n.type === 'post_comment';
+        case 'profile_tag':
+          return n.type === 'profile_tag';
         case 'direct_message':
           return n.type === 'direct_message';
         case 'friend_request':
@@ -391,6 +396,13 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
             <span>New Follower</span>
           </span>
         );
+      case 'profile_tag':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-800 border border-violet-200">
+            <AtSign className="w-3 h-3 text-violet-600" />
+            <span>Tagged You</span>
+          </span>
+        );
       case 'account_verified':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
@@ -481,6 +493,12 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
             <ThumbsUp className="w-4 h-4" />
           </div>
         );
+      case 'profile_tag':
+        return (
+          <div className="w-9 h-9 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center shrink-0 shadow-xs border border-violet-200">
+            <AtSign className="w-4 h-4" />
+          </div>
+        );
       case 'account_verified':
         return (
           <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 shadow-xs border border-purple-200">
@@ -526,366 +544,28 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
         className="bg-white dark:bg-slate-900 w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[92vh] overflow-hidden transition-colors"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Modal Top Header */}
-        <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/90 dark:bg-slate-850/90 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-700 text-white flex items-center justify-center shadow-xs">
-              <Bell className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-                  Real-Time Notification Channel
-                </h2>
-                {unreadCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white animate-pulse">
-                    {unreadCount} unread
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Live push alerts on direct chats, upvotes, replies, and community trust standing
-              </p>
-            </div>
-          </div>
+        {/* Minimal Modal Top Header - ONLY NOTIFICATIONS */}
+        <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
+          <h2 className="text-base sm:text-lg font-black tracking-wide text-slate-900 dark:text-white uppercase">
+            NOTIFICATIONS
+          </h2>
 
-          <div className="flex items-center gap-1.5">
-            {unreadCount > 0 && (
-              <button
-                type="button"
-                onClick={handleMarkAllRead}
-                disabled={isProcessing}
-                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-colors cursor-pointer border border-emerald-200 dark:border-emerald-800"
-                title="Mark all notifications as read"
-              >
-                <CheckCheck className="w-3.5 h-3.5" />
-                <span>Mark All Read</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose();
-              }}
-              className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-              aria-label="Close"
-              title="Close notifications (Esc)"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            aria-label="Close"
+            title="Close notifications (Esc)"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Real-Time Push Notification & Sound Controller Banner */}
-        <div className="px-5 py-3 bg-slate-900 text-white border-b border-slate-800 shrink-0">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            {/* Status indicator */}
-            <div className="flex items-center gap-2.5">
-              <div
-                className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                  permissionStatus === 'granted'
-                    ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]'
-                    : permissionStatus === 'denied'
-                    ? 'bg-rose-400'
-                    : 'bg-amber-400 animate-ping'
-                }`}
-              />
-              <div className="text-xs">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <span>Browser Real-Time Push:</span>
-                  {permissionStatus === 'granted' ? (
-                    <span className="text-emerald-400 font-extrabold flex items-center gap-1">
-                      <Radio className="w-3.5 h-3.5 animate-pulse" /> Active & Connected
-                    </span>
-                  ) : permissionStatus === 'denied' ? (
-                    <span className="text-rose-400 font-extrabold">Blocked in Browser</span>
-                  ) : (
-                    <span className="text-amber-400 font-extrabold">Permission Needed</span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-300">
-                  {permissionStatus === 'granted'
-                    ? preferences.backgroundAlertsEnabled
-                      ? 'Always-on mode active: receives alerts whenever your device is online, even without launching TUJUANE.'
-                      : 'Desktop banners active while a tab is open. Turn on Always-On below for closed-app alerts.'
-                    : permissionStatus === 'denied'
-                    ? 'Push blocked in browser settings. Click the lock icon in the URL bar to enable.'
-                    : 'Enable push alerts to be notified instantly even when the app is not open.'}
-                </p>
-              </div>
-            </div>
-
-            {/* Interactive Control Buttons */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {permissionStatus !== 'granted' && (
-                <button
-                  type="button"
-                  onClick={handleRequestPushPermission}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-                >
-                  <Bell className="w-3.5 h-3.5" />
-                  <span>Enable Push</span>
-                </button>
-              )}
-
-              {/* Always-On Closed-App Alerts Toggle */}
-              <button
-                type="button"
-                onClick={handleToggleAlwaysOnAlerts}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border ${
-                  preferences.backgroundAlertsEnabled && permissionStatus === 'granted'
-                    ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/50 hover:bg-emerald-900/80'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                }`}
-                title="Receive alerts whenever your device is online even when TUJUANE is closed"
-              >
-                <Wifi className={`w-3.5 h-3.5 ${preferences.backgroundAlertsEnabled && permissionStatus === 'granted' ? 'text-emerald-400' : 'text-slate-400'}`} />
-                <span>{preferences.backgroundAlertsEnabled ? 'Always-On: On' : 'Always-On: Off'}</span>
-              </button>
-
-              {/* Sound chime toggle */}
-              <button
-                type="button"
-                onClick={handleToggleSound}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border ${
-                  soundEnabled
-                    ? 'bg-slate-800 text-emerald-300 border-emerald-500/30 hover:bg-slate-700'
-                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
-                }`}
-                title={soundEnabled ? 'Sound alerts are ON' : 'Sound alerts are MUTED'}
-              >
-                {soundEnabled ? (
-                  <>
-                    <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Chime: On</span>
-                  </>
-                ) : (
-                  <>
-                    <VolumeX className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Muted</span>
-                  </>
-                )}
-              </button>
-
-              {/* Test Alert Button */}
-              <button
-                type="button"
-                onClick={handleTestNotification}
-                className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-white text-xs font-medium transition-all cursor-pointer border border-white/10 flex items-center gap-1"
-                title="Send a sample test push alert & verify background sync"
-              >
-                <RefreshCw className="w-3 h-3" />
-                <span>Test Alert</span>
-              </button>
-
-              {/* Preferences drawer toggle */}
-              <button
-                type="button"
-                onClick={() => setShowPreferences((prev) => !prev)}
-                className={`p-1.5 rounded-lg text-xs transition-colors cursor-pointer border ${
-                  showPreferences
-                    ? 'bg-emerald-600 text-white border-emerald-500'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white hover:bg-slate-700'
-                }`}
-                title="Customize notification types"
-                aria-label="Notification settings"
-              >
-                <Sliders className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-
-          {bgCapabilities && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
-              <span>SW: {bgCapabilities.swReady ? 'Ready' : 'Pending'}</span>
-              <span>•</span>
-              <span>Online Sync: {bgCapabilities.backgroundSyncRegistered ? 'Armed' : 'Standby'}</span>
-              {bgCapabilities.periodicSyncSupported && (
-                <>
-                  <span>•</span>
-                  <span>Background Wake: {bgCapabilities.periodicSyncRegistered ? 'Active' : 'Ready (PWA)'}</span>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Test notification feedback toast */}
-          {testNotificationFeedback && (
-            <div className="mt-2.5 py-1.5 px-3 rounded-lg bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 text-xs flex items-center gap-2 animate-in fade-in">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>{testNotificationFeedback}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Expandable Notification Type Preferences Accordion */}
-        {showPreferences && (
-          <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-xs shrink-0 animate-in fade-in slide-in-from-top-1">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                <Settings className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
-                <span>Notification Type Preferences</span>
-              </div>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                Choose which events trigger real-time push and chimes
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
-                <input
-                  type="checkbox"
-                  checked={preferences.typePreferences.direct_message}
-                  onChange={() => handleToggleTypePreference('direct_message')}
-                  className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                />
-                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">💬 Direct Chats</span>
-              </label>
-
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
-                <input
-                  type="checkbox"
-                  checked={preferences.typePreferences.post_like}
-                  onChange={() => handleToggleTypePreference('post_like')}
-                  className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                />
-                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">❤️ Post Upvotes</span>
-              </label>
-
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
-                <input
-                  type="checkbox"
-                  checked={preferences.typePreferences.post_comment}
-                  onChange={() => handleToggleTypePreference('post_comment')}
-                  className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                />
-                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">💬 Replies</span>
-              </label>
-
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
-                <input
-                  type="checkbox"
-                  checked={preferences.typePreferences.friend_request}
-                  onChange={() => handleToggleTypePreference('friend_request')}
-                  className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                />
-                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">🤝 Connections</span>
-              </label>
-
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
-                <input
-                  type="checkbox"
-                  checked={preferences.typePreferences.new_follower}
-                  onChange={() => handleToggleTypePreference('new_follower')}
-                  className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                />
-                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">👥 Followers</span>
-              </label>
-
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
-                <input
-                  type="checkbox"
-                  checked={preferences.typePreferences.account_status}
-                  onChange={() => handleToggleTypePreference('account_status')}
-                  className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                />
-                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">🛡️ Trust Badges</span>
-              </label>
-
-              <label className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-700/60 select-none">
-                <input
-                  type="checkbox"
-                  checked={preferences.typePreferences.post_advisory}
-                  onChange={() => handleToggleTypePreference('post_advisory')}
-                  className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                />
-                <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">⚠️ Safety Advisories</span>
-              </label>
-
-              <div className="flex items-center justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowPreferences(false)}
-                  className="text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300 font-bold px-2 py-1 text-xs cursor-pointer"
-                >
-                  Done
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Account Standing Summary Dashboard Card */}
-        <div className="px-5 py-3 bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white border-b border-slate-800 shrink-0">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div
-                className={`w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-md ${
-                  effectiveStanding.status === 'warning'
-                    ? 'bg-rose-600 ring-2 ring-rose-400'
-                    : effectiveStanding.status === 'verified'
-                    ? 'bg-purple-600 ring-2 ring-purple-400'
-                    : 'bg-emerald-600 ring-2 ring-emerald-400'
-                }`}
-              >
-                {effectiveStanding.status === 'warning' ? (
-                  <AlertCircle className="w-4 h-4" />
-                ) : effectiveStanding.status === 'verified' ? (
-                  <Award className="w-4 h-4" />
-                ) : (
-                  <ShieldCheck className="w-4 h-4" />
-                )}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-sm tracking-tight">
-                    {effectiveStanding.title}
-                  </span>
-                  <span
-                    className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                      effectiveStanding.status === 'warning'
-                        ? 'bg-rose-500/30 text-rose-200 border border-rose-500/50'
-                        : effectiveStanding.status === 'verified'
-                        ? 'bg-purple-500/30 text-purple-200 border border-purple-500/50'
-                        : 'bg-emerald-500/30 text-emerald-200 border border-emerald-500/50'
-                    }`}
-                  >
-                    {effectiveStanding.status === 'warning'
-                      ? 'Caution'
-                      : effectiveStanding.status === 'verified'
-                      ? 'Verified Citizen'
-                      : 'Active & Safe'}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-300 line-clamp-1 mt-0.5">
-                  {effectiveStanding.description}
-                </p>
-              </div>
-            </div>
-
-            {/* Metric pill counter */}
-            <div className="flex items-center gap-2 self-start sm:self-auto text-xs font-semibold bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
-              <div className="flex items-center gap-1 text-emerald-300">
-                <ThumbsUp className="w-3.5 h-3.5" />
-                <span>{effectiveStanding.totalUpvotes} Likes</span>
-              </div>
-              <span className="text-white/30">•</span>
-              <div className="flex items-center gap-1 text-slate-200">
-                <Flame className="w-3.5 h-3.5 text-amber-400" />
-                <span>{effectiveStanding.totalPosts} Posts</span>
-              </div>
-              <span className="text-white/30">•</span>
-              <div className="flex items-center gap-1 text-emerald-200">
-                <span>Trust {effectiveStanding.score}%</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Notification Type Granular Filter Tabs */}
-        <div className="px-5 pt-2.5 pb-2 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-white dark:bg-slate-900 shrink-0">
+        {/* Compact Single-Row Filter Strip */}
+        <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-slate-50/70 dark:bg-slate-900 shrink-0">
           <div className="flex items-center gap-1 overflow-x-auto text-xs font-semibold no-scrollbar py-0.5 max-w-full">
             <button
               onClick={() => setActiveFilter('all')}
@@ -900,6 +580,23 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
             </button>
 
             <button
+              onClick={() => setActiveFilter('profile_tag')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                activeFilter === 'profile_tag'
+                  ? 'bg-violet-700 text-white shadow-2xs font-bold'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <AtSign className="w-3 h-3 text-violet-500" />
+              <span>Tags</span>
+              {countByType.profile_tag > 0 && (
+                <span className="text-[10px] font-mono px-1 rounded-full bg-violet-200/40 dark:bg-violet-900/60">
+                  {countByType.profile_tag}
+                </span>
+              )}
+            </button>
+
+            <button
               onClick={() => setActiveFilter('direct_message')}
               className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeFilter === 'direct_message'
@@ -908,7 +605,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               }`}
             >
               <Send className="w-3 h-3 text-sky-500" />
-              <span>Direct Chats</span>
+              <span>Chats</span>
               {countByType.direct_message > 0 && (
                 <span className="text-[10px] font-mono px-1 rounded-full bg-sky-200/40 dark:bg-sky-900/60">
                   {countByType.direct_message}
@@ -1203,32 +900,32 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
         </div>
 
         {/* Modal Bottom Footer */}
-        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500 shrink-0">
+        <div className="px-5 py-2.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-700">TUJUANE Kenya Real-Time Alerts</span>
-            <span className="hidden sm:inline text-slate-300">•</span>
-            <span className="hidden sm:inline">Push + Sound Synced</span>
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={handleMarkAllRead}
+                disabled={isProcessing}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-colors cursor-pointer"
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+                <span>Mark all read ({unreadCount})</span>
+              </button>
+            )}
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleMarkAllRead}
-              className="text-emerald-700 hover:text-emerald-900 font-semibold cursor-pointer sm:hidden"
-            >
-              Mark all read
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose();
-              }}
-              className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 active:scale-95 text-white font-bold transition-all cursor-pointer shadow-xs"
-              title="Close notifications"
-            >
-              Close
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 active:scale-95 text-white font-bold transition-all cursor-pointer shadow-xs"
+            title="Close notifications"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>

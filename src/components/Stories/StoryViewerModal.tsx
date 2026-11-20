@@ -8,11 +8,8 @@ import {
   VolumeX,
   Eye,
   Send,
-  MapPin,
   Sparkles,
   AlertCircle,
-  Pause,
-  Play,
   Music
 } from 'lucide-react';
 import { UserProfile } from '../../types/chat';
@@ -256,7 +253,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   if (!activeGroup || !activeStory) {
     return (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl select-none"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 select-none"
         onClick={onClose}
       >
         <div
@@ -296,19 +293,6 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   const authorDisplayName = liveStoryAuthor.displayName;
   const realViewers = getRealStoryViewers(activeStory);
   const realViewsCount = realViewers.length;
-
-  const formatRelativeTime = (isoString: string) => {
-    try {
-      const diffMs = Date.now() - new Date(isoString).getTime();
-      const mins = Math.floor(diffMs / (60 * 1000));
-      if (mins < 1) return 'Just now';
-      if (mins < 60) return `${mins}m ago`;
-      const hrs = Math.floor(mins / 60);
-      return `${hrs}h ago`;
-    } catch {
-      return '';
-    }
-  };
 
   const handleSendReaction = async (emoji: string) => {
     if (!currentUser) {
@@ -394,7 +378,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl select-none"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 select-none"
       onClick={onClose}
     >
       {/* Toast Notification */}
@@ -410,132 +394,16 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
         className="relative w-full h-full max-w-md max-h-[100dvh] md:max-h-[92vh] md:rounded-3xl overflow-hidden bg-slate-950 flex flex-col justify-between shadow-2xl border border-white/10"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* TOP SEGMENTS PROGRESS BAR */}
-        <div className="absolute top-0 inset-x-0 z-30 p-3 pt-3.5 flex items-center gap-1.5 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
-          {activeGroup.stories.map((story, idx) => {
-            let fillWidth = '0%';
-            if (idx < safeStoryIndex) {
-              fillWidth = '100%';
-            } else if (idx === safeStoryIndex) {
-              fillWidth = `${progress}%`;
-            }
-            return (
-              <div
-                key={story.id}
-                className="flex-1 h-1 rounded-full bg-white/30 overflow-hidden cursor-pointer"
-                onClick={() => {
-                  setCurrentStoryIndex(idx);
-                  setProgress(0);
-                }}
-              >
-                <div
-                  className="h-full bg-white rounded-full transition-all duration-75"
-                  style={{ width: fillWidth }}
-                />
-              </div>
-            );
-          })}
-        </div>
-
-        {/* TOP AUTHOR HEADER & CONTROLS */}
-        <div className="absolute top-6 inset-x-0 z-30 px-3.5 py-2 flex items-center justify-between text-white bg-gradient-to-b from-black/60 to-transparent">
-          <div
-            onClick={() => {
-              if (onViewUserProfile) {
-                onViewUserProfile({
-                  uid: activeStory.authorId,
-                  displayName: authorDisplayName,
-                  email: '',
-                  photoURL: liveStoryAuthor.photoURL,
-                  county: liveStoryAuthor.county || 'Kenya',
-                  constituency: liveStoryAuthor.constituency,
-                  bio: liveStoryAuthor.bio,
-                  occupation: liveStoryAuthor.occupation,
-                  isOnline: liveStoryAuthor.isOnline,
-                  lastSeen: liveStoryAuthor.lastSeen,
-                  createdAt: ''
-                });
-              }
-            }}
-            className="flex items-center gap-2.5 cursor-pointer group min-w-0"
-          >
-            {liveStoryAuthor.photoURL ? (
-              <img
-                src={liveStoryAuthor.photoURL}
-                alt={authorDisplayName}
-                className="w-9 h-9 rounded-full object-cover border-2 border-emerald-400 group-hover:scale-105 transition-transform shrink-0"
-              />
-            ) : (
-              <div className="w-9 h-9 rounded-full bg-emerald-500 text-slate-950 font-black flex items-center justify-center text-xs border border-white/20 shrink-0">
-                {authorDisplayName.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div className="min-w-0">
-              <div className="font-extrabold text-xs sm:text-sm text-white flex items-center gap-1.5 truncate">
-                <span className="truncate group-hover:underline">{authorDisplayName}</span>
-                <span className="text-[10px] text-white/70 font-normal shrink-0">
-                  · {formatRelativeTime(activeStory.createdAt)}
-                </span>
-              </div>
-              {liveStoryAuthor.county && (
-                <div className="text-[10px] text-emerald-300 font-medium flex items-center gap-0.5">
-                  <MapPin className="w-2.5 h-2.5" />
-                  <span>{liveStoryAuthor.county} County</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={() => setIsPaused((p) => !p)}
-              className="p-2 text-white/80 hover:text-white rounded-full bg-black/40 hover:bg-black/60 transition-colors cursor-pointer"
-              title={isPaused ? 'Resume story' : 'Pause story'}
-              aria-label={isPaused ? 'Resume story' : 'Pause story'}
-            >
-              {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
-            </button>
-
-            {isVideo && (
-              <button
-                type="button"
-                onClick={() => {
-                  const nextMuted = !isMuted;
-                  setIsMuted(nextMuted);
-                  if (videoRef.current) {
-                    videoRef.current.muted = nextMuted;
-                  }
-                }}
-                className="p-2 text-white/80 hover:text-white rounded-full bg-black/40 hover:bg-black/60 transition-colors cursor-pointer"
-                title={isMuted ? 'Unmute audio' : 'Mute audio'}
-              >
-                {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-              </button>
-            )}
-
-            {isOwnStory && (
-              <button
-                type="button"
-                onClick={() => setConfirmDeleteOpen(true)}
-                className="p-2 text-rose-400 hover:text-rose-300 rounded-full bg-black/40 hover:bg-black/60 transition-colors cursor-pointer"
-                title="Delete this story"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 text-white/80 hover:text-white rounded-full bg-black/40 hover:bg-black/60 transition-colors cursor-pointer"
-              aria-label="Close"
-              title="Close (Esc)"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
+        {/* Minimal Close Button Only (Top contents removed for unobstructed story viewing) */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-3 right-3 z-30 p-2 text-white/85 hover:text-white rounded-full bg-black/70 hover:bg-black/85 transition-colors cursor-pointer"
+          aria-label="Close"
+          title="Close (Esc)"
+        >
+          <X className="w-5 h-5" />
+        </button>
 
         {/* MEDIA DISPLAY (PHOTO OR VIDEO) */}
         <div
@@ -604,14 +472,6 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
               }}
               onWaiting={() => setIsVideoBuffering(true)}
               onPlaying={() => setIsVideoBuffering(false)}
-              onTimeUpdate={() => {
-                const v = videoRef.current;
-                if (!v) return;
-                const total = v.duration && isFinite(v.duration) ? v.duration : activeStory.duration || 15;
-                if (total > 0) {
-                  setProgress(Math.min(99.5, (v.currentTime / total) * 100));
-                }
-              }}
               onEnded={() => {
                 setProgress(100);
                 handleNextStory();
@@ -620,7 +480,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                 setIsVideoBuffering(false);
                 setMediaError(true);
               }}
-              className="w-full h-full object-contain"
+              className="w-full h-full object-contain transform-gpu will-change-transform"
             />
           ) : (
             <img
@@ -632,9 +492,9 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
             />
           )}
 
-          {/* TAP NAVIGATION ZONES (Left / Right, avoiding header & footer controls) */}
+          {/* TAP NAVIGATION ZONES (Left / Right, avoiding close & footer controls) */}
           <div
-            className="absolute left-0 top-24 bottom-32 w-1/3 z-20 cursor-pointer"
+            className="absolute left-0 top-14 bottom-32 w-1/3 z-20 cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
               handlePrevStory();
@@ -642,7 +502,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
             title="Previous story"
           />
           <div
-            className="absolute right-0 top-24 bottom-32 w-1/3 z-20 cursor-pointer"
+            className="absolute right-0 top-14 bottom-32 w-1/3 z-20 cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
               handleNextStory();
@@ -716,7 +576,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
           {/* Sound Attribution Badge */}
           {activeStory.soundTitle && (
             <div className="flex justify-center">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/65 border border-emerald-400/35 text-[11px] font-bold text-emerald-200 max-w-full shadow-md backdrop-blur-md">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/75 border border-emerald-400/35 text-[11px] font-bold text-emerald-200 max-w-full shadow-md">
                 <Music className="w-3 h-3 text-emerald-400 shrink-0" />
                 <span className="truncate">{activeStory.soundTitle}</span>
               </div>
@@ -725,26 +585,54 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
 
           {/* Caption */}
           {activeStory.caption && (
-            <div className="p-3 bg-black/60 backdrop-blur-md rounded-2xl text-white text-xs sm:text-sm text-center font-medium border border-white/10 shadow-lg">
+            <div className="p-3 bg-black/75 rounded-2xl text-white text-xs sm:text-sm text-center font-medium border border-white/10 shadow-lg">
               {activeStory.caption}
             </div>
           )}
 
-          {/* Real Unique Viewers & Reaction Pills */}
+          {/* Real Unique Viewers, Audio/Delete Controls & Reaction Pills */}
           <div className="flex items-center justify-between gap-2 text-xs text-white/80">
-            {isOwnStory ? (
-              <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 shrink-0">
-                <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="font-bold">
-                  {realViewsCount} {realViewsCount === 1 ? 'view' : 'views'}
-                </span>
-              </div>
-            ) : (
-              <div />
-            )}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {isOwnStory && (
+                <div className="flex items-center gap-1.5 bg-black/70 px-2.5 py-1 rounded-full border border-white/10">
+                  <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="font-bold">
+                    {realViewsCount} {realViewsCount === 1 ? 'view' : 'views'}
+                  </span>
+                </div>
+              )}
+
+              {isVideo && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextMuted = !isMuted;
+                    setIsMuted(nextMuted);
+                    if (videoRef.current) {
+                      videoRef.current.muted = nextMuted;
+                    }
+                  }}
+                  className="p-1.5 text-white/85 hover:text-white rounded-full bg-black/70 hover:bg-black/85 border border-white/10 transition-colors cursor-pointer"
+                  title={isMuted ? 'Unmute audio' : 'Mute audio'}
+                >
+                  {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                </button>
+              )}
+
+              {isOwnStory && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteOpen(true)}
+                  className="p-1.5 text-rose-400 hover:text-rose-300 rounded-full bg-black/70 hover:bg-black/85 border border-white/10 transition-colors cursor-pointer"
+                  title="Delete this story"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
 
             {/* Quick Reactions Bar */}
-            <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 max-w-[230px] sm:max-w-xs overflow-x-auto scrollbar-none">
+            <div className="flex items-center gap-1.5 bg-black/70 px-2.5 py-1 rounded-full border border-white/10 max-w-[230px] sm:max-w-xs overflow-x-auto scrollbar-none">
               {QUICK_STORY_REACTIONS.map((r) => (
                 <button
                   key={r.emoji}
@@ -767,7 +655,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 placeholder={`Reply to ${authorDisplayName}...`}
-                className="flex-1 px-4 py-2 bg-black/60 border border-white/20 rounded-full text-xs text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-400 backdrop-blur-md"
+                className="flex-1 px-4 py-2 bg-black/75 border border-white/20 rounded-full text-xs text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-400"
               />
               <button
                 type="submit"

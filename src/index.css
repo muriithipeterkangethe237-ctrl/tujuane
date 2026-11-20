@@ -4,44 +4,41 @@
 
 :root {
   color-scheme: light;
-  --tujuane-surface: rgba(255, 255, 255, 0.86);
-  --tujuane-surface-soft: rgba(241, 245, 249, 0.78);
-  --tujuane-surface-elevated: rgba(255, 255, 255, 0.94);
+  --tujuane-surface: rgba(255, 255, 255, 0.95);
+  --tujuane-surface-soft: rgba(241, 245, 249, 0.92);
+  --tujuane-surface-elevated: rgba(255, 255, 255, 0.96);
   --tujuane-hairline: rgba(15, 23, 42, 0.06);
 }
 
 .dark {
   color-scheme: dark;
-  --tujuane-surface: rgba(15, 23, 42, 0.72);
-  --tujuane-surface-soft: rgba(30, 41, 59, 0.56);
-  --tujuane-surface-elevated: rgba(15, 23, 42, 0.88);
+  --tujuane-surface: rgba(15, 23, 42, 0.92);
+  --tujuane-surface-soft: rgba(30, 41, 59, 0.85);
+  --tujuane-surface-elevated: rgba(15, 23, 42, 0.94);
   --tujuane-hairline: rgba(248, 250, 252, 0.07);
 }
 
 .theme-kenya {
   color-scheme: dark;
-  --tujuane-surface: rgba(8, 13, 10, 0.56);
-  --tujuane-surface-soft: rgba(14, 22, 17, 0.48);
-  --tujuane-surface-elevated: rgba(8, 13, 10, 0.78);
+  --tujuane-surface: rgba(8, 13, 10, 0.84);
+  --tujuane-surface-soft: rgba(14, 22, 17, 0.78);
+  --tujuane-surface-elevated: rgba(8, 13, 10, 0.9);
   --tujuane-hairline: rgba(255, 255, 255, 0.08);
 }
 
 .tujuane-surface {
   background-color: var(--tujuane-surface);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  contain: layout style;
 }
 
 .tujuane-surface-soft {
   background-color: var(--tujuane-surface-soft);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 
 .tujuane-surface-elevated {
   background-color: var(--tujuane-surface-elevated);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .tujuane-divider {

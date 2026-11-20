@@ -134,9 +134,9 @@ service cloud.firestore {
         && (!('mediaType' in data) || (data.mediaType in ['image', 'video', 'audio']))
         && (!('mediaCaption' in data) || (data.mediaCaption is string && data.mediaCaption.size() <= 200))
         && (!('videoThumbnail' in data) || (data.videoThumbnail is string && data.videoThumbnail.size() <= 200000))
-        && (!('videoDuration' in data) || (data.videoDuration is number && data.videoDuration >= 0 && data.videoDuration <= 65))
-        && (!('videoSizeBytes' in data) || (data.videoSizeBytes is int && data.videoSizeBytes >= 0 && data.videoSizeBytes <= 13000000))
-        && (!('videoChunkCount' in data) || (data.videoChunkCount is int && data.videoChunkCount >= 0 && data.videoChunkCount <= 40))
+        && (!('videoDuration' in data) || (data.videoDuration is number && data.videoDuration >= 0 && data.videoDuration <= 305))
+        && (!('videoSizeBytes' in data) || (data.videoSizeBytes is int && data.videoSizeBytes >= 0 && data.videoSizeBytes <= 50000000))
+        && (!('videoChunkCount' in data) || (data.videoChunkCount is int && data.videoChunkCount >= 0 && data.videoChunkCount <= 130))
         && (!('videoMimeType' in data) || (data.videoMimeType is string && data.videoMimeType.size() <= 100))
         && (!('videoStatus' in data) || (data.videoStatus in ['ready', 'uploading']))
         && (!('audioDuration' in data) || (data.audioDuration is number && data.audioDuration >= 0 && data.audioDuration <= 32))
@@ -146,6 +146,8 @@ service cloud.firestore {
         && (!('soundTitle' in data) || (data.soundTitle is string && data.soundTitle.size() <= 160))
         && (!('soundAuthorId' in data) || (data.soundAuthorId is string && data.soundAuthorId.size() <= 128))
         && (!('soundAuthorName' in data) || (data.soundAuthorName is string && data.soundAuthorName.size() <= 100))
+        && (!('hashtags' in data) || (data.hashtags is list && data.hashtags.size() <= 20))
+        && (!('taggedUsers' in data) || (data.taggedUsers is list && data.taggedUsers.size() <= 15))
         && (!('backgroundColor' in data) || (data.backgroundColor is string && data.backgroundColor.size() <= 40))
         && (!('reactions' in data) || data.reactions is map)
         && (!('reactionsCount' in data) || data.reactionsCount is map)
@@ -163,7 +165,7 @@ service cloud.firestore {
       return data.id is string && data.id.size() > 0 && data.id.size() <= 128
         && data.postId == postId
         && data.authorId is string && data.authorId == request.auth.uid
-        && data.index is int && data.index >= 0 && data.index < 40
+        && data.index is int && data.index >= 0 && data.index < 130
         && data.data is string && data.data.size() > 0 && data.data.size() <= 650000
         && data.createdAt is timestamp;
     }
@@ -179,6 +181,7 @@ service cloud.firestore {
         && (!('mediaUrl' in data) || (data.mediaUrl is string && data.mediaUrl.size() <= 600000))
         && (!('replyToCommentId' in data) || (data.replyToCommentId is string && data.replyToCommentId.size() <= 128))
         && (!('replyToAuthorName' in data) || (data.replyToAuthorName is string && data.replyToAuthorName.size() <= 100))
+        && (!('taggedUsers' in data) || (data.taggedUsers is list && data.taggedUsers.size() <= 15))
         && (!('reactions' in data) || data.reactions is map)
         && (!('reactionsCount' in data) || data.reactionsCount is map)
         && data.createdAt is timestamp;
@@ -288,6 +291,32 @@ service cloud.firestore {
         && (!('resolvedBy' in data) || (data.resolvedBy is string && data.resolvedBy.size() <= 128))
         && (!('resolvedAt' in data) || (data.resolvedAt is string && data.resolvedAt.size() <= 64) || data.resolvedAt is timestamp)
         && (!('developerNotes' in data) || (data.developerNotes is string && data.developerNotes.size() <= 500))
+        && data.createdAt is timestamp;
+    }
+
+    // Validation for AppIssueReport (Citizen-submitted bug & issue reports)
+    function isValidAppIssueReport(data) {
+      return data.keys().hasAll(['id', 'reporterId', 'reporterName', 'category', 'severity', 'title', 'description', 'status', 'createdAt'])
+        && data.keys().hasOnly([
+          'id', 'reporterId', 'reporterName', 'reporterEmail', 'reporterCounty',
+          'category', 'severity', 'title', 'description', 'currentScreen',
+          'deviceInfo', 'status', 'developerNotes', 'resolvedBy', 'resolvedAt', 'createdAt'
+        ])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128 && data.id.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.reporterId is string && data.reporterId == request.auth.uid && data.reporterId.size() <= 128
+        && data.reporterName is string && data.reporterName.size() > 0 && data.reporterName.size() <= 100
+        && (!('reporterEmail' in data) || (data.reporterEmail is string && data.reporterEmail.size() <= 128))
+        && (!('reporterCounty' in data) || (data.reporterCounty is string && data.reporterCounty.size() <= 50))
+        && data.category in ['bug', 'ui_glitch', 'video_audio', 'performance', 'account_auth', 'notifications', 'feature_request', 'other']
+        && data.severity in ['low', 'medium', 'high', 'critical']
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 150
+        && data.description is string && data.description.size() > 0 && data.description.size() <= 1500
+        && (!('currentScreen' in data) || (data.currentScreen is string && data.currentScreen.size() <= 60))
+        && (!('deviceInfo' in data) || (data.deviceInfo is string && data.deviceInfo.size() <= 300))
+        && data.status in ['open', 'in_progress', 'resolved', 'dismissed']
+        && (!('developerNotes' in data) || (data.developerNotes is string && data.developerNotes.size() <= 500))
+        && (!('resolvedBy' in data) || (data.resolvedBy is string && data.resolvedBy.size() <= 128))
+        && (!('resolvedAt' in data) || (data.resolvedAt is string && data.resolvedAt.size() <= 64) || data.resolvedAt is timestamp)
         && data.createdAt is timestamp;
     }
 
@@ -608,6 +637,26 @@ service cloud.firestore {
         && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'resolvedBy', 'resolvedAt', 'developerNotes'])
         && incoming().status in ['open', 'resolved', 'ignored'];
       allow delete: if isDeveloper() && request.auth.token.email_verified == true && isValidId(crashId);
+    }
+
+    // 18. Citizen App Issue Reports
+    match /app_issue_reports/{issueId} {
+      allow get, list: if isSignedIn() && (
+        resource.data.reporterId == request.auth.uid ||
+        (isDeveloper() && request.auth.token.email_verified == true)
+      );
+      allow create: if isSignedIn()
+        && isValidId(issueId)
+        && isValidAppIssueReport(incoming())
+        && incoming().id == issueId
+        && incoming().reporterId == request.auth.uid
+        && incoming().status == 'open';
+      allow update: if isDeveloper()
+        && request.auth.token.email_verified == true
+        && isValidId(issueId)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'developerNotes', 'resolvedBy', 'resolvedAt'])
+        && incoming().status in ['open', 'in_progress', 'resolved', 'dismissed'];
+      allow delete: if isDeveloper() && request.auth.token.email_verified == true && isValidId(issueId);
     }
   }
 }

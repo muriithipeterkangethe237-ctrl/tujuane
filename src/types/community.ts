@@ -111,6 +111,11 @@ export function buildSoundFromPost(post: CommunityPost, overrideAuthorName?: str
   };
 }
 
+export interface TaggedUserRef {
+  uid: string;
+  displayName: string;
+}
+
 export interface CommunityPost {
   id: string;
   authorId: string;
@@ -141,6 +146,8 @@ export interface CommunityPost {
   soundTitle?: string;
   soundAuthorId?: string;
   soundAuthorName?: string;
+  hashtags?: string[];
+  taggedUsers?: TaggedUserRef[];
   backgroundColor?: PostBackgroundColor | string;
   upvotes: number;
   upvoters: string[]; // list of user UIDs who upvoted
@@ -168,6 +175,7 @@ export interface CommunityComment {
   mediaUrl?: string;
   replyToCommentId?: string;
   replyToAuthorName?: string;
+  taggedUsers?: TaggedUserRef[];
   reactions?: Record<string, ReactionKey | string>; // userId -> reactionKey (strictly one reaction per user)
   reactionsCount?: Record<string, number>; // reactionKey -> total count
   createdAt: string;
@@ -197,5 +205,7 @@ export interface CreatePostParams {
   soundTitle?: string;
   soundAuthorId?: string;
   soundAuthorName?: string;
+  hashtags?: string[];
+  taggedUsers?: TaggedUserRef[];
   backgroundColor?: PostBackgroundColor | string;
 }

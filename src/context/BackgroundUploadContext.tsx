@@ -36,7 +36,10 @@ export interface EnqueuePostVideoUploadInput {
   basePostParams: CreatePostParams & Record<string, any>;
   processedVideo?: ProcessedFeedVideo | null;
   pendingVideoPromise?: Promise<ProcessedFeedVideo> | null;
+  registerPendingProgress?: (cb: (pct: number, stage?: string) => void) => void;
   rawVideoFile?: File | null;
+  trimRange?: { startTimeSec: number; endTimeSec: number } | null;
+  playbackSpeed?: number;
   soundTrack?: { sound: PostedVideoSound; mode: SoundMixMode; url?: string } | null;
   initialProgress?: number;
   onCompleted?: (postId: string) => void;
@@ -49,6 +52,7 @@ export interface EnqueueStoryVideoUploadInput {
   caption?: string;
   encodedStory?: EncodedStoryVideoResult | null;
   pendingStoryPromise?: Promise<EncodedStoryVideoResult> | null;
+  registerPendingProgress?: (cb: (pct: number, stage?: string) => void) => void;
   rawVideoFile?: File | null;
   soundTrack?: { sound: PostedVideoSound; mode: SoundMixMode; url?: string } | null;
   initialProgress?: number;
@@ -110,7 +114,20 @@ export const BackgroundUploadProvider: React.FC<{
   }, []);
 
   const updateJob = useCallback((jobId: string, patch: Partial<BackgroundUploadJob>) => {
-    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, ...patch } : j)));
+    setJobs((prev) => {
+      let didChange = false;
+      const next = prev.map((j) => {
+        if (j.id !== jobId) return j;
+        for (const key of Object.keys(patch) as Array<keyof BackgroundUploadJob>) {
+          if (j[key] !== patch[key]) {
+            didChange = true;
+            return { ...j, ...patch };
+          }
+        }
+        return j;
+      });
+      return didChange ? next : prev;
+    });
   }, []);
 
   const dismissUploadJob = useCallback((jobId: string) => {
@@ -150,6 +167,13 @@ export const BackgroundUploadProvider: React.FC<{
           });
 
           if (!forceReprocess && input.pendingVideoPromise) {
+            input.registerPendingProgress?.((pct, stage) => {
+              updateJob(jobId, {
+                status: 'compressing',
+                progress: pct,
+                stageLabel: stage || 'Auto-compressing video file...'
+              });
+            });
             processed = await input.pendingVideoPromise;
           } else if (input.rawVideoFile) {
             let soundTrackOption: { url: string; mode: SoundMixMode } | undefined;
@@ -166,6 +190,9 @@ export const BackgroundUploadProvider: React.FC<{
               maxDurationSec: MAX_FEED_VIDEO_DURATION_SEC,
               autoTrim: true,
               autoCompress: true,
+              startTimeSec: input.trimRange?.startTimeSec,
+              endTimeSec: input.trimRange?.endTimeSec,
+              playbackSpeed: input.playbackSpeed,
               soundTrack: soundTrackOption,
               onProgress: (pct, stage) => {
                 updateJob(jobId, {
@@ -285,6 +312,13 @@ export const BackgroundUploadProvider: React.FC<{
           });
 
           if (!forceReprocess && input.pendingStoryPromise) {
+            input.registerPendingProgress?.((pct, stage) => {
+              updateJob(jobId, {
+                status: 'compressing',
+                progress: pct,
+                stageLabel: stage || 'Auto-compressing story video...'
+              });
+            });
             encoded = await input.pendingStoryPromise;
           } else if (input.rawVideoFile) {
             let soundTrackOption: { url: string; mode: SoundMixMode } | undefined;

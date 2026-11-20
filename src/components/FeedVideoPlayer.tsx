@@ -27,8 +27,9 @@ interface FeedVideoPlayerProps {
 }
 
 const FULLSCREEN_VIDEO_OPEN_EVENT = 'tujuane:fullscreen-video-open';
+const FEED_VIDEO_PLAYING_EVENT = 'tujuane:feed-video-playing';
 
-export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
+const FeedVideoPlayerInner: React.FC<FeedVideoPlayerProps> = ({
   post,
   preloadHint = 'idle',
   onActiveInView,
@@ -53,31 +54,56 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [userPaused, setUserPaused] = useState(false);
-  const [progressPct, setProgressPct] = useState(0);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const progressBarRef = useRef<HTMLDivElement | null>(null);
+  const bufferingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
-  const prevSrcRef = useRef<string | null>(null);
-  const pendingRestoreRef = useRef<{ time: number; shouldPlay: boolean } | null>(null);
+  const onActiveInViewRef = useRef(onActiveInView);
+  onActiveInViewRef.current = onActiveInView;
+
+  const clearBufferingTimer = useCallback(() => {
+    if (bufferingTimerRef.current) {
+      clearTimeout(bufferingTimerRef.current);
+      bufferingTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleBufferingIndicator = useCallback(() => {
+    if (bufferingTimerRef.current) return;
+    bufferingTimerRef.current = setTimeout(() => {
+      bufferingTimerRef.current = null;
+      if (isMountedRef.current) setIsBuffering(true);
+    }, 250);
+  }, []);
+
+  const stopBufferingIndicator = useCallback(() => {
+    clearBufferingTimer();
+    setIsBuffering(false);
+  }, [clearBufferingTimer]);
 
   const activeSrc = fullUrl || (!isHeadFailed ? headUrl : null);
   const isPartialHeadOnly = Boolean(
     !fullUrl && headUrl && !isHeadFailed && (post.videoChunkCount ?? 0) > 1
   );
+  const canPlayCurrentSrc = Boolean(activeSrc && !isPartialHeadOnly);
 
-  // Lazy-mount the native <video> element ONLY when active, adjacent, or near the viewport
+  // Mount the native <video> decoder ONLY when a full playable video URL is ready AND the card is
+  // actively focused/visible so off-screen cards don't hold competing hardware video decoders.
   const shouldMountVideoElement = Boolean(
     activeSrc &&
-      (isInView || isNearViewport || preloadHint === 'adjacent' || preloadHint === 'active')
+      canPlayCurrentSrc &&
+      (isInView || preloadHint === 'active')
   );
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      clearBufferingTimer();
     };
-  }, []);
+  }, [clearBufferingTimer]);
 
   // Sync if post.mediaUrl or cached full/head URL becomes available
   useEffect(() => {
@@ -211,7 +237,7 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
     const nearObserver = new IntersectionObserver(
       (entries) => {
         const near = entries.some((e) => e.isIntersecting);
-        setIsNearViewport(near);
+        setIsNearViewport((prev) => (prev === near ? prev : near));
       },
       { rootMargin: '450px 0px', threshold: 0.01 }
     );
@@ -243,7 +269,8 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
     ensureHeadPreloaded
   ]);
 
-  // Observe active viewport visibility to auto-play/pause smoothly and trigger full download when active
+  // Observe active viewport visibility with hysteresis (>= 0.42 enter, < 0.18 exit) so
+  // minor scroll bounce never unmounts or stutters active playback.
   useEffect(() => {
     const el = containerRef.current;
     if (!el || typeof IntersectionObserver === 'undefined') return;
@@ -252,19 +279,24 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
       (entries) => {
         const entry = entries[0];
         if (!entry) return;
-        const visible = entry.isIntersecting && entry.intersectionRatio >= 0.4;
-        setIsInView(visible);
-        onActiveInView?.(post.id, visible);
+        const ratio = entry.intersectionRatio;
+        setIsInView((prev) => {
+          const next = prev ? entry.isIntersecting && ratio >= 0.18 : entry.isIntersecting && ratio >= 0.42;
+          if (next !== prev) {
+            onActiveInViewRef.current?.(post.id, next);
+          }
+          return next;
+        });
       },
-      { threshold: [0.2, 0.4, 0.65] }
+      { threshold: [0.1, 0.18, 0.42, 0.65] }
     );
 
     observer.observe(el);
     return () => {
       observer.disconnect();
-      onActiveInView?.(post.id, false);
+      onActiveInViewRef.current?.(post.id, false);
     };
-  }, [post.id, onActiveInView]);
+  }, [post.id]);
 
   // Upgrade from head frames to full video when actively in viewport
   useEffect(() => {
@@ -287,31 +319,20 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
     ensureFullPlayableUrl
   ]);
 
-  // Capture playback timestamp & playing state cleanly before swapping headUrl -> fullUrl
-  useEffect(() => {
-    const prevSrc = prevSrcRef.current;
-    if (prevSrc && activeSrc && prevSrc !== activeSrc && videoRef.current) {
-      const v = videoRef.current;
-      pendingRestoreRef.current = {
-        time: v.currentTime || 0,
-        shouldPlay: !v.paused || (isInView && !userPaused)
-      };
-    }
-    prevSrcRef.current = activeSrc || null;
-  }, [activeSrc, isInView, userPaused]);
-
   const tryStartPlayback = useCallback(() => {
     const video = videoRef.current;
-    if (!video || !activeSrc || !isInView || userPaused) return;
-    video.loop = !isPartialHeadOnly;
+    if (!video || !canPlayCurrentSrc || !isInView || userPaused) return;
+    video.loop = true;
     video.muted = isMuted;
+    if (!video.paused) return;
+    window.dispatchEvent(new CustomEvent(FEED_VIDEO_PLAYING_EVENT, { detail: { postId: post.id } }));
     const playPromise = video.play();
     if (playPromise && typeof playPromise.then === 'function') {
       playPromise
         .then(() => {
           if (isMountedRef.current) {
             setIsPlaying(true);
-            setIsBuffering(false);
+            stopBufferingIndicator();
           }
         })
         .catch(() => {
@@ -323,26 +344,26 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
               .then(() => {
                 if (isMountedRef.current) {
                   setIsPlaying(true);
-                  setIsBuffering(false);
+                  stopBufferingIndicator();
                 }
               })
               .catch(() => {});
           }
         });
     }
-  }, [activeSrc, isInView, isPartialHeadOnly, userPaused, isMuted]);
+  }, [canPlayCurrentSrc, isInView, userPaused, isMuted, post.id, stopBufferingIndicator]);
 
   // Keep native DOM `.loop` property synced when full video replaces head preview
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.loop = !isPartialHeadOnly;
-  }, [shouldMountVideoElement, activeSrc, isPartialHeadOnly]);
+    video.loop = canPlayCurrentSrc;
+  }, [shouldMountVideoElement, activeSrc, canPlayCurrentSrc]);
 
-  // Auto-play / pause based on viewport visibility
+  // Auto-play / pause based on viewport visibility (only auto-play full clip to avoid mid-playback src swap stutter)
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !activeSrc || !shouldMountVideoElement) {
+    if (!video || !canPlayCurrentSrc || !shouldMountVideoElement) {
       if (!shouldMountVideoElement) setIsPlaying(false);
       return;
     }
@@ -353,9 +374,36 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
       video.pause();
       setIsPlaying(false);
     }
-  }, [isInView, activeSrc, shouldMountVideoElement, userPaused, tryStartPlayback]);
+  }, [isInView, canPlayCurrentSrc, shouldMountVideoElement, userPaused, tryStartPlayback]);
 
-  // Pause inline feed playback whenever full-screen short video viewer opens
+  // Drive playback progress bar at 60fps with requestAnimationFrame instead of coarse 4Hz timeupdate events
+  useEffect(() => {
+    if (!isPlaying || !canPlayCurrentSrc) return;
+    let rafId = 0;
+    const tick = () => {
+      const v = videoRef.current;
+      const bar = progressBarRef.current;
+      if (v && bar) {
+        const denom =
+          v.duration && isFinite(v.duration) && v.duration > 0
+            ? v.duration
+            : post.videoDuration && post.videoDuration > 0
+            ? post.videoDuration
+            : 0;
+        if (denom > 0 && isFinite(denom)) {
+          const ratio = Math.min(1, Math.max(0, v.currentTime / denom));
+          bar.style.transform = `scaleX(${ratio})`;
+        }
+      }
+      rafId = window.requestAnimationFrame(tick);
+    };
+    rafId = window.requestAnimationFrame(tick);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [isPlaying, canPlayCurrentSrc, post.videoDuration]);
+
+  // Pause inline feed playback whenever full-screen viewer opens OR another feed card takes active focus
   useEffect(() => {
     const handleFullScreenOpen = () => {
       if (videoRef.current && !videoRef.current.paused) {
@@ -363,9 +411,20 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
         setIsPlaying(false);
       }
     };
+    const handleOtherVideoPlaying = (evt: Event) => {
+      const otherId = (evt as CustomEvent<{ postId?: string }>).detail?.postId;
+      if (otherId && otherId !== post.id && videoRef.current && !videoRef.current.paused) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      }
+    };
     window.addEventListener(FULLSCREEN_VIDEO_OPEN_EVENT, handleFullScreenOpen);
-    return () => window.removeEventListener(FULLSCREEN_VIDEO_OPEN_EVENT, handleFullScreenOpen);
-  }, []);
+    window.addEventListener(FEED_VIDEO_PLAYING_EVENT, handleOtherVideoPlaying);
+    return () => {
+      window.removeEventListener(FULLSCREEN_VIDEO_OPEN_EVENT, handleFullScreenOpen);
+      window.removeEventListener(FEED_VIDEO_PLAYING_EVENT, handleOtherVideoPlaying);
+    };
+  }, [post.id]);
 
   // Open full-screen Reels viewer immediately on tap without blocking on chunk download
   const handleOpenFullScreen = (e?: React.MouseEvent) => {
@@ -385,7 +444,7 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
   const handleTogglePlayInline = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setUserPaused(false);
-    if (!activeSrc) {
+    if (!canPlayCurrentSrc) {
       await ensureFullPlayableUrl();
       return;
     }
@@ -394,7 +453,6 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
     if (video.paused) {
       video.muted = isMuted;
       video.play().then(() => setIsPlaying(true)).catch(() => {});
-      if (!fullUrl) void ensureFullPlayableUrl();
     } else {
       setUserPaused(true);
       video.pause();
@@ -434,48 +492,34 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
           muted={isMuted}
           loop={!isPartialHeadOnly}
           playsInline
-          preload="auto"
-          onLoadedMetadata={() => {
-            const v = videoRef.current;
-            const pending = pendingRestoreRef.current;
-            if (v && pending) {
-              if (pending.time > 0 && isFinite(v.duration) && pending.time < v.duration) {
-                v.currentTime = pending.time;
-              }
-              if (pending.shouldPlay && isInView && !userPaused) {
-                tryStartPlayback();
-              }
-              pendingRestoreRef.current = null;
-            }
-          }}
+          preload={canPlayCurrentSrc && isInView ? 'auto' : 'metadata'}
           onLoadedData={() => {
-            // Keep adjacent preloaded videos paused on frame 0 until scrolled into view
+            // Keep adjacent preloaded videos paused on frame 0 until active full playback
             const v = videoRef.current;
-            if (v && !isInView && !v.paused) {
+            if (v && (!isInView || isPartialHeadOnly) && !v.paused) {
               v.pause();
             }
           }}
           onCanPlay={() => {
-            setIsBuffering(false);
-            if (isInView && !userPaused) {
+            stopBufferingIndicator();
+            if (canPlayCurrentSrc && isInView && !userPaused) {
               tryStartPlayback();
             }
           }}
-          onWaiting={() => setIsBuffering(true)}
+          onWaiting={scheduleBufferingIndicator}
           onPlaying={() => {
             setIsPlaying(true);
-            setIsBuffering(false);
+            stopBufferingIndicator();
           }}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           onEnded={() => {
             if (isPartialHeadOnly) {
-              setIsBuffering(true);
               void ensureFullPlayableUrl();
               return;
             }
             const v = videoRef.current;
-            if (v && !userPaused) {
+            if (v && !v.loop && !userPaused) {
               v.currentTime = 0;
               v.muted = isMuted;
               v.play()
@@ -485,18 +529,8 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
                 .catch(() => {});
             }
           }}
-          onTimeUpdate={() => {
-            const v = videoRef.current;
-            const denom =
-              post.videoDuration && post.videoDuration > 0
-                ? post.videoDuration
-                : v?.duration || 0;
-            if (v && denom > 0 && isFinite(denom)) {
-              setProgressPct(Math.min(100, (v.currentTime / denom) * 100));
-            }
-          }}
           onError={() => {
-            setIsBuffering(false);
+            stopBufferingIndicator();
             if (isPartialHeadOnly) {
               // Partial chunk_0 may lack faststart moov atom; silently fallback to full video load
               setIsHeadFailed(true);
@@ -511,7 +545,7 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
             });
             setLoadError('Could not play this video clip. Tap to retry.');
           }}
-          className="w-full max-h-[480px] object-contain bg-black"
+          className="w-full max-h-[480px] object-contain bg-black transform-gpu will-change-transform"
         />
       ) : post.videoThumbnail ? (
         <img
@@ -542,16 +576,16 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
             setLoadError(null);
             void ensureFullPlayableUrl();
           }}
-          className="absolute inset-0 bg-black/45 flex items-center justify-center z-10"
+          className="absolute inset-0 bg-black/55 flex items-center justify-center z-10"
         >
-          <div className="flex flex-col items-center gap-1.5 px-4 py-3 rounded-2xl bg-rose-950/90 text-rose-100 backdrop-blur-md">
+          <div className="flex flex-col items-center gap-1.5 px-4 py-3 rounded-2xl bg-rose-950/95 text-rose-100 shadow-lg">
             <AlertCircle className="w-6 h-6 text-rose-400" />
             <span className="text-xs font-semibold">{loadError}</span>
           </div>
         </div>
-      ) : !isPlaying && (!isInView || userPaused || !activeSrc) ? (
+      ) : !isPlaying && (!isInView || userPaused || !canPlayCurrentSrc) ? (
         <div className="pointer-events-none absolute inset-0 bg-black/15 flex items-center justify-center">
-          <div className="w-13 h-13 rounded-full bg-black/65 text-white flex items-center justify-center shadow-xl backdrop-blur-xs">
+          <div className="w-13 h-13 rounded-full bg-black/75 text-white flex items-center justify-center shadow-xl">
             <Play className="w-6 h-6 fill-white ml-0.5" />
           </div>
         </div>
@@ -559,12 +593,12 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
 
       {/* Top Left Badges */}
       <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 pointer-events-none">
-        <span className="px-2 py-0.5 rounded-md bg-black/70 text-white text-[11px] font-bold tabular-nums flex items-center gap-1 backdrop-blur-xs">
+        <span className="px-2 py-0.5 rounded-md bg-black/75 text-white text-[11px] font-bold tabular-nums flex items-center gap-1">
           <Video className="w-3 h-3 text-indigo-400" />
           <span>{post.videoDuration ? durationText : 'Short Video'}</span>
         </span>
         {sizeText && (
-          <span className="px-2 py-0.5 rounded-md bg-black/55 text-slate-200 text-[10px] font-medium tabular-nums backdrop-blur-xs">
+          <span className="px-2 py-0.5 rounded-md bg-black/65 text-slate-200 text-[10px] font-medium tabular-nums">
             {sizeText}
           </span>
         )}
@@ -574,7 +608,7 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
       <button
         type="button"
         onClick={handleOpenFullScreen}
-        className="absolute top-2.5 right-2.5 px-2.5 py-1.5 bg-black/65 hover:bg-black/85 text-white rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer backdrop-blur-xs z-10"
+        className="absolute top-2.5 right-2.5 px-2.5 py-1.5 bg-black/75 hover:bg-black/90 text-white rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer z-10"
         title="Watch in full-screen Reels view"
       >
         <Maximize2 className="w-3.5 h-3.5" />
@@ -586,7 +620,7 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
         <button
           type="button"
           onClick={handleTogglePlayInline}
-          className="w-9 h-9 rounded-full bg-black/65 hover:bg-black/85 text-white flex items-center justify-center transition-colors cursor-pointer backdrop-blur-xs"
+          className="w-9 h-9 rounded-full bg-black/75 hover:bg-black/90 text-white flex items-center justify-center transition-colors cursor-pointer"
           title={isPlaying ? 'Pause video' : 'Play video'}
           aria-label={isPlaying ? 'Pause video' : 'Play video'}
         >
@@ -596,7 +630,7 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
           <button
             type="button"
             onClick={handleToggleMute}
-            className="w-9 h-9 rounded-full bg-black/65 hover:bg-black/85 text-white flex items-center justify-center transition-colors cursor-pointer backdrop-blur-xs"
+            className="w-9 h-9 rounded-full bg-black/75 hover:bg-black/90 text-white flex items-center justify-center transition-colors cursor-pointer"
             title={isMuted ? 'Unmute audio' : 'Mute audio'}
             aria-label={isMuted ? 'Unmute audio' : 'Mute audio'}
           >
@@ -605,15 +639,29 @@ export const FeedVideoPlayer: React.FC<FeedVideoPlayerProps> = ({
         )}
       </div>
 
-      {/* Bottom thin playback progress bar */}
-      {activeSrc && progressPct > 0 && (
-        <div className="pointer-events-none absolute bottom-0 inset-x-0 h-0.5 bg-white/15">
+      {/* Bottom thin playback progress bar (updated via GPU scaleX without layout reflow or React re-renders) */}
+      {canPlayCurrentSrc && (
+        <div className="pointer-events-none absolute bottom-0 inset-x-0 h-0.5 bg-white/15 overflow-hidden">
           <div
-            className="h-full bg-emerald-400 transition-[width] duration-150"
-            style={{ width: `${progressPct}%` }}
+            ref={progressBarRef}
+            className="w-full h-full bg-emerald-400 origin-left transform-gpu will-change-transform"
+            style={{ transform: 'scaleX(0)' }}
           />
         </div>
       )}
     </div>
   );
 };
+
+export const FeedVideoPlayer = React.memo(
+  FeedVideoPlayerInner,
+  (prev, next) =>
+    prev.preloadHint === next.preloadHint &&
+    prev.post.id === next.post.id &&
+    prev.post.mediaUrl === next.post.mediaUrl &&
+    prev.post.videoChunkCount === next.post.videoChunkCount &&
+    prev.post.videoThumbnail === next.post.videoThumbnail &&
+    prev.post.videoDuration === next.post.videoDuration &&
+    prev.post.videoSizeBytes === next.post.videoSizeBytes &&
+    prev.post.videoMimeType === next.post.videoMimeType
+);

@@ -13,12 +13,16 @@ import {
   Play,
   Pause,
   Loader2,
-  Trash2
+  Trash2,
+  Gauge
 } from 'lucide-react';
 import {
+  DEFAULT_VIDEO_PLAYBACK_SPEED,
   MAX_FEED_VIDEO_DURATION_SEC,
   ProcessedFeedVideo,
+  VIDEO_PLAYBACK_SPEED_OPTIONS,
   formatVideoDuration,
+  normalizePlaybackSpeed,
   processFeedVideoFile
 } from '../utils/videoProcessor';
 import { PostedVideoSound, SoundMixMode } from '../types/community';
@@ -29,6 +33,8 @@ export interface RecordedVideoSoundMeta {
   sound: PostedVideoSound | null;
   mixMode: SoundMixMode;
   soundAlreadyBaked: boolean;
+  playbackSpeed: number;
+  rawSourceFile?: File;
 }
 
 interface ShortVideoCameraRecorderProps {
@@ -55,11 +61,14 @@ function pickSupportedVideoMimeType(): string | undefined {
   if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
     return undefined;
   }
+  // Prefer VP8/Opus first on Chromium/Firefox for even frame timestamps without hardware B-frame jitter,
+  // with H.264/MP4 support for Safari/iOS.
   const candidates = [
-    'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
-    'video/webm',
+    'video/webm;codecs=vp8',
     'video/mp4;codecs=avc1,mp4a',
+    'video/webm;codecs=vp9,opus',
+    'video/webm',
     'video/mp4'
   ];
   return candidates.find((type) => MediaRecorder.isTypeSupported(type));
@@ -121,6 +130,7 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
   const [soundError, setSoundError] = useState<string | null>(null);
   const [isAuditioningSound, setIsAuditioningSound] = useState(false);
   const [isSoundPickerOpen, setIsSoundPickerOpen] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(DEFAULT_VIDEO_PLAYBACK_SPEED);
 
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -393,8 +403,9 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
 
       const videoConstraints: MediaTrackConstraints = {
         facingMode: { ideal: targetFacing },
-        width: { ideal: 720 },
-        height: { ideal: 1280 }
+        width: { ideal: 1280, max: 1920 },
+        height: { ideal: 720, max: 1920 },
+        frameRate: { ideal: 30 }
       };
 
       let stream: MediaStream | null = null;
@@ -601,18 +612,19 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
     }
 
     const preferredMime = pickSupportedVideoMimeType();
+    const speedSnapshot = normalizePlaybackSpeed(playbackSpeed);
 
     let recorder: MediaRecorder;
     try {
       recorder = preferredMime
         ? new MediaRecorder(streamToRecord, {
             mimeType: preferredMime,
-            videoBitsPerSecond: 900_000,
-            audioBitsPerSecond: 64_000
+            videoBitsPerSecond: 1_800_000,
+            audioBitsPerSecond: 96_000
           })
         : new MediaRecorder(streamToRecord, {
-            videoBitsPerSecond: 900_000,
-            audioBitsPerSecond: 64_000
+            videoBitsPerSecond: 1_800_000,
+            audioBitsPerSecond: 96_000
           });
     } catch {
       try {
@@ -680,16 +692,17 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
           type: actualMime
         });
 
-        // If live WebAudio mixing wasn't active but user had selected a sound, bake it into the clip now
+        // If live WebAudio mixing wasn't active OR playback speed != 1x, process cleanly from raw 1x recording
         const needsPostMix = Boolean(soundSnapshot && playableSnapshot && !soundMixedInRecordingRef.current);
         const processed = await processFeedVideoFile(
           recordedFile,
-          needsPostMix && playableSnapshot
-            ? {
-                overrideDurationSec: finalDuration,
-                soundTrack: { url: playableSnapshot, mode: mixSnapshot }
-              }
-            : finalDuration
+          {
+            overrideDurationSec: finalDuration,
+            playbackSpeed: speedSnapshot,
+            ...(needsPostMix && playableSnapshot
+              ? { soundTrack: { url: playableSnapshot, mode: mixSnapshot } }
+              : {})
+          }
         );
 
         if (!isMountedRef.current) {
@@ -700,7 +713,9 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
         onVideoReady(processed, {
           sound: soundSnapshot,
           mixMode: mixSnapshot,
-          soundAlreadyBaked: Boolean(soundSnapshot && (soundMixedInRecordingRef.current || needsPostMix))
+          soundAlreadyBaked: Boolean(soundSnapshot && soundMixedInRecordingRef.current),
+          playbackSpeed: speedSnapshot,
+          rawSourceFile: recordedFile
         });
       } catch (err: any) {
         if (!isMountedRef.current) return;
@@ -716,7 +731,7 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
     startTimeRef.current = Date.now();
     setElapsedSeconds(0);
     setIsRecording(true);
-    recorder.start(350);
+    recorder.start(500);
 
     timerRef.current = window.setInterval(() => {
       const secs = (Date.now() - startTimeRef.current) / 1000;
@@ -736,6 +751,7 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
     setCameraError(null);
     const soundSnapshot = activeSound;
     const mixSnapshot = mixMode;
+    const speedSnapshot = normalizePlaybackSpeed(playbackSpeed);
     try {
       let resolvedUrl = soundPlayableUrl;
       if (soundSnapshot && !resolvedUrl) {
@@ -744,9 +760,12 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
 
       const processed = await processFeedVideoFile(
         file,
-        soundSnapshot && resolvedUrl
-          ? { soundTrack: { url: resolvedUrl, mode: mixSnapshot } }
-          : undefined
+        {
+          playbackSpeed: speedSnapshot,
+          ...(soundSnapshot && resolvedUrl
+            ? { soundTrack: { url: resolvedUrl, mode: mixSnapshot } }
+            : {})
+        }
       );
       if (!isMountedRef.current) {
         URL.revokeObjectURL(processed.previewObjectUrl);
@@ -756,7 +775,9 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
       onVideoReady(processed, {
         sound: soundSnapshot,
         mixMode: mixSnapshot,
-        soundAlreadyBaked: Boolean(soundSnapshot && resolvedUrl)
+        soundAlreadyBaked: false,
+        playbackSpeed: speedSnapshot,
+        rawSourceFile: file
       });
     } catch (err: any) {
       if (isMountedRef.current) {
@@ -822,7 +843,7 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
           {isRecording ? (
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-rose-600 text-white text-[11px] font-extrabold tracking-wide">
               <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-              REC {formatVideoDuration(Math.floor(elapsedSeconds))} / 1:00
+              REC {formatVideoDuration(Math.floor(elapsedSeconds))} / {formatVideoDuration(MAX_FEED_VIDEO_DURATION_SEC)}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-300">
@@ -1002,7 +1023,7 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
         )}
 
         {isProcessing && (
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2.5 text-white text-xs font-semibold z-20">
+          <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center gap-2.5 text-white text-xs font-semibold z-20">
             <div className="w-7 h-7 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
             <span>
               {activeSound
@@ -1064,14 +1085,44 @@ export const ShortVideoCameraRecorder: React.FC<ShortVideoCameraRecorderProps> =
         )}
       </div>
 
+      {/* Recording Playback Speed Selector */}
+      {!isRecording && (
+        <div className="px-3.5 py-2 bg-slate-900/95 border-t border-white/10 flex items-center justify-between gap-2 flex-wrap">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
+            <Gauge className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <span>Output Speed</span>
+          </span>
+          <div className="inline-flex items-center rounded-lg bg-black/50 p-0.5 gap-0.5 overflow-x-auto max-w-full">
+            {VIDEO_PLAYBACK_SPEED_OPTIONS.map((spd) => {
+              const active = Math.abs(playbackSpeed - spd) < 0.01;
+              return (
+                <button
+                  key={spd}
+                  type="button"
+                  disabled={isRecording || isProcessing || disabled}
+                  onClick={() => setPlaybackSpeed(spd)}
+                  className={`px-2 py-1 rounded-md text-[11px] font-mono tabular-nums font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-40 ${
+                    active
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  {spd}x
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Bottom Recording Action Bar */}
       <div className="px-3.5 py-3 bg-slate-900 flex flex-wrap items-center justify-between gap-2.5 border-t border-white/10">
-        <div className="text-[11px] text-slate-300">
+        <div className="text-[11px] text-slate-300 font-mono tabular-nums">
           {isRecording
-            ? `${remainingSec}s left · auto-stops at 1:00`
+            ? `${formatVideoDuration(remainingSec)} left · auto-stops at ${formatVideoDuration(MAX_FEED_VIDEO_DURATION_SEC)}`
             : activeSound
-            ? `Sound ready (${mixMode === 'mix' ? 'Sound + Mic' : 'Sound Only'}) · up to 60s`
-            : 'Record up to 60s · keeps size friendly for 3G/4G'}
+            ? `Sound (${mixMode === 'mix' ? 'Sound + Mic' : 'Sound Only'}) · ${playbackSpeed}x speed`
+            : `Up to 5 min · Full HD · ${playbackSpeed}x speed`}
         </div>
 
         <div className="flex items-center gap-2 ml-auto">

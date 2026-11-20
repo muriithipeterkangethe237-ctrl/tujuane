@@ -29,6 +29,11 @@ import {
   getLocalTelemetrySnapshot
 } from '../services/telemetryService';
 import { TelemetrySession, CrashReport } from '../types/telemetry';
+import { AppIssueReport, AppIssueStatus } from '../types/appIssue';
+import {
+  subscribeToAllAppIssues,
+  updateAppIssueStatus
+} from '../services/appIssueService';
 import {
   DeveloperAnalyticsTab,
   DeveloperCrashReportsTab
@@ -66,7 +71,8 @@ import {
   AlertOctagon,
   Shield,
   BarChart3,
-  Bug
+  Bug,
+  LifeBuoy
 } from 'lucide-react';
 
 const DEVELOPER_EMAIL = 'muriithipeterkangethe237@gmail.com';
@@ -83,7 +89,7 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
   const { currentUser, userProfile, loginWithGoogle } = useAuth();
 
   // Active section tab
-  const [activeTab, setActiveTab] = useState<'reports' | 'posts' | 'users' | 'tester' | 'analytics' | 'crashes'>('reports');
+  const [activeTab, setActiveTab] = useState<'reports' | 'posts' | 'users' | 'tester' | 'analytics' | 'crashes' | 'app_issues'>('reports');
 
   // Real-time data streams
   const [posts, setPosts] = useState<CommunityPost[]>([]);
@@ -91,11 +97,15 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [telemetrySessions, setTelemetrySessions] = useState<TelemetrySession[]>(() => getLocalTelemetrySnapshot().sessions);
   const [crashReports, setCrashReports] = useState<CrashReport[]>(() => getLocalTelemetrySnapshot().crashes);
+  const [appIssues, setAppIssues] = useState<AppIssueReport[]>([]);
 
   // Search & filter states
   const [postSearch, setPostSearch] = useState('');
   const [postFilter, setPostFilter] = useState<'all' | 'flagged' | 'clean'>('all');
   const [reportFilter, setReportFilter] = useState<'all' | 'pending' | 'actioned' | 'dismissed'>('pending');
+  const [appIssueFilter, setAppIssueFilter] = useState<'all' | AppIssueStatus>('open');
+  const [issueNotesDraft, setIssueNotesDraft] = useState<Record<string, string>>({});
+  const [updatingIssueId, setUpdatingIssueId] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState('');
 
   // Modals & Action dialogs
@@ -313,12 +323,17 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
       setCrashReports(loadedCrashes);
     });
 
+    const unsubAppIssues = subscribeToAllAppIssues((loadedIssues) => {
+      setAppIssues(loadedIssues);
+    });
+
     return () => {
       unsubPosts();
       unsubReports();
       unsubUsers();
       unsubTelemetry();
       unsubCrashes();
+      unsubAppIssues();
     };
   }, [isDeveloperUser, currentUser]);
 
@@ -361,6 +376,37 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
   const openCrashReportsCount = useMemo(() => {
     return crashReports.filter((c) => c.status === 'open').length;
   }, [crashReports]);
+
+  const openAppIssuesCount = useMemo(() => {
+    return appIssues.filter((i) => i.status === 'open' || i.status === 'in_progress').length;
+  }, [appIssues]);
+
+  const filteredAppIssues = useMemo(() => {
+    if (appIssueFilter === 'all') return appIssues;
+    return appIssues.filter((i) => i.status === appIssueFilter);
+  }, [appIssues, appIssueFilter]);
+
+  const handleUpdateAppIssue = async (issue: AppIssueReport, nextStatus: AppIssueStatus) => {
+    setUpdatingIssueId(issue.id);
+    try {
+      const notes = issueNotesDraft[issue.id] !== undefined ? issueNotesDraft[issue.id] : issue.developerNotes;
+      await updateAppIssueStatus(
+        issue.id,
+        nextStatus,
+        currentUser?.email || DEVELOPER_EMAIL,
+        notes
+      );
+      showToast(`Issue marked as ${nextStatus.replace('_', ' ')}.`);
+    } catch (err) {
+      if (isFirestoreQuotaError(err)) {
+        showToast('Daily database quota reached. Quota resets tomorrow.');
+      } else {
+        showToast('Failed to update app issue status.');
+      }
+    } finally {
+      setUpdatingIssueId(null);
+    }
+  };
 
   const refreshLocalTelemetryFallback = () => {
     const local = getLocalTelemetrySnapshot();
@@ -829,6 +875,23 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
           {openCrashReportsCount > 0 && (
             <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-extrabold">
               {openCrashReportsCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('app_issues')}
+          className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === 'app_issues'
+              ? 'bg-slate-900 dark:bg-emerald-600 text-white font-bold shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <LifeBuoy className="w-4 h-4 text-amber-500" />
+          <span>App Issues</span>
+          {openAppIssuesCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold">
+              {openAppIssuesCount}
             </span>
           )}
         </button>
@@ -1590,6 +1653,173 @@ export const DeveloperControlPanel: React.FC<DeveloperControlPanelProps> = ({
           onRefreshLocal={refreshLocalTelemetryFallback}
           onNotify={showToast}
         />
+      )}
+
+      {/* TAB 7: CITIZEN APP ISSUES */}
+      {activeTab === 'app_issues' && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                <LifeBuoy className="w-5 h-5 text-amber-500" />
+                <span>Citizen App Issue Reports</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Bug reports, UI glitches, media issues, and citizen feedback submitted from the header menu.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-[11px] font-bold">
+              {(['open', 'in_progress', 'resolved', 'dismissed', 'all'] as const).map((statusKey) => (
+                <button
+                  key={statusKey}
+                  type="button"
+                  onClick={() => setAppIssueFilter(statusKey)}
+                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer capitalize ${
+                    appIssueFilter === statusKey
+                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {statusKey.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filteredAppIssues.length === 0 ? (
+            <div className="py-12 text-center space-y-2">
+              <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto opacity-80" />
+              <div className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                No {appIssueFilter === 'all' ? '' : `${appIssueFilter.replace('_', ' ')} `}app issues
+              </div>
+              <p className="text-xs text-slate-400">
+                Reports submitted via Menu → Report App Issue appear here in real time.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredAppIssues.map((issue) => {
+                const draftNote =
+                  issueNotesDraft[issue.id] !== undefined
+                    ? issueNotesDraft[issue.id]
+                    : issue.developerNotes || '';
+                const isBusy = updatingIssueId === issue.id;
+                return (
+                  <div
+                    key={issue.id}
+                    className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${
+                              issue.severity === 'critical'
+                                ? 'bg-rose-600 text-white'
+                                : issue.severity === 'high'
+                                ? 'bg-amber-500 text-white'
+                                : issue.severity === 'medium'
+                                ? 'bg-sky-600 text-white'
+                                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                            }`}
+                          >
+                            {issue.severity}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 capitalize">
+                            {issue.category.replace('_', ' ')}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold capitalize ${
+                              issue.status === 'resolved'
+                                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                : issue.status === 'in_progress'
+                                ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                                : issue.status === 'dismissed'
+                                ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                                : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
+                            }`}
+                          >
+                            {issue.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                          {issue.title}
+                        </h3>
+                      </div>
+
+                      <span className="text-[11px] text-slate-400">
+                        {new Date(issue.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                      {issue.description}
+                    </p>
+
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span>
+                        Reporter: <strong className="text-slate-700 dark:text-slate-200">{issue.reporterName}</strong>
+                        {issue.reporterCounty ? ` (${issue.reporterCounty})` : ''}
+                      </span>
+                      {issue.currentScreen && (
+                        <span>
+                          Screen: <strong className="text-slate-700 dark:text-slate-200">{issue.currentScreen}</strong>
+                        </span>
+                      )}
+                      {issue.deviceInfo && <span className="font-mono text-[10px]">{issue.deviceInfo}</span>}
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80 flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={draftNote}
+                        onChange={(e) =>
+                          setIssueNotesDraft((prev) => ({ ...prev, [issue.id]: e.target.value }))
+                        }
+                        placeholder="Optional developer response / resolution note..."
+                        maxLength={500}
+                        className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <div className="flex flex-wrap gap-1.5">
+                        {issue.status !== 'in_progress' && (
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleUpdateAppIssue(issue, 'in_progress')}
+                            className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                          >
+                            In Progress
+                          </button>
+                        )}
+                        {issue.status !== 'resolved' && (
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleUpdateAppIssue(issue, 'resolved')}
+                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                          >
+                            Resolve
+                          </button>
+                        )}
+                        {issue.status !== 'dismissed' && (
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleUpdateAppIssue(issue, 'dismissed')}
+                            className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                          >
+                            Dismiss
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       {/* MODAL: ATTACH SAFETY ADVISORY */}

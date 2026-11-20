@@ -24,7 +24,8 @@ import {
   X,
   Sun,
   Moon,
-  Monitor
+  Monitor,
+  Bug
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -32,6 +33,7 @@ import { AppLogoIcon } from './AppLogoIcon';
 import { KenyanFlagWave } from './KenyanFlagTheme';
 import { PWAInstallButton } from './PWAInstallButton';
 import { AppSettingsModal } from './AppSettingsModal';
+import { ReportAppIssueModal } from './ReportAppIssueModal';
 
 interface HeaderProps {
   activeTab: string;
@@ -71,6 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
   // 3-dots dropdown menu and settings modal states
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isReportIssueOpen, setIsReportIssueOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'account' | 'appearance' | 'location' | 'notifications' | 'privacy' | 'storage' | 'about'>('account');
   const [showSwitchPicker, setShowSwitchPicker] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -718,6 +721,22 @@ export const Header: React.FC<HeaderProps> = ({
                       <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
                     </button>
 
+                    {/* REPORT APP ISSUE BUTTON */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        setIsReportIssueOpen(true);
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-800 dark:hover:text-rose-300 transition-colors text-left cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Bug className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                        <span>Report App Issue</span>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+
                     {/* Developer Control Panel shortcut if verified developer */}
                     {isDev && (
                       <button
@@ -771,6 +790,13 @@ export const Header: React.FC<HeaderProps> = ({
         initialTab={settingsInitialTab}
         onOpenProfile={onViewOwnProfile ? () => onViewOwnProfile(true) : undefined}
         onNavigateToDevPanel={() => setActiveTab('dev-panel')}
+      />
+
+      {/* REPORT APP ISSUE MODAL */}
+      <ReportAppIssueModal
+        isOpen={isReportIssueOpen}
+        onClose={() => setIsReportIssueOpen(false)}
+        activeScreen={activeTab}
       />
 
       {/* QUICK SUB-MODAL: SWITCH ACCOUNT PICKER */}
